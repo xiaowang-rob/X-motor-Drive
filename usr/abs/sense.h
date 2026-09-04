@@ -1,17 +1,14 @@
 #ifndef __ABS_SENSE_H
 #define __ABS_SENSE_H
 
-#include <stdint.h>
-#include <stdbool.h>
-
-#include "usr/abs/time.h"
+#include "device.h"
 
 // ============================================================
 // sense.h — 采样业务对象（usr/abs）
 //
 // 本头同时定义 abs↔drv 的采样接口契约 tSampleIf（v2 收编自 usr/if）：
 // 描述"由定时器触发、DMA 落缓冲的 ADC 采样前端"最小能力，
-// 实现 = usr/drv 的板采样驱动（直调 HAL）。业务对象吃 tSampleIf 输出物理量。
+// 实现 = usr/drv 的板采样驱动（直调 HAL）。业务对象吃 tSampleMcuOps 输出物理量。
 // ============================================================
 
 // ---- abs↔drv 采样接口契约 ----
@@ -36,7 +33,7 @@ typedef struct
 
     // 线性换算系数：码 → 物理量（cur_scale=A/码12bit、vbus_scale=V/码8bit）
     void (*get_gain)(void *ctx, float *cur_scale, float *vbus_scale);
-} tSampleIf;
+} tSampleMcuOps;
 
 // ============================================================
 // sense.h — 电流/电压/温度采样业务对象（usr/abs，纯逻辑）
@@ -50,15 +47,14 @@ typedef struct
 // 空闲阶段自动累积零点（校准），运行阶段输出电流。
 // ============================================================
 
-#define SENSE_IDLE_K 0.002f       // 零点 EMA 系数
-#define SENSE_VT_REFRESH_MS 10U   // Vbus/温度刷新周期
+#define SENSE_IDLE_K 0.002f     // 零点 EMA 系数
+#define SENSE_VT_REFRESH_MS 10U // Vbus/温度刷新周期
 
 typedef struct
 {
-    const tSampleIf *sample; // 注入：板采样驱动（usr/drv，直调 HAL）
-    const tTimeIf *time;     // 注入：时间基准（Vbus/温度节流）
+    const tSampleMcuOps *ops; // 注入：板采样驱动（usr/drv，直调 HAL）
 
-    // 换算系数（init 时由 sample->get_gain 取）
+    // 换算系数（init 时由 ops->get_gain 取）
     float cur_scale;  // A/码（12bit 电流）
     float vbus_scale; // V/码（8bit Vbus）
 
@@ -67,28 +63,28 @@ typedef struct
     bool zero_ready;
 
     // 结果缓存（供 FOC 中断读取）
-    float cur[3];     // A
-    float vbus;       // V
+    float cur[3];      // A
+    float vbus;        // V
     float temperature; // ℃
 
     uint32_t last_vt_ms; // 上次 Vbus/温度刷新时刻
-} tCurrentSense;
+} tSense;
 
-bool sense_init(tCurrentSense *s, const tSampleIf *sample, const tTimeIf *time);
+bool sense_init(tSense *s, const tSampleMcuOps *ops);
 
 // 设置电流采样点在 PWM 周期内的位置（转发给采样前端）
-void sense_set_sample_point(tCurrentSense *s, uint32_t tic);
+void sense_set_sample_point(tSense *s, uint32_t tic);
 
 // PWM 周期内调用一次：
 //   motor_idle=true  → 用当前码更新零点 EMA，电流输出 0（校准阶段）
 //   motor_idle=false → 输出换算电流
 //   内部按 SENSE_VT_REFRESH_MS 节流刷新 Vbus/温度
-void sense_update(tCurrentSense *s, bool motor_idle);
+void sense_update(tSense *s, bool motor_idle);
 
 // ---- 查询（多在中断上下文） ----
-void sense_get_current(const tCurrentSense *s, float *iu, float *iv, float *iw);
-float sense_get_vbus(const tCurrentSense *s);
-float sense_get_temperature(const tCurrentSense *s);
-bool sense_is_zero_ready(const tCurrentSense *s);
+void sense_get_current(const tSense *s, float *iu, float *iv, float *iw);
+float sense_get_vbus(const tSense *s);
+float sense_get_temperature(const tSense *s);
+bool sense_is_zero_ready(const tSense *s);
 
 #endif // __ABS_SENSE_H

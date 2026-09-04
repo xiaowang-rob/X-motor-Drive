@@ -9,50 +9,49 @@
 // 注：记录格式/校验由上层定义（参数、日志等），本层不解析内容。
 // ============================================================
 
-#include "usr/abs/flash.h"
+#include "flash.h"
 
 // 空闲探测读窗口（字节）
 #define FLASH_FREE_SCAN_WIN 2U
 
 // 探测单元空闲边界：二分查找"首个未写偏移"
 // 不变式：探测区间 [lo, hi)，lo 指向已写区末尾方向、hi 指向未写区
-static bool flash_scan_free(tFlashStore *s, uint32_t *free_addr)
+static bool flash_scan_free(tFlash *s, tFlashUnit *unit)
 {
-    const uint32_t size = s->unit.size;
     uint8_t buf[FLASH_FREE_SCAN_WIN];
 
     // 先看单元首字节：全 FF 视为空单元
-    if (!s->ops->read(s->handle, s->unit.base_addr, buf, FLASH_FREE_SCAN_WIN))
+    if (!s->ops->read(s->handle, unit->base_addr, buf, FLASH_FREE_SCAN_WIN))
         return false;
     bool all_ff = (buf[0] == 0xFFU && buf[1] == 0xFFU);
     if (all_ff)
     {
         // 可能空单元，也可能写满后尾部对齐 FF——由尾探测区分
-        if (!s->ops->read(s->handle, s->unit.base_addr + size - FLASH_FREE_SCAN_WIN,
+        if (!s->ops->read(s->handle, unit->base_addr + unit->size - FLASH_FREE_SCAN_WIN,
                           buf, FLASH_FREE_SCAN_WIN))
             return false;
         if (buf[0] == 0xFFU && buf[1] == 0xFFU)
         {
-            *free_addr = 0U; // 首尾皆 FF：视为空单元（记录最小长度假设 > 2 时安全）
+            unit->free_addr = 0U; // 首尾皆 FF：视为空单元（记录最小长度假设 > 2 时安全）
             return true;
         }
         // 尾部非 FF → 写满
-        *free_addr = size;
+        unit->free_addr = unit->size;
         return true;
     }
 
     // 二分：找最后一个"已写"与第一个"未写"的边界
-    uint32_t lo = 0U;      // [0, lo) 已写
-    uint32_t hi = size;    // [hi, size) 未写
+    uint32_t lo = 0U;         // [0, lo) 已写
+    uint32_t hi = unit->size; // [hi, size) 未写
     while ((hi - lo) > FLASH_FREE_SCAN_WIN)
     {
         uint32_t mid = (lo + hi) / 2U;
         // mid 处读 2 字节；边界上可能横跨写/未写 → 读法保守处理
         uint32_t read_at = mid;
-        if (read_at + FLASH_FREE_SCAN_WIN > size)
-            read_at = size - FLASH_FREE_SCAN_WIN;
+        if (read_at + FLASH_FREE_SCAN_WIN > unit->size)
+            read_at = unit->size - FLASH_FREE_SCAN_WIN;
 
-        if (!s->ops->read(s->handle, s->unit.base_addr + read_at, buf, FLASH_FREE_SCAN_WIN))
+        if (!s->ops->read(s->handle, unit->base_addr + read_at, buf, FLASH_FREE_SCAN_WIN))
             return false;
 
         bool written = !(buf[0] == 0xFFU && buf[1] == 0xFFU);
@@ -61,182 +60,179 @@ static bool flash_scan_free(tFlashStore *s, uint32_t *free_addr)
         else
             hi = read_at;
     }
-    *free_addr = lo;
+    unit->free_addr = lo;
     return true;
 }
 
-bool flash_unit_init(tFlashStore *s, const tFlashDriverOps *ops, FlashChipHandle h,
-                     uint32_t base_addr)
+bool flash_init(tFlash *s, const tFlashDriverOps *ops, FlashChipHandle h)
 {
     if (!s || !ops || !h)
         return false;
 
-    uint32_t sector = ops->get_sector_size(h);
-    if (sector == 0U)
-        return false;
-
     s->ops = ops;
     s->handle = h;
-    s->unit.base_addr = base_addr - (base_addr % sector); // 对齐到擦除单元
-    s->unit.size = sector;
-    s->unit.free_addr = 0U;
 
-    return flash_scan_free(s, &s->unit.free_addr);
+    s->bl_sector_ids = s->ops->get_bl_ids(h, &s->bl_sector_count);
+    s->app_sector_ids = s->ops->get_app_ids(h, &s->app_sector_count);
+    s->usr_sector_ids = s->ops->get_usr_ids(h, &s->usr_sector_count);
+
+    s->usr_sector_bit_status = 0xffff;
+    s->usr_sector_bit_status << s->usr_sector_count; // 初始化：所有用户分区未注册
+    s->usr_sector_free = s->usr_sector_count;
+
+    return true; // 初始化成功
 }
 
-bool flash_unit_append(tFlashStore *s, const uint8_t *data, uint32_t len)
-{
-    if (!s || !data || len == 0U)
-        return false;
-    if (s->unit.free_addr + len > s->unit.size)
-        return false; // 空间不足（上层应擦除后重写/另开单元）
-
-    uint32_t addr = s->unit.base_addr + s->unit.free_addr;
-    if (!s->ops->write(s->handle, addr, data, len))
-        return false;
-
-    s->unit.free_addr += len;
-    return true;
-}
-
-bool flash_unit_read(tFlashStore *s, uint32_t offset, uint8_t *data, uint32_t len)
-{
-    if (!s || !data || len == 0U)
-        return false;
-    if (offset + len > s->unit.free_addr)
-        return false; // 只允许读已写区
-
-    return s->ops->read(s->handle, s->unit.base_addr + offset, data, len);
-}
-
-bool flash_unit_erase(tFlashStore *s)
+// 注册/注销 一个日志式存储单元
+tFlashUnit *flash_unit_register(tFlash *s)
 {
     if (!s)
-        return false;
-
-    if (!s->ops->erase(s->handle, s->unit.base_addr, s->unit.size))
-        return false;
-
-    s->unit.free_addr = 0U;
-    return true;
-}
-
-uint32_t flash_unit_free(tFlashStore *s)
-{
-    if (!s)
-        return 0U;
-    return s->unit.size - s->unit.free_addr;
-}
-
-bool flash_unit_is_full(tFlashStore *s)
-{
-    if (!s)
-        return true;
-    return s->unit.free_addr >= s->unit.size;
-}
-
-// ==================== IAP 固件升级编排（纯逻辑） ====================
-
-bool flash_iap_erase(const tFlashDriverOps *ops, FlashChipHandle h, uint32_t addr, uint32_t size)
-{
-    if (!ops || !h || size == 0U)
-        return false;
-    return ops->erase(h, addr, size); // 介质驱动按擦除单元向上取整
-}
-
-bool flash_iap_write(const tFlashDriverOps *ops, FlashChipHandle h,
-                     uint32_t addr, const uint8_t *data, uint32_t size)
-{
-    if (!ops || !h || !data || size == 0U)
-        return false;
-    return ops->write(h, addr, data, size);
-}
-
-bool flash_iap_verify(const tFlashDriverOps *ops, FlashChipHandle h,
-                      uint32_t addr, const uint8_t *data, uint32_t size)
-{
-    if (!ops || !h || !data || size == 0U)
-        return false;
-
-    uint8_t buf[32];
-    uint32_t done = 0U;
-    while (done < size)
+        return NULL;
+    if (0 >= s->usr_sector_free)
+        return NULL;
+    tFlashUnit *new_unit = (tFlashUnit *)malloc(sizeof(tFlashUnit));
+    if (!new_unit)
+        return NULL;
+    for (uint32_t i = 0; i < s->usr_sector_count; i++)
     {
-        uint32_t n = size - done;
-        if (n > sizeof(buf))
-            n = sizeof(buf);
-        if (!ops->read(h, addr + done, buf, n))
-            return false;
-        for (uint32_t i = 0U; i < n; i++)
+        if (0 == (s->usr_sector_bit_status & (1 << i)))
         {
-            if (buf[i] != data[done + i])
-                return false;
+            new_unit->id = i;
+            new_unit->base_addr = s->ops->get_sector_addr(s->handle, s->usr_sector_ids[i]);
+            new_unit->size = s->ops->get_sector_size(s->handle, s->usr_sector_ids[i]);
+            if (flash_scan_free(s, new_unit))
+            {
+                s->usr_sector_bit_status |= (1 << i);
+                s->usr_sector_free--;
+                return new_unit; // 注册成功
+            }
+            free(new_unit);
+            return NULL; // 注册失败
         }
-        done += n;
+    }
+    return NULL; // 注册失败
+}
+void flash_unit_unregister(tFlash *s, tFlashUnit *unit)
+{
+    if (!s || !unit)
+        return;
+    s->usr_sector_bit_status &= ~(1 << unit->id);
+    s->usr_sector_free++;
+    free(unit);
+    unit = NULL;
+}
+
+// 追加写入一条记录（自动落在 free_addr）；空间不足擦除从头开始写
+bool flash_unit_append(tFlash *s, tFlashUnit *unit, const uint8_t *data, uint32_t len)
+{
+    if (!s || !unit || !data || len == 0U)
+        return false;
+    if (unit->free_addr + len > unit->size)
+    {
+        flash_unit_erase(s, unit);
+    }
+    uint32_t addr = unit->base_addr + unit->free_addr;
+    return s->ops->write(s->handle, addr, data, len);
+}
+
+// 读上一条记录数据
+bool flash_unit_read(tFlash *s, tFlashUnit *unit, uint8_t *data, uint32_t len)
+{
+    if (!s || !unit || !data || len == 0U)
+        return false;
+    if (unit->free_addr < len)
+        return false; // 无记录
+    uint32_t addr = unit->base_addr + unit->free_addr - len;
+    return s->ops->read(s->handle, addr, data, len);
+}
+
+// 擦除整个单元并复位写位置
+bool flash_unit_erase(tFlash *s, tFlashUnit *unit)
+{
+    s->ops->erase_sector(s->handle, s->usr_sector_ids[unit->id]);
+    unit->free_addr = 0U;
+}
+
+// 便捷：擦写/校验整个 App / BL 区
+bool flash_iap_erase_app(tFlash *s)
+{
+    for (uint32_t i = 0; i < s->app_sector_count; i++)
+    {
+        if (!s->ops->erase_sector(s->handle, s->app_sector_ids[i]))
+            return false;
+    }
+    return true;
+}
+bool flash_iap_write_app(tFlash *s, uint32_t offset,
+                         const uint8_t *data, uint32_t size)
+{
+    if (!s || !data || size == 0U)
+        return false;
+    uint32_t addr = offset + s->ops->get_sector_addr(s->handle, s->app_sector_ids[0]);
+    return s->ops->write(s->handle, addr, data, size);
+}
+bool flash_iap_verify_app(tFlash *s, uint32_t offset,
+                          const uint8_t *data, uint32_t size)
+{
+    if (!s || !data || size == 0U)
+        return false;
+    uint8_t verify_data;
+    uint32_t addr = offset + s->ops->get_sector_addr(s->handle, s->app_sector_ids[0]);
+    for (uint32_t i = 0U; i < size; i++)
+    {
+        if (!s->ops->read(s->handle, addr + i, &verify_data, 1))
+            return false;
+        if (verify_data != data[i])
+            return false;
+    }
+    return true;
+}
+bool flash_iap_erase_bl(tFlash *s)
+{
+    for (uint32_t i = 0; i < s->bl_sector_count; i++)
+    {
+
+        if (!s->ops->erase_sector(s->handle, s->bl_sector_ids[i]))
+            return false;
     }
     return true;
 }
 
-bool flash_iap_erase_app(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap)
+bool flash_iap_write_bl(tFlash *s, uint32_t offset,
+                        const uint8_t *data, uint32_t size)
 {
-    if (!iap)
+    if (!s || !data || size == 0U)
         return false;
-    return flash_iap_erase(ops, h, iap->app_addr, iap->app_size);
+    uint32_t addr = offset + s->ops->get_sector_addr(s->handle, s->bl_sector_ids[0]);
+    return s->ops->write(s->handle, addr, data, size);
 }
-
-bool flash_iap_write_app(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap,
-                         uint32_t offset, const uint8_t *data, uint32_t size)
+bool flash_iap_verify_bl(tFlash *s, uint32_t offset,
+                         const uint8_t *data, uint32_t size)
 {
-    if (!iap || offset + size > iap->app_size)
+    if (!s || !data || size == 0U)
         return false;
-    return flash_iap_write(ops, h, iap->app_addr + offset, data, size);
+    uint8_t verify_data;
+    uint32_t addr = offset + s->ops->get_sector_addr(s->handle, s->bl_sector_ids[0]);
+    for (uint32_t i = 0U; i < size; i++)
+    {
+        if (!s->ops->read(s->handle, addr + i, &verify_data, 1))
+            return false;
+        if (verify_data != data[i])
+            return false;
+    }
+    return true;
 }
 
-bool flash_iap_verify_app(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap,
-                          uint32_t offset, const uint8_t *data, uint32_t size)
+// 跳转 / 复位
+void flash_iap_jump_app(tFlash *s)
 {
-    if (!iap || offset + size > iap->app_size)
-        return false;
-    return flash_iap_verify(ops, h, iap->app_addr + offset, data, size);
+    if (!s)
+        return;
+    s->ops->jump_app(s->handle);
 }
-
-bool flash_iap_erase_bl(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap)
+void flash_iap_reset(tFlash *s)
 {
-    if (!iap)
-        return false;
-    return flash_iap_erase(ops, h, iap->bl_addr, iap->bl_size);
-}
-
-bool flash_iap_write_bl(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap,
-                        uint32_t offset, const uint8_t *data, uint32_t size)
-{
-    if (!iap || offset + size > iap->bl_size)
-        return false;
-    return flash_iap_write(ops, h, iap->bl_addr + offset, data, size);
-}
-
-bool flash_iap_verify_bl(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap,
-                         uint32_t offset, const uint8_t *data, uint32_t size)
-{
-    if (!iap || offset + size > iap->bl_size)
-        return false;
-    return flash_iap_verify(ops, h, iap->bl_addr + offset, data, size);
-}
-
-void flash_iap_jump_app(const tFlashIAP *iap)
-{
-    if (iap && iap->jump)
-        iap->jump(iap->app_addr);
-}
-
-void flash_iap_jump_bl(const tFlashIAP *iap)
-{
-    if (iap && iap->jump)
-        iap->jump(iap->bl_addr);
-}
-
-void flash_iap_reset(const tFlashIAP *iap)
-{
-    if (iap && iap->reset)
-        iap->reset();
+    if (!s)
+        return;
+    s->ops->reset(s->handle);
 }

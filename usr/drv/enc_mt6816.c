@@ -6,12 +6,6 @@
 // 解析：奇偶校验 + 磁场告警位（见下）
 // ============================================================
 
-#include <stdlib.h>
-
-#include "usr/abs/device.h"
-#include "usr/abs/encoder.h"
-
-#include "enc_spi_engine.h"
 #include "encoder_drivers.h"
 
 #define MT6816_RESOLUTION 16384U
@@ -23,6 +17,7 @@
 typedef struct
 {
     eDeviceStatus dstate;
+    eEncoderType type;
     uint16_t cmd_high;
     uint16_t cmd_low;
     uint8_t rx1[2];
@@ -40,7 +35,7 @@ static bool parity_odd(uint16_t v)
     return (v & 1U) != 0U;
 }
 
-static bool MT6816_init(EncoderChipHandle h)
+static bool MT6816_init(EncoderChipHandle h, eEncoderType type)
 {
     tMT6816_ctx *ctx = (tMT6816_ctx *)h;
     if (!ctx)
@@ -49,6 +44,7 @@ static bool MT6816_init(EncoderChipHandle h)
     if (!enc_spi_set_mode(1U, 1U, 16U)) // 芯片协议：Mode3/16bit
         return false;
 
+    ctx->type = type;
     ctx->cmd_high = MT6816_CMD_HIGH;
     ctx->cmd_low = MT6816_CMD_LOW;
     ctx->raw = 0U;
@@ -71,7 +67,7 @@ static bool MT6816_read_angle(EncoderChipHandle h, uint16_t *raw, uint32_t *ts_m
     segs[1].rx = ctx->rx2;
     segs[1].len = 2U;
 
-    if (!enc_engine_read(segs, 2U))
+    if (!enc_engine_read(segs, ctx->type, 2U))
     {
         ctx->dstate = DEV_RUN_ERROR;
         return false;
@@ -110,7 +106,7 @@ static void MT6816_reset(EncoderChipHandle h)
     tMT6816_ctx *ctx = (tMT6816_ctx *)h;
     if (!ctx)
         return;
-    enc_engine_abort();
+    enc_engine_abort(ctx->type);
     ctx->raw = 0U;
     ctx->ts = 0U;
     ctx->dstate = DEV_ONLINE;
@@ -142,4 +138,5 @@ EncoderChipHandle MT6816_create(void)
 void MT6816_destroy(EncoderChipHandle h)
 {
     free(h);
+    h = NULL;
 }

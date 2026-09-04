@@ -1,7 +1,7 @@
 #ifndef __FLASH_DRIVERS_H
 #define __FLASH_DRIVERS_H
 
-#include "usr/abs/flash.h"
+#include "flash.h"
 
 // ============================================================
 // flash_drivers.h — Flash 芯片驱动统一出口（usr/drv，v2 直连版）
@@ -11,5 +11,10 @@
 FlashChipHandle w25qxx_create(void);
 void w25qxx_destroy(FlashChipHandle h);
 extern const tFlashDriverOps w25qxx_driver_ops;
+
+// ---- MCU Flash ----
+FlashChipHandle mcu_flash_create(void);
+void mcu_flash_destroy(FlashChipHandle h);
+extern const tFlashDriverOps mcu_flash_driver_ops;
 
 #endif // __FLASH_DRIVERS_H

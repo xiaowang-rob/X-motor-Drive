@@ -1,10 +1,8 @@
 #ifndef __ABS_LED_H
 #define __ABS_LED_H
 
-#include <stdint.h>
-#include <stdbool.h>
-
-#include "usr/abs/time.h"
+#include "device.h"
+#include "time.h"
 
 // ============================================================
 // led.h — LED / RGB 灯（usr/abs）
@@ -104,11 +102,11 @@ typedef struct
     volatile eRgbState state;
     tRGBColor color;
 
-    uint16_t fast_ms;         // 快速闪烁半周期
-    uint16_t slow_ms;         // 慢速闪烁半周期
-    uint16_t breathe_ms;      // 呼吸步进间隔
-    uint32_t next_change_ms;  // 下一次切换时间
-    uint8_t breath_idx;       // 呼吸查表索引（0~63）
+    uint16_t fast_ms;        // 快速闪烁半周期
+    uint16_t slow_ms;        // 慢速闪烁半周期
+    uint16_t breathe_ms;     // 呼吸步进间隔
+    uint32_t next_change_ms; // 下一次切换时间
+    uint8_t breath_idx;      // 呼吸查表索引（0~63）
 } tRgb;
 
 bool rgb_init(tRgb *rgb, const tRgbDriverOps *ops, RgbHandle handle, const tTimeIf *time);

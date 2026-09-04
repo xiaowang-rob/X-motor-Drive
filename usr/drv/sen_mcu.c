@@ -10,8 +10,6 @@
 // init 首帧超时返回 false，上层可见不可用。
 // ============================================================
 
-#include "usr/abs/sense.h"
-
 #include "platform.h"
 #include "sense_drivers.h"
 
@@ -30,12 +28,11 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
         s_vt_new = true;
 }
 
-// ---- tSampleIf 实现 ----
+// ---- tSampleMcuOps 实现 ----
 
 static bool sd_init(void *ctx)
 {
     (void)ctx;
-
     __HAL_TIM_SetCompare(&PWM_GET_HTIM, TIM_CHANNEL_4, TIC_PWM - 1U); // 默认采样点
 
     if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)s_cur_raw, ADC_CUR_CH) != HAL_OK)
@@ -55,7 +52,7 @@ static bool sd_init(void *ctx)
 static void sd_set_sample_cmp(void *ctx, uint32_t tic)
 {
     (void)ctx;
-    __HAL_TIM_SetCompare(&PWM_GET_HTIM, TIM_CHANNEL_4, tic);
+    __HAL_TIM_SetCompare(&SAMPLE_PWM_HTIM, SAMPLE_PWM_CHANNEL, tic);
 }
 
 static bool sd_get_cur_raw(void *ctx, uint16_t raw[3])
@@ -97,7 +94,7 @@ static void sd_get_gain(void *ctx, float *cur_scale, float *vbus_scale)
         *vbus_scale = 3.3f * (float)RATE_VOLTAGE_SAMPLE / 255.0f;
 }
 
-static const tSampleIf g_sample_if = {
+const tSampleMcuOps mcu_adc_ops = {
     .ctx = NULL,
     .init = sd_init,
     .set_sample_cmp = sd_set_sample_cmp,
@@ -106,8 +103,3 @@ static const tSampleIf g_sample_if = {
     .get_vt_raw = sd_get_vt_raw,
     .get_gain = sd_get_gain,
 };
-
-const tSampleIf *sense_drv_get(void)
-{
-    return &g_sample_if;
-}

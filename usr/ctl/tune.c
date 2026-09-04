@@ -43,7 +43,7 @@ static void _fit_from_sums(float sum_x, float sum_y, float sum_xy, float sum_xx,
 // 控制带宽、滤波系数与PID参数的经验公式
 static void calculate_control_params()
 {
-    // todo:这里对电流环PI进行调节
+    // TODO:添加电流环软硬调节
     float fn_d = 1 / (MATH_2PI * temp_params.ld / temp_params.rs);
     float wc_d = MATH_2PI * 0.5f * (2 * fn_d < F_CURRENT / 10 ? 2 * fn_d : F_CURRENT / 10);
     temp_params.id_kp = wc_d * temp_params.ld;

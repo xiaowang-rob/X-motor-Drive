@@ -7,12 +7,6 @@
 //   status（rx[4] bit0..2）bit1 = 磁场太弱 → 数据不可信
 // ============================================================
 
-#include <stdlib.h>
-
-#include "usr/abs/device.h"
-#include "usr/abs/encoder.h"
-
-#include "enc_spi_engine.h"
 #include "encoder_drivers.h"
 
 #define MT6835_RESOLUTION 16384U
@@ -24,12 +18,13 @@ static const uint8_t MT6835_CMD[MT6835_FRAME_LEN] = {0xA0U, 0x03U, 0x00U, 0x00U,
 typedef struct
 {
     eDeviceStatus dstate;
+    eEncoderType type;
     uint8_t rx[MT6835_FRAME_LEN];
     uint16_t raw;
     uint32_t ts;
 } tMT6835_ctx;
 
-static bool MT6835_init(EncoderChipHandle h)
+static bool MT6835_init(EncoderChipHandle h, eEncoderType type)
 {
     tMT6835_ctx *ctx = (tMT6835_ctx *)h;
     if (!ctx)
@@ -38,6 +33,7 @@ static bool MT6835_init(EncoderChipHandle h)
     if (!enc_spi_set_mode(1U, 1U, 8U)) // 芯片协议：Mode3/8bit
         return false;
 
+    ctx->type = type; // 编码器类型 内编/外编
     ctx->raw = 0U;
     ctx->ts = 0U;
     ctx->dstate = DEV_ONLINE;
@@ -55,7 +51,7 @@ static bool MT6835_read_angle(EncoderChipHandle h, uint16_t *raw, uint32_t *ts_m
     seg.rx = ctx->rx;
     seg.len = MT6835_FRAME_LEN;
 
-    if (!enc_engine_read(&seg, 1U))
+    if (!enc_engine_read(&seg, ctx->type, 1U))
     {
         ctx->dstate = DEV_RUN_ERROR;
         return false;
@@ -90,7 +86,7 @@ static void MT6835_reset(EncoderChipHandle h)
     tMT6835_ctx *ctx = (tMT6835_ctx *)h;
     if (!ctx)
         return;
-    enc_engine_abort();
+    enc_engine_abort(ctx->type);
     ctx->raw = 0U;
     ctx->ts = 0U;
     ctx->dstate = DEV_ONLINE;
@@ -122,4 +118,5 @@ EncoderChipHandle MT6835_create(void)
 void MT6835_destroy(EncoderChipHandle h)
 {
     free(h);
+    h = NULL;
 }

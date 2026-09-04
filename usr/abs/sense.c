@@ -5,7 +5,8 @@
 // Vbus/温度按周期节流触发并换算（NTC 温度查表）。
 // ============================================================
 
-#include "usr/abs/sense.h"
+#include "sense.h"
+#include "timeIF.h"
 
 // 温度查表：Vbus 归一化后的 NTC 采样码 → ℃
 // 表项 adc_eq 按旧驱动公式 adc_eq = code*24/(Vbus-0.3)+0.5 截断取整
@@ -29,14 +30,13 @@ static const uint8_t SENSE_TEMP_TABLE[256] = {
   5,   5,   5,   5,   5,   5,   5,   5,   5,   4,   4,   4,   4,   4,   4,   4,};
 // clang-format on
 
-bool sense_init(tCurrentSense *s, const tSampleIf *sample, const tTimeIf *time)
+bool sense_init(tSense *s, const tSampleMcuOps *ops)
 {
-    if (!s || !sample || !time)
+    if (!s || !ops)
         return false;
 
-    s->sample = sample;
-    s->time = time;
-    sample->get_gain(sample->ctx, &s->cur_scale, &s->vbus_scale);
+    s->ops = ops;
+    ops->get_gain(ops->ctx, &s->cur_scale, &s->vbus_scale);
 
     for (uint8_t i = 0U; i < 3U; i++)
     {
@@ -47,23 +47,24 @@ bool sense_init(tCurrentSense *s, const tSampleIf *sample, const tTimeIf *time)
     s->vbus = 0.0f;
     s->temperature = 0.0f;
     s->last_vt_ms = 0U;
+
     return true;
 }
 
-void sense_set_sample_point(tCurrentSense *s, uint32_t tic)
+void sense_set_sample_point(tSense *s, uint32_t tic)
 {
-    if (!s || !s->sample)
+    if (!s || !s->ops)
         return;
-    s->sample->set_sample_cmp(s->sample->ctx, tic);
+    s->ops->set_sample_cmp(s->ops->ctx, tic);
 }
 
-void sense_update(tCurrentSense *s, bool motor_idle)
+void sense_update(tSense *s, bool motor_idle)
 {
-    if (!s || !s->sample || !s->time)
+    if (!s || !s->ops)
         return;
 
     uint16_t raw[3];
-    if (!s->sample->get_cur_raw(s->sample->ctx, raw))
+    if (!s->ops->get_cur_raw(s->ops->ctx, raw))
         return;
 
     // ---- 三相电流 / 零点 ----
@@ -96,15 +97,15 @@ void sense_update(tCurrentSense *s, bool motor_idle)
     }
 
     // ---- Vbus / 温度（节流触发 + 取新帧换算） ----
-    uint32_t now = s->time->get_ms(s->time->ctx);
+    uint32_t now = time_get_ms();
     if ((now - s->last_vt_ms) >= SENSE_VT_REFRESH_MS)
     {
-        s->sample->vt_trigger(s->sample->ctx);
+        s->ops->vt_trigger(s->ops->ctx);
         s->last_vt_ms = now;
     }
 
     uint16_t vbus_raw, temp_raw;
-    if (s->sample->get_vt_raw(s->sample->ctx, &vbus_raw, &temp_raw))
+    if (s->ops->get_vt_raw(s->ops->ctx, &vbus_raw, &temp_raw))
     {
         s->vbus = (float)vbus_raw * s->vbus_scale;
 
@@ -119,7 +120,7 @@ void sense_update(tCurrentSense *s, bool motor_idle)
     }
 }
 
-void sense_get_current(const tCurrentSense *s, float *iu, float *iv, float *iw)
+void sense_get_current(const tSense *s, float *iu, float *iv, float *iw)
 {
     if (!s)
         return;
@@ -131,17 +132,17 @@ void sense_get_current(const tCurrentSense *s, float *iu, float *iv, float *iw)
         *iw = s->cur[2];
 }
 
-float sense_get_vbus(const tCurrentSense *s)
+float sense_get_vbus(const tSense *s)
 {
     return s ? s->vbus : 0.0f;
 }
 
-float sense_get_temperature(const tCurrentSense *s)
+float sense_get_temperature(const tSense *s)
 {
     return s ? s->temperature : 0.0f;
 }
 
-bool sense_is_zero_ready(const tCurrentSense *s)
+bool sense_is_zero_ready(const tSense *s)
 {
     return s ? s->zero_ready : false;
 }

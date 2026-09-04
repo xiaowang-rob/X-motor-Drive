@@ -2,7 +2,7 @@
 // uart_drv.c — 串口通讯底层驱动（usr/drv，v2 直连版）
 // ============================================================
 
-#include "platform.h" // UART_CH / UART_INSTANCE
+#include "platform.h"
 #include "uart_drv.h"
 
 static uart_rx_done_cb s_rx_done_cb = NULL;

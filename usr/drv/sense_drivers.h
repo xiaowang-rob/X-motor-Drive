@@ -1,15 +1,13 @@
 #ifndef __SENSE_DRIVERS_H
 #define __SENSE_DRIVERS_H
 
-#include "usr/abs/sense.h" // tSampleIf
+#include "sense.h"
 
 // ============================================================
-// sense_drivers.h — 板采样驱动统一出口（usr/drv，v2 直连版）
-//
-// 实现 tSampleIf（ADC1 电流 + ADC2 Vbus/温度），直调本板 HAL
-// （经 platform.h）；中断 HAL_ADC_ConvCpltCallback 由本模块唯一持有。
+// sense_drivers.h — 板采样驱动统一出口
+// 引出板上所有采样驱动
 // ============================================================
 
-const tSampleIf *sense_drv_get(void);
+extern const tSampleMcuOps mcu_adc_ops;
 
 #endif // __SENSE_DRIVERS_H

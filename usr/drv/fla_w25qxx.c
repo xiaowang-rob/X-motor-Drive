@@ -1,15 +1,11 @@
 // ============================================================
-// w25qxx.c — W25Q128 串行 NOR Flash 驱动（usr/drv，v2 直连版，同步）
+// w25qxx.c — W25Q128 串行 NOR Flash 驱动
 //
 // 芯片协议（8bit SPI，Mode0/3 均支持）：页编程 256B / 扇区擦除 4KB /
+// 每组 16个扇区，总共256组，分组管理
 // 容量 16MB；操作前写使能(0x06)，完成后轮询状态寄存器 BUSY。
-// 底层直接使用本板 Flash SPI（platform.h 的 FLASH_SPI_CH/hspi2）。
+// 底层直接使用本板 Flash SPI（platform.h 的 FLASH_HSPI/hspi2）。
 // ============================================================
-
-#include <stdlib.h>
-
-#include "usr/abs/device.h"
-#include "usr/abs/flash.h"
 
 #include "platform.h"
 #include "flash_drivers.h"
@@ -19,16 +15,16 @@
 #define W25_SECTOR_SIZE (4U * 1024U)
 #define W25_SECTOR_COUNT (W25_CAPACITY_BYTES / W25_SECTOR_SIZE)
 
-#define FCMD_READ_ID 0x9FU
-#define FCMD_WRITE_ENABLE 0x06U
-#define FCMD_READ_STATUS 0x05U
-#define FCMD_ERASE_SECTOR 0x20U
-#define FCMD_READ_DATA 0x03U
-#define FCMD_WRITE_PAGE 0x02U
+#define FCMD_READ_ID 0x9FU      // 读ID指令
+#define FCMD_WRITE_ENABLE 0x06U // 写使能指令
+#define FCMD_READ_STATUS 0x05U  // 读状态寄存器指令
+#define FCMD_ERASE_SECTOR 0x20U // 扇区擦除指令
+#define FCMD_READ_DATA 0x03U    // 读数据指令
+#define FCMD_WRITE_PAGE 0x02U   // 写页指令
 
-#define FBIT_SR_BUSY 0x01U
-#define FTIMEOUT_OP_MS 1000U
-#define READ_CHUNK 32U
+#define FBIT_SR_BUSY 0x01U   // 状态寄存器 BUSY 位
+#define FTIMEOUT_OP_MS 1000U // 操作超时（ms）
+#define READ_CHUNK 32U       // 读取数据时的分块大小（字节）
 
 static const uint8_t W25_JEDEC_ID[3] = {0xEFU, 0x40U, 0x18U};
 
@@ -44,27 +40,9 @@ static bool fl_xfer(const uint8_t *tx, uint8_t *rx, uint16_t len)
 {
     if (!tx || !rx || len == 0U)
         return false;
-    if (HAL_SPI_GetState(&FLASH_SPI_CH) != HAL_SPI_STATE_READY)
+    if (HAL_SPI_GetState(&FLASH_HSPI) != HAL_SPI_STATE_READY)
         return false;
-    return HAL_SPI_TransmitReceive(&FLASH_SPI_CH, (uint8_t *)tx, rx, len, 100U) == HAL_OK;
-}
-
-// 按 W25Q 需要显式配置 Flash SPI（8bit / Mode3）
-static bool fl_spi_cfg(void)
-{
-    SPI_HandleTypeDef *h = &FLASH_SPI_CH;
-    h->Init.Mode = SPI_MODE_MASTER;
-    h->Init.Direction = SPI_DIRECTION_2LINES;
-    h->Init.DataSize = SPI_DATASIZE_8BIT;
-    h->Init.CLKPolarity = SPI_POLARITY_HIGH;
-    h->Init.CLKPhase = SPI_PHASE_2EDGE;
-    h->Init.NSS = SPI_NSS_SOFT;
-    h->Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
-    h->Init.FirstBit = SPI_FIRSTBIT_MSB;
-    h->Init.TIMode = SPI_TIMODE_DISABLE;
-    h->Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-    h->Init.CRCPolynomial = 10;
-    return HAL_SPI_Init(h) == HAL_OK;
+    return HAL_SPI_TransmitReceive(&FLASH_HSPI, (uint8_t *)tx, rx, len, 100U) == HAL_OK;
 }
 
 // ---- 驱动上下文 ----
@@ -84,6 +62,7 @@ static bool w25_tx(tW25Qxx_ctx *ctx, uint16_t len)
     return fl_xfer(ctx->tx_buf, ctx->rx_buf, len);
 }
 
+// 读取状态寄存器（BUSY 位）----
 static uint8_t w25_read_sr(tW25Qxx_ctx *ctx)
 {
     ctx->tx_buf[0] = FCMD_READ_STATUS;
@@ -94,17 +73,18 @@ static uint8_t w25_read_sr(tW25Qxx_ctx *ctx)
     return ok ? ctx->rx_buf[1] : 0xFFU;
 }
 
+// 等待操作完成（BUSY 位清零）----
 static bool w25_wait_idle(tW25Qxx_ctx *ctx, uint32_t timeout_ms)
 {
-    uint32_t t0 = platform_get_ms();
+    uint32_t t0 = plat_get_ms();
     while (w25_read_sr(ctx) & FBIT_SR_BUSY)
     {
-        if ((platform_get_ms() - t0) >= timeout_ms)
+        if ((plat_get_ms() - t0) >= timeout_ms)
             return false;
     }
     return true;
 }
-
+// 写使能（写使能指令）----
 static bool w25_write_enable(tW25Qxx_ctx *ctx)
 {
     ctx->tx_buf[0] = FCMD_WRITE_ENABLE;
@@ -123,8 +103,8 @@ static bool w25_init(FlashChipHandle h)
     if (!ctx)
         return false;
 
-    if (!fl_spi_cfg())
-        return false;
+    // 配置 Flash SPI
+    // 但是这个在 CubeMX 中已经配置了，这里不需要再配置
 
     for (uint8_t attempt = 0U; attempt < 5U; attempt++)
     {
@@ -144,13 +124,13 @@ static bool w25_init(FlashChipHandle h)
             ctx->dstate = DEV_ONLINE;
             return true;
         }
-        platform_delay_ms(10U);
+        plat_delay_ms(10U);
     }
 
     ctx->dstate = DEV_OFFLINE;
     return false;
 }
-
+// 读取数据（读数据指令）----
 static bool w25_read(FlashChipHandle h, uint32_t addr, uint8_t *data, uint32_t len)
 {
     tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
@@ -193,6 +173,7 @@ static bool w25_read(FlashChipHandle h, uint32_t addr, uint8_t *data, uint32_t l
     return true;
 }
 
+// 页编程（写页指令）----
 static bool w25_page_program(tW25Qxx_ctx *ctx, uint32_t addr, const uint8_t *data, uint16_t len)
 {
     if (len == 0U || len > W25_PAGE_SIZE)
@@ -217,6 +198,7 @@ static bool w25_page_program(tW25Qxx_ctx *ctx, uint32_t addr, const uint8_t *dat
     return w25_wait_idle(ctx, FTIMEOUT_OP_MS);
 }
 
+// 按地址写入-自动换页
 static bool w25_write(FlashChipHandle h, uint32_t addr, const uint8_t *data, uint32_t len)
 {
     tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
@@ -243,6 +225,7 @@ static bool w25_write(FlashChipHandle h, uint32_t addr, const uint8_t *data, uin
     return true;
 }
 
+// 扇区擦除（扇区擦除指令）----
 static bool w25_erase_sector_at(tW25Qxx_ctx *ctx, uint32_t sector_addr)
 {
     if (!w25_write_enable(ctx))
@@ -262,6 +245,7 @@ static bool w25_erase_sector_at(tW25Qxx_ctx *ctx, uint32_t sector_addr)
     return w25_wait_idle(ctx, FTIMEOUT_OP_MS);
 }
 
+// 扇区擦除（按地址擦除）----
 static bool w25_erase(FlashChipHandle h, uint32_t addr, uint32_t len)
 {
     tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
@@ -331,4 +315,5 @@ FlashChipHandle w25qxx_create(void)
 void w25qxx_destroy(FlashChipHandle h)
 {
     free(h);
+    h = NULL;
 }

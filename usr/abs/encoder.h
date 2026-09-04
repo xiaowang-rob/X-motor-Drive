@@ -1,10 +1,7 @@
 #ifndef __ABS_ENCODER_H
 #define __ABS_ENCODER_H
 
-#include <stdint.h>
-#include <stdbool.h>
-
-#include "usr/abs/device.h"
+#include "device.h"
 
 // ============================================================
 // encoder.h — 编码器（usr/abs）
@@ -24,10 +21,15 @@
 
 typedef void *EncoderChipHandle;
 
+typedef enum
+{
+    EXT_ENCODER,
+    INT_ENCODER,
+} eEncoderType;
 typedef struct
 {
     // 芯片初始化（含按芯片协议配置 SPI 模式）
-    bool (*init)(EncoderChipHandle h);
+    bool (*init)(EncoderChipHandle h, eEncoderType type);
 
     // 读取一次最新角度（同步）：成功输出 raw（0~分辨率-1）与时间戳(ms)
     bool (*read_angle)(EncoderChipHandle h, uint16_t *raw, uint32_t *ts_ms);
@@ -39,7 +41,7 @@ typedef struct
     void (*reset)(EncoderChipHandle h);
 
     // 设备状态（eDeviceStatus 值）
-    uint8_t (*get_state)(EncoderChipHandle h);
+    eDeviceStatus (*get_state)(EncoderChipHandle h);
 } tEncoderDriverOps;
 
 // ==================== 业务对象 ====================
@@ -55,15 +57,15 @@ typedef struct
 {
     const tEncoderDriverOps *drv_ops; // 绑定的芯片驱动 ops
     EncoderChipHandle drv_handle;     // 芯片句柄
-
-    uint16_t resolution; // 单圈分辨率
-    float rad_per_lsb;   // 每 LSB 弧度
+    eEncoderType type;                // 编码器类型（外部/内部）
+    uint16_t resolution;              // 单圈分辨率
+    float rad_per_lsb;                // 每 LSB 弧度
 
     // ---- 业务状态 ----
-    float angle_abs;    // 本次绝对角度 [0, 2π)
-    float pos;          // 多圈连续位置（rad）
-    float vel;          // M/T 测速（rad/s，未平滑）
-    int32_t num_turns;  // 累计转数
+    float angle_abs;   // 本次绝对角度 [0, 2π)
+    float pos;         // 多圈连续位置（rad）
+    float vel;         // M/T 测速（rad/s，未平滑）
+    int32_t num_turns; // 累计转数
 
     // ---- 内部变量 ----
     uint16_t last_raw_angle; // 上一次原始角度
@@ -84,7 +86,8 @@ typedef struct
 } tEncoder;
 
 // 绑定驱动并初始化（含调用 ops->init）
-bool encoder_init(tEncoder *enc, const tEncoderDriverOps *ops, EncoderChipHandle handle);
+bool encoder_init(tEncoder *enc, const tEncoderDriverOps *ops,
+                  EncoderChipHandle handle, eEncoderType type);
 
 // 每周期调用：读取一次角度并更新多圈位置/测速/有效性
 void encoder_update(tEncoder *enc);
@@ -107,7 +110,7 @@ static inline eDeviceStatus encoder_get_dev_state(tEncoder *enc)
 {
     if (!enc || !enc->drv_ops || !enc->drv_handle)
         return DEV_OFFLINE;
-    return (eDeviceStatus)enc->drv_ops->get_state(enc->drv_handle);
+    return enc->drv_ops->get_state(enc->drv_handle);
 }
 
 #endif // __ABS_ENCODER_H

@@ -5,8 +5,6 @@
 // 引脚映射与极性只出现在本文件（经 platform.h 宏）。
 // ============================================================
 
-#include "usr/abs/led.h"
-
 #include "platform.h"
 #include "led_drivers.h"
 
@@ -16,13 +14,13 @@ typedef struct
 {
     GPIO_TypeDef *port;
     uint16_t pin;
-    bool active_low;
+    bool active_level; // 触发电平 true 高电平 / false 低电平
 } tLedDrvRes;
 
-// idx0 = CAN 接收灯，idx1 = 编码器灯（低电平点亮）
+// （低电平点亮）
 static tLedDrvRes g_leds[LED_DRV_NUM] = {
-    {LED_CANrx_GPIOx, LED_CANrx_GPIOx_PIN, true},
-    {LED_ENCODER_GPIOx, LED_ENCODER_GPIOx_PIN, true},
+    {LED_0_GPIOx, LED_0_GPIOx_PIN, false},
+    {LED_1_GPIOx, LED_1_GPIOx_PIN, false},
 };
 
 static bool led_drv_init(LedHandle h)
@@ -37,7 +35,7 @@ static void led_drv_set(LedHandle h, bool active)
     if (!h)
         return;
     tLedDrvRes *r = (tLedDrvRes *)h;
-    GPIO_PinState level = (active == r->active_low) ? GPIO_PIN_RESET : GPIO_PIN_SET;
+    GPIO_PinState level = active == r->active_level ? GPIO_PIN_SET : GPIO_PIN_RESET;
     HAL_GPIO_WritePin(r->port, r->pin, level);
 }
 

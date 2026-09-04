@@ -124,7 +124,7 @@ void uart_receive_byte(u8 *data)
             else if (DataIndex >= 2 && DataIndex < 2 + UsartRxFrame.len)
             {
                 UsartRxFrame.data[DataIndex - 2] = *data; // 数据域
-                check += *data;                             // 累加校验和
+                check += *data;                           // 累加校验和
             }
             else if (DataIndex == 2 + UsartRxFrame.len)
             {

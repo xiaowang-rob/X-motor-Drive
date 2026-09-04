@@ -3,9 +3,7 @@
 // ============================================================
 
 #include "platform.h" // CAN_CH / CAN_INSTANCE / STD_ID_MASK / 时间
-#include "can_drv.h"
-
-#include <string.h>
+#include "com_drivers.h"
 
 #define CAN_SEND_TIMEOUT_MS 1000U
 

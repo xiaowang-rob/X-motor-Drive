@@ -9,10 +9,7 @@
 // 由本文件唯一持有（复位忙标志）。
 // ============================================================
 
-#include <stdlib.h>
-#include <string.h>
-
-#include "usr/abs/led.h"
+#include "led.h"
 
 #include "platform.h"
 #include "rgb_drivers.h"
@@ -38,11 +35,12 @@ typedef struct
     uint32_t *ccr_buf;
 } tWs28xx_ctx;
 
+// 改变亮度时，亮度值范围 0-255，颜色值范围 0-255
 static inline uint8_t scale_brightness(uint8_t v, uint8_t b)
 {
     return (uint8_t)(((uint16_t)v * b + 127U) / 255U);
 }
-
+// RGB 编码
 static void ws28xx_build_stream(tWs28xx_ctx *ctx)
 {
     uint32_t idx = 0U;
@@ -145,4 +143,5 @@ void ws28xx_destroy(RgbHandle h)
         return;
     free(ctx->ccr_buf);
     free(ctx);
+    h = NULL;
 }

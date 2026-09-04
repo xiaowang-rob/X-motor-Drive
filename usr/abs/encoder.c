@@ -7,9 +7,8 @@
 // ============================================================
 
 #include <math.h>
-#include <string.h>
 
-#include "usr/abs/encoder.h"
+#include "encoder.h"
 
 #define TWO_PI 6.28318530718f
 #define PI 3.14159265359f
@@ -34,7 +33,8 @@ static float norm_angle_360(float a)
     return a;
 }
 
-bool encoder_init(tEncoder *enc, const tEncoderDriverOps *ops, EncoderChipHandle handle)
+bool encoder_init(tEncoder *enc, const tEncoderDriverOps *ops,
+                  EncoderChipHandle handle, eEncoderType type)
 {
     if (!enc || !ops || !handle)
         return false;
@@ -42,8 +42,8 @@ bool encoder_init(tEncoder *enc, const tEncoderDriverOps *ops, EncoderChipHandle
     memset(enc, 0, sizeof(tEncoder));
     enc->drv_ops = ops;
     enc->drv_handle = handle;
-
-    if (!ops->init(handle))
+    enc->type = type;
+    if (!ops->init(handle, type))
         return false;
 
     if (!ops->get_resolution(handle, &enc->resolution) || enc->resolution == 0U)

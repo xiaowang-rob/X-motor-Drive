@@ -7,18 +7,22 @@
 // 厂商库符号只出现在本文件与 platform.h。
 // ============================================================
 
-#include "enc_spi_engine.h"
+#include "encoder_drivers.h"
 
 #include "platform.h"
 
-#define ENC_XFER_TIMEOUT_MS 100U
+#define ENC_XFER_TIMEOUT_MS 100U // SPI 读取超时时间（ms）
 
 static uint8_t s_data_bits = 16U; // 当前 SPI 数据宽度（set_mode 维护）
 
-static void enc_cs(bool active)
+static void enc_cs(eEncoderType type, bool active)
 {
-    HAL_GPIO_WritePin(ENCODER_INT_CS_GPIOx, ENCODER_INT_CS_GPIOx_PIN,
-                      active ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    if (type == EXT_ENCODER)
+        HAL_GPIO_WritePin(ENCODER_EXT_CS_GPIOx, ENCODER_EXT_CS_GPIOx_PIN,
+                          active ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    else
+        HAL_GPIO_WritePin(ENCODER_INT_CS_GPIOx, ENCODER_INT_CS_GPIOx_PIN,
+                          active ? GPIO_PIN_RESET : GPIO_PIN_SET);
 }
 
 bool enc_spi_set_mode(uint8_t cpol, uint8_t cpha, uint8_t data_bits)
@@ -46,32 +50,32 @@ bool enc_spi_set_mode(uint8_t cpol, uint8_t cpha, uint8_t data_bits)
     return true;
 }
 
-bool enc_engine_read(const tEncXferSeg *segs, uint8_t n)
+bool enc_engine_read(const tEncXferSeg *segs, eEncoderType type, uint8_t n)
 {
     if (!segs || n == 0U)
         return false;
-    if (HAL_SPI_GetState(&ENCODER_SPI_CH) != HAL_SPI_STATE_READY)
+    if (HAL_SPI_GetState(&ENCODER_HSPI) != HAL_SPI_STATE_READY)
         return false;
 
-    enc_cs(true);
+    enc_cs(type, true);
     for (uint8_t i = 0U; i < n; i++)
     {
         uint16_t units = (s_data_bits == 16U) ? (segs[i].len / 2U) : segs[i].len;
         if (units == 0U ||
-            HAL_SPI_TransmitReceive(&ENCODER_SPI_CH, (uint8_t *)segs[i].tx,
+            HAL_SPI_TransmitReceive(&ENCODER_HSPI, (uint8_t *)segs[i].tx,
                                     segs[i].rx, units, ENC_XFER_TIMEOUT_MS) != HAL_OK)
         {
-            enc_cs(false);
+            enc_cs(type, false);
             return false;
         }
     }
-    enc_cs(false);
+    enc_cs(type, false);
     return true;
 }
 
-void enc_engine_abort(void)
+void enc_engine_abort(eEncoderType type)
 {
-    enc_cs(false);
+    enc_cs(type, false);
 }
 
 uint32_t enc_tick_ms(void)

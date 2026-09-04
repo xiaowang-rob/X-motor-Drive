@@ -7,12 +7,6 @@
 // 底层经 enc_spi_engine 直连本板编码器 SPI（platform.h）。
 // ============================================================
 
-#include <stdlib.h>
-
-#include "usr/abs/device.h"
-#include "usr/abs/encoder.h"
-
-#include "enc_spi_engine.h"
 #include "encoder_drivers.h"
 
 #define AS5047_RESOLUTION 16384U
@@ -24,6 +18,7 @@
 typedef struct
 {
     eDeviceStatus dstate;
+    eEncoderType type;
     uint16_t cmd_read; // 段1 tx（16bit 值的内存视图）
     uint16_t cmd_nop;  // 段2 tx
     uint8_t rx1[2];    // 段1 rx（弃用）
@@ -32,7 +27,7 @@ typedef struct
     uint32_t ts;
 } tAS5047_ctx;
 
-static bool AS5047_init(EncoderChipHandle h)
+static bool AS5047_init(EncoderChipHandle h, eEncoderType type)
 {
     tAS5047_ctx *ctx = (tAS5047_ctx *)h;
     if (!ctx)
@@ -41,6 +36,7 @@ static bool AS5047_init(EncoderChipHandle h)
     if (!enc_spi_set_mode(0U, 1U, 16U)) // 芯片协议：Mode1/16bit
         return false;
 
+    ctx->type = type; // 编码器类型
     ctx->cmd_read = AS5047_CMD_READ;
     ctx->cmd_nop = AS5047_CMD_NOP;
     ctx->raw = 0U;
@@ -63,7 +59,7 @@ static bool AS5047_read_angle(EncoderChipHandle h, uint16_t *raw, uint32_t *ts_m
     segs[1].rx = ctx->rx2;
     segs[1].len = 2U;
 
-    if (!enc_engine_read(segs, 2U))
+    if (!enc_engine_read(segs, ctx->type, 2U))
     {
         ctx->dstate = DEV_RUN_ERROR;
         return false;
@@ -98,7 +94,7 @@ static void AS5047_reset(EncoderChipHandle h)
     tAS5047_ctx *ctx = (tAS5047_ctx *)h;
     if (!ctx)
         return;
-    enc_engine_abort();
+    enc_engine_abort(ctx->type);
     ctx->raw = 0U;
     ctx->ts = 0U;
     ctx->dstate = DEV_ONLINE;
