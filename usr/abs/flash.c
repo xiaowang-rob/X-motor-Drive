@@ -134,3 +134,109 @@ bool flash_unit_is_full(tFlashStore *s)
         return true;
     return s->unit.free_addr >= s->unit.size;
 }
+
+// ==================== IAP 固件升级编排（纯逻辑） ====================
+
+bool flash_iap_erase(const tFlashDriverOps *ops, FlashChipHandle h, uint32_t addr, uint32_t size)
+{
+    if (!ops || !h || size == 0U)
+        return false;
+    return ops->erase(h, addr, size); // 介质驱动按擦除单元向上取整
+}
+
+bool flash_iap_write(const tFlashDriverOps *ops, FlashChipHandle h,
+                     uint32_t addr, const uint8_t *data, uint32_t size)
+{
+    if (!ops || !h || !data || size == 0U)
+        return false;
+    return ops->write(h, addr, data, size);
+}
+
+bool flash_iap_verify(const tFlashDriverOps *ops, FlashChipHandle h,
+                      uint32_t addr, const uint8_t *data, uint32_t size)
+{
+    if (!ops || !h || !data || size == 0U)
+        return false;
+
+    uint8_t buf[32];
+    uint32_t done = 0U;
+    while (done < size)
+    {
+        uint32_t n = size - done;
+        if (n > sizeof(buf))
+            n = sizeof(buf);
+        if (!ops->read(h, addr + done, buf, n))
+            return false;
+        for (uint32_t i = 0U; i < n; i++)
+        {
+            if (buf[i] != data[done + i])
+                return false;
+        }
+        done += n;
+    }
+    return true;
+}
+
+bool flash_iap_erase_app(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap)
+{
+    if (!iap)
+        return false;
+    return flash_iap_erase(ops, h, iap->app_addr, iap->app_size);
+}
+
+bool flash_iap_write_app(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap,
+                         uint32_t offset, const uint8_t *data, uint32_t size)
+{
+    if (!iap || offset + size > iap->app_size)
+        return false;
+    return flash_iap_write(ops, h, iap->app_addr + offset, data, size);
+}
+
+bool flash_iap_verify_app(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap,
+                          uint32_t offset, const uint8_t *data, uint32_t size)
+{
+    if (!iap || offset + size > iap->app_size)
+        return false;
+    return flash_iap_verify(ops, h, iap->app_addr + offset, data, size);
+}
+
+bool flash_iap_erase_bl(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap)
+{
+    if (!iap)
+        return false;
+    return flash_iap_erase(ops, h, iap->bl_addr, iap->bl_size);
+}
+
+bool flash_iap_write_bl(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap,
+                        uint32_t offset, const uint8_t *data, uint32_t size)
+{
+    if (!iap || offset + size > iap->bl_size)
+        return false;
+    return flash_iap_write(ops, h, iap->bl_addr + offset, data, size);
+}
+
+bool flash_iap_verify_bl(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap,
+                         uint32_t offset, const uint8_t *data, uint32_t size)
+{
+    if (!iap || offset + size > iap->bl_size)
+        return false;
+    return flash_iap_verify(ops, h, iap->bl_addr + offset, data, size);
+}
+
+void flash_iap_jump_app(const tFlashIAP *iap)
+{
+    if (iap && iap->jump)
+        iap->jump(iap->app_addr);
+}
+
+void flash_iap_jump_bl(const tFlashIAP *iap)
+{
+    if (iap && iap->jump)
+        iap->jump(iap->bl_addr);
+}
+
+void flash_iap_reset(const tFlashIAP *iap)
+{
+    if (iap && iap->reset)
+        iap->reset();
+}

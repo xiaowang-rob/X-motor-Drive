@@ -1,60 +1,68 @@
 // ============================================================
-// dev_board.c — 组装层：板级设备装配（usr/app，xdr_p_o1.2）
+// dev_board.c — 组装层：板级设备装配（usr/app，v2）
 //
-// 唯一同时 include hw 头 + drv 头 + abs 头的翻译单元。
-// 装配顺序：hw_base_init → 时间 → 总线资源 → 芯片句柄 → abs 业务对象。
-//
-// 设备选择（换电机/换芯片）只改本文件顶部的"产品配置区"。
+// v2：驱动已直连厂商库（usr/drv + platform.h），装配简化为
+// "无参工厂 + ops → abs 对象 init"，不再注入接口表。
+// 本文件仍作为业务层唯一入口（include dev_board.h 拿 g_dev）。
 // ============================================================
 
 #include "dev_board.h"
 
 #include <stddef.h> // NULL
 
-// ---- hw（板上资源） ----
-#include "hw_base.h"
-#include "hw_enc_spi.h"
-#include "hw_flash_spi.h"
-#include "hw_led.h"
-#include "hw_rgb_pwm.h"
+#include "board.h"   // BL/APP/PARAM 分区（产品配置单点）
+#include "platform.h" // platform_init / platform_get_ms/us / jump/reset
 
-// ---- drv（芯片协议实现） ----
 #include "usr/drv/encoder_drivers.h"
 #include "usr/drv/flash_drivers.h"
+#include "usr/drv/led_drivers.h"
+#include "usr/drv/mcu_flash_drv.h"
 #include "usr/drv/rgb_drivers.h"
+#include "usr/drv/sense_drivers.h"
 
 // ============================================================
-// 产品配置区
+// 产品配置区（换电机/芯片只改这里）
+// ============================================================
+// 编码器芯片：默认 MT6816；换芯片在编译定义启用其一：
+//   -DDEV_ENC_CHIP_AS5047 / -DDEV_ENC_CHIP_MT6835
+
 // ============================================================
 
-// 电机用内部还是外部编码器 CS（true=内部）
-#ifndef DEV_USE_INTERNAL_ENC
-#define DEV_USE_INTERNAL_ENC 1
-#endif
+// 板级时间 → abs 注入适配（platform 裸函数包成 tTimeIf）
+static uint32_t dv_get_ms(void *ctx)
+{
+    (void)ctx;
+    return platform_get_ms();
+}
 
-// 编码器芯片选择：默认 MT6816。
-// 换芯片改为在编译定义中启用其一，如 -DDEV_ENC_CHIP_AS5047
-//   #define DEV_ENC_CHIP_AS5047
-//   #define DEV_ENC_CHIP_MT6835
+static uint32_t dv_get_us(void *ctx)
+{
+    (void)ctx;
+    return platform_get_us();
+}
 
-// ============================================================
+static const tTimeIf g_time = {
+    .ctx = NULL,
+    .get_ms = dv_get_ms,
+    .get_us = dv_get_us,
+};
 
 tDevBoard g_dev;
 
-// ---- 编码器装配（按产品配置选择芯片） ----
-static bool dev_assemble_encoder(const tSpiBusIf *bus, const tTimeIf *time)
+// ---- 编码器 ----
+static bool dev_assemble_encoder(void)
 {
     EncoderChipHandle chip = NULL;
     const tEncoderDriverOps *ops = NULL;
 
 #if defined(DEV_ENC_CHIP_AS5047)
-    chip = AS5047_create(bus, time);
+    chip = AS5047_create();
     ops = &AS5047_driver_ops;
 #elif defined(DEV_ENC_CHIP_MT6835)
-    chip = MT6835_create(bus, time);
+    chip = MT6835_create();
     ops = &MT6835_driver_ops;
 #else // 默认 MT6816
-    chip = MT6816_create(bus, time);
+    chip = MT6816_create();
     ops = &MT6816_driver_ops;
 #endif
 
@@ -63,23 +71,28 @@ static bool dev_assemble_encoder(const tSpiBusIf *bus, const tTimeIf *time)
     return encoder_init(&g_dev.enc, ops, chip);
 }
 
-// ---- RGB 装配 ----
-static bool dev_assemble_rgb(const tTimeIf *time)
+// ---- RGB ----
+static bool dev_assemble_rgb(void)
 {
-    RgbHandle chip = ws28xx_create(hw_rgb_pwm_get(), hw_rgb_pixel_num());
+    RgbHandle chip = ws28xx_create();
     if (!chip)
         return false;
-    return rgb_init(&g_dev.rgb, &ws28xx_driver_ops, chip, time);
+    return rgb_init(&g_dev.rgb, &ws28xx_driver_ops, chip, &g_time);
 }
 
-// ---- 外部 Flash 装配（存储单元挂在介质首个扇区；芯片缺失则不可用） ----
-static bool dev_assemble_flash(const tTimeIf *time)
+// ---- 采样 ----
+static bool dev_assemble_sense(void)
 {
-    FlashChipHandle chip = w25qxx_create(hw_flash_bus_get(), time);
+    return sense_init(&g_dev.sense, sense_drv_get(), &g_time);
+}
+
+// ---- 外部 Flash（存储单元挂介质首个扇区；芯片缺失则不可用） ----
+static bool dev_assemble_flash(void)
+{
+    FlashChipHandle chip = w25qxx_create();
     if (!chip)
         return false;
 
-    // 先初始化介质（JEDEC ID 校验），再挂载日志式存储单元
     if (!w25qxx_driver_ops.init(chip))
     {
         w25qxx_destroy(chip);
@@ -91,31 +104,60 @@ static bool dev_assemble_flash(const tTimeIf *time)
     return ok;
 }
 
+// ---- 内部 MCU Flash：参数区单元 + IAP 分区表（board.h 规划） ----
+static bool dev_assemble_internal_flash(void)
+{
+    FlashChipHandle chip = mcu_flash_create();
+    if (!chip)
+        return false;
+    if (!mcu_flash_driver_ops.init(chip))
+    {
+        mcu_flash_destroy(chip);
+        return false;
+    }
+
+    // 参数区日志单元（PARAMETER_LOAD_ADDR 为 128K 扇区边界）
+    g_dev.param_flash_ok =
+        flash_unit_init(&g_dev.param_flash, &mcu_flash_driver_ops, chip, PARAMETER_LOAD_ADDR);
+
+    // IAP 分区：App 区上界 = LOG 区起始（擦除/写/校验 + 跳转复位回调）
+    g_dev.iap = (tFlashIAP){
+        .bl_addr = BL_START_ADDR,
+        .bl_size = BL_SIZE_KB * 1024U,
+        .app_addr = APP_START_ADDR,
+        .app_size = LOG_START_ADDR - APP_START_ADDR,
+        .jump = platform_jump_to_addr,
+        .reset = platform_system_reset,
+    };
+    g_dev.iap_ok = (g_dev.iap.jump != NULL) && (g_dev.iap.reset != NULL);
+    return g_dev.param_flash_ok;
+}
+
 bool dev_board_init(void)
 {
-    // 1) 板级基础：DWT 周期计数（微秒时间基准）
-    hw_base_init();
+    // 1) 板级基础：DWT 周期计数（时间基准）
+    platform_init();
 
-    // 2) 时间基准
-    g_dev.time = hw_time_get();
-    if (!g_dev.time)
-        return false;
+    // 2) 时间（abs 注入）
+    g_dev.time = &g_time;
 
     // 3) 逐设备装配（灯效失败不阻塞关键设备）
     g_dev.led_can = (tLed){0};
     g_dev.led_enc = (tLed){0};
     g_dev.rgb = (tRgb){0};
+    g_dev.sense = (tCurrentSense){0};
 
-    bool led_ok = led_init(&g_dev.led_can, hw_led_ops(), hw_led_handle(0), g_dev.time) &&
-                  led_init(&g_dev.led_enc, hw_led_ops(), hw_led_handle(1), g_dev.time);
-    (void)led_ok; // 板载 LED 为辅助指示，失败不阻塞
+    bool led_ok = led_init(&g_dev.led_can, led_drv_ops(), led_drv_handle(0), &g_time) &&
+                  led_init(&g_dev.led_enc, led_drv_ops(), led_drv_handle(1), &g_time);
+    (void)led_ok;
 
-    g_dev.rgb_ok = dev_assemble_rgb(g_dev.time);
-    g_dev.flash_ok = dev_assemble_flash(g_dev.time);
+    g_dev.rgb_ok = dev_assemble_rgb();
+    g_dev.sense_ok = dev_assemble_sense();
+    g_dev.flash_ok = dev_assemble_flash();
+    dev_assemble_internal_flash(); // 内部 flash/IAP（非关键，独立置 ok 标志）
 
-    // 4) 编码器（关键设备）：内部/外部总线由产品配置决定
-    const tSpiBusIf *enc_bus = hw_enc_bus_get(DEV_USE_INTERNAL_ENC);
-    g_dev.enc_ok = dev_assemble_encoder(enc_bus, g_dev.time);
+    // 4) 编码器（关键设备）
+    g_dev.enc_ok = dev_assemble_encoder();
 
     return g_dev.enc_ok;
 }

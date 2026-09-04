@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "usr/if/time_if.h"
+#include "usr/abs/time.h"
 
 // ============================================================
 // led.h — LED / RGB 灯（usr/abs）

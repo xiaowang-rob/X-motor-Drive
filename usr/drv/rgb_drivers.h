@@ -1,19 +1,17 @@
 #ifndef __RGB_DRIVERS_H
 #define __RGB_DRIVERS_H
 
-#include <stdint.h>
-
 #include "usr/abs/led.h"
-#include "usr/if/pwm_dma_if.h"
 
 // ============================================================
-// rgb_drivers.h — RGB 灯芯片驱动统一出口（usr/drv）
+// rgb_drivers.h — RGB 灯芯片驱动统一出口（usr/drv，v2 直连版）
 //
-// 供组装层使用：create(注入 PWM-DMA 接口 + 灯珠数)。
+// v2：驱动直接用本板 PWM-DMA（经 platform.h），create 无参，
+// 灯珠数取 platform 的 Pixel_NUM。
 // ============================================================
 
 // ---- WS2812/WS28xx 系列（GRB，PWM 时序驱动） ----
-RgbHandle ws28xx_create(const tPwmDmaIf *pwm, uint8_t num_pixels);
+RgbHandle ws28xx_create(void);
 void ws28xx_destroy(RgbHandle h);
 extern const tRgbDriverOps ws28xx_driver_ops;
 

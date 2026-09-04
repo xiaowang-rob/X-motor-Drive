@@ -1,102 +1,79 @@
-# 分层架构总结（refactor 落地版 · 简洁）
+# 分层架构 v2（drv 直连厂商库 · 已落地）
 
-> 这是 X-motor-Drive 重构目标架构的精简总结，以 `refactor/` 中**已落地代码**为基准。
-> 目标一句话：**上层（业务）永远不碰厂商库（HAL/SPL/寄存器）与板级资源；换板只换 `board/<b>/hw` + 组装层。**
+> v2 替代 v1（usr/if 接口表 + board/hw 适配器）。**已落地**于主树（未提交）。
+> 动机：板少、自维护；换板改驱动/每板 platform 更省事；标准库板用"兼容 HAL 封装"吸收。
+> 底线保留：abs↔drv 的语义化 ops 契约（业务对象纯逻辑、可 host 编译）。
 
 ---
 
-## 1. 分层
+## 1. 两条边界
 
-```
-usr/ctl · app · srv        业务层（未来）：只 include usr/abs 头与 dev_board.h
-        │
-usr/abs                    业务对象：tEncoder / tLed / tRgb / 存储单元（纯逻辑，零硬件）
-        │
-usr/drv                    芯片协议驱动：编码器×3+引擎 / w25qxx / ws28xx（只认识接口表）
-        │
-usr/if                     接口契约：tSpiBusIf / tTimeIf / tPwmDmaIf（纯头，唯一跨库契约）
-        ▲   （依赖倒置：接口归 usr，实现来自板）
-        │
-usr/app/dev_board.*        组装层（唯一同时 include hw+drv+abs），装配出全局对象 g_dev
-        │
-board/<b>/hw               板级适配：资源表 + 接口表实现（厂商库符号终结于此）
-        │
-board/<b>/Core + 厂商库    外设初始化（当前板 = CubeMX + HAL）
-```
-
-## 2. 目录（refactor/ 实际）
-
-```
-refactor/
-├── CMakeLists.txt               构建入口（5 个库目标）
-├── usr/
-│   ├── if/      time_if.h  spi_if.h  pwm_dma_if.h        [纯头契约]
-│   ├── abs/     device.h  encoder  led  flash(.h/.c)      [usr_abs 库]
-│   ├── drv/     enc_spi_engine · as5047 · mt6816 · mt6835
-│   │            w25qxx · ws28xx (+ *_drivers.h)            [usr_drv 库]
-│   └── app/     dev_board.h/.c                             [usr_app 库]
-└── board/xdr_p_o1.2/
-    ├── hw/      hw_base · hw_enc_spi · hw_flash_spi
-    │            hw_rgb_pwm · hw_led · hw_pinmap.h          [board_hw 库]
-    └── Core/Drivers/Middlewares/…        CubeMX 原样副本
-```
-
-## 3. 每层职责
-
-| 层 | 内容 | 关键约束 |
-|---|---|---|
-| usr/if | 接口结构体（函数指针表 + 不透明 `void* ctx`），参数只用 C 基础类型 | 头文件禁止 include 非标准头 |
-| usr/abs | 电机控制业务语义：多圈/零位/PLL、闪烁/呼吸、日志式存储单元 | 无任何厂商符号 |
-| usr/drv | 芯片协议：命令字、时序、校验、解析；**同步**读为主 | 只 include usr/if + usr/abs 类型头 |
-| usr/app/dev_board | 选芯片 + 选板级资源 → create(bus,time) → abs init → 全局 `g_dev` | 唯一同时见 hw/drv/abs |
-| board/hw | 把 HAL/CMSIS 装进接口表；引脚映射、中断回调、句柄只在此 | 唯一允许厂商库符号；反向 include usr/if 是实现者 |
-
-## 4. 依赖铁律
-
-1. `usr/abs`、`usr/drv`：禁止厂商库符号与板级头（用 grep 可查）。
-2. drv 的硬件能力全部来自 **create 时注入的接口表**——drv 不 include 板级头，想误调也没声明。
-3. `board/hw` 是厂商库符号终结层：句柄宏与 `HAL_*Callback` 只出现在 `hw/*.c`。
-4. 唯一反向依赖例外：hw 为实现 usr/if 而 include `usr/if/*.h`。
-5. 业务层不自行 create/init；装配集中在 dev_board。
-
-## 5. 核心机制（一句话）
-
-- **接口 = 语义，不泄漏实现**：例如编码器 ops 是 `read_angle(&raw,&ts)` 一次带时间戳读数，不是 `start_read/is_data_ready/set_cs`（异步 DMA 时代产物）。
-- **资源注入**：芯片驱动不知道"内部/外部 CS、SPI3、PA15"——`create` 只收接口表，hw 为每条 CS 造一个接口实例。
-- **模式是协议事实**：SPI 的 CPOL/CPHA/位宽由芯片驱动在 init 时经 `set_mode` 声明，hw 执行——同总线换芯片也能切回正确模式。
-
-## 6. 关键设计决策
-
-| 决策 | 结果 |
+| 边界 | 处置 |
 |---|---|
-| 取消 bsp | 原协议封装层消解；资源/适配进 `board/<b>/hw` |
-| 同步为主 | 编码器等轮询读数同步 SPI；ADC/WS2812 作异步例外（能力收敛在各自接口表，中断 hw 自持） |
-| 跨厂商库 | usr/if 是唯一跨库契约；未来标准库(SPL)板只需为接口表新写一套 hw 实现 |
-| 组装层 | `dev_board_init()`：`hw_base_init` → 时间 → 灯/闪存（容错）→ 编码器（关键） |
+| 业务边界 abs↔drv（tEncoderDriverOps / tSampleIf / tTimeIf 类型归 abs） | **保留**：业务与芯片协议隔离，业务可 stub 测 |
+| 硬件边界 drv↔厂商库 | **取消抽象**：驱动直接 include 厂商库（经每板 platform.h） |
 
-## 7. 落地状态
-
-构建（`cmake --build refactor/build`）零 error；`usr/drv`、`usr/abs` 还能用 host gcc 直接编译（零厂商依赖的证据）。
+## 2. 目录（已落地形态）
 
 ```
-usr_if   (INTERFACE, 纯头)   usr_abs(业务)   usr_drv(协议)   usr_app(装配 g_dev)   board_hw(适配)
+usr/
+├── abs/   device.h  time.h(tTimeIf)  encoder  led  flash  sense(含 tSampleIf)
+│          ├── .c 纯逻辑业务对象            [usr_abs 库，可 host 编译]
+├── drv/   enc_spi_engine  as5047  mt6816  mt6835  w25qxx  ws28xx
+│          led_drv  sense_drv + *_drivers.h [usr_drv 库，直调 HAL]
+└── app/   dev_board.c/h → g_dev            [usr_app 库]
+board/xdr_p_o1.2/
+├── platform.h/.c   总头+服务：HAL 总头/CubeMX 外设头、外设/引脚宏、
+│                   时间(get_ms/us/init/delay)
+├── board_config.h + Core/Drivers/…（不变）
 ```
 
-设备装配：`g_dev.enc`（MT6816 默认，可切 AS5047/MT6835）、`g_dev.led_can/led_enc`、
-`g_dev.rgb`（WS2812）、`g_dev.ext_flash`（W25Q128 存储单元，芯片缺失时容错为不可用）。
+## 3. 每层要点
 
-## 8. 尚未完成（后续方向）
+| 层 | 要点 |
+|---|---|
+| usr/abs | 纯逻辑；tTimeIf/tSampleIf 类型本地定义（abs↔drv 契约） |
+| usr/drv | 芯片协议 + 直接 HAL；工厂**无参**；外设/引脚经 `platform.h` 宏；时间用 `platform_get_ms/us` |
+| platform | 每板唯一"厂商库入口"：include 厂商库/CubeMX 头 + 引脚宏 + 时间服务 |
+| dev_board | `platform_init()` → 无参工厂 → abs init；平台裸函数包成 tTimeIf 注入 |
 
-- 高层（foc/服务/通讯）迁移到 `g_dev` —— 当前 refactor 只到装配层；
-- 编码器业务接入控制环（`encoder_update` 的调用点）；
-- `board_config.h` 瘦身拆分（HAL 宏 → hw_pinmap 已建，原文件待同步）；
-- 通讯接口后置重构；
-- host 单测框架（方向已确认可做，暂缓）。
+## 4. 关键约定
 
-## 9. 反模式速查
+- **中断回调单文件唯一**：`HAL_ADC_ConvCpltCallback` 在 `usr/drv/sense_drv.c`；
+  `HAL_TIM_PWM_PulseFinishedCallback` 在 `usr/drv/ws28xx.c`（同一回调不得多处定义）。
+- 编码器 SPI 模式/时序集中在 `usr/drv/enc_spi_engine.c`（直连 SPI3+CS）。
+- 驱动"本板资源"都写成 `platform.h` 宏引用 → 换板只换 platform.h/.c；
+  换标准库板 = 新板 platform.h include 其 `HAL 兼容封装`，驱动源码不变。
 
-- [ ] abs/drv 出现厂商库符号或 `hw_/bsp_` → 库泄漏
-- [ ] ops 出现实现词（DMA、set_cs、is_data_ready）→ 接口未语义化
-- [ ] drv 里有"内部/外部"或引脚选择 → 资源没注入
-- [ ] hw 出现芯片协议逻辑（命令字/校验）→ 职责应上移 drv
-- [ ] 业务层 include `hw_*` 或自行 create → 缺组装层
+## 5. 验证
+
+- 全目标（usr_abs / usr_drv / board_hw / usr_app + stm32_*）构建 **error/warning = 0**；
+- `usr/abs/*.c` host gcc 编译通过（纯逻辑红利保留在业务侧）；
+- 代码层已无 `usr/if`、`board/hw` 引用。
+
+## 6. 与 70f9346 的功能缺口对照（已回填至 ★）
+
+对照基线 = 重构前最后一次完整固件提交 `70f9346`。
+
+| 功能 | 70f9346 载体 | 现状 |
+|---|---|---|
+| 编码器协议+多圈/PLL/零位 | drv/abs | **已迁移**（v2 直连） |
+| LED/RGB/呼吸、GPIO LED | bsp_led/rgb + drv/leds | **已迁移** led_drv/ws28xx |
+| 电流/Vbus/温度采样+零点 | bsp_adc/mcu_adc | **已迁移** sense_drv/sense（ADC MSP 在 Core/adc.c 内，已确认完备） |
+| 外挂 SPI NOR 协议 | drv/w25qxx | **已迁移**（直连） |
+| tick/us/delay | bsp_base | **已迁移** platform |
+| ★ 内部 MCU Flash 介质 | usr/drv/flash_mcu + bsp_flash | **已回填** `usr/drv/mcu_flash_drv.c`（tFlashDriverOps，F405 几何按地址） |
+| ★ Flash 单元管理 + IAP | usr/abs/flash_abs | **已回填** `usr/abs/flash`：日志式单元 + tFlashIAP（erase/write/verify app&bl/jump/reset） |
+| ★ 固件跳转/复位/向量/IRQ | bsp_flash.jump + bsp_base | **已回填** platform：jump_to_addr/system_reset/set_vector_offset/irq |
+| ★ 通讯底层 CAN/UART/USB | bsp_can/uart/usb | **已回填** `usr/drv/can_drv·uart_drv·usb_drv`（usbd_cdc_if USER CODE 接 rx hook） |
+| ★ 电机 PWM/12V/FOC 节拍 | bsp_pwm + bsp_gpio(power) | **已回填** `usr/drv/motor_drv`（12V/compare/使能/上溢采样·下溢 FOC 双钩子） |
+| 日志/参数持久化 / FOC 套件 | srv + ctl | **待高层迁移**（现只到底层，文件保留） |
+
+> 底层缺口已全部回填到相应位置（usr/drv / usr/abs / platform）；剩余为高层（ctl/srv/通讯端口）迁移，属后续工作。
+
+## 7. 待办（未完成项）
+
+- 高层（ctl/srv/通讯端口）迁移到 g_dev 与新驱动 API；
+- dev_board 之外 usr/app 旧高层文件未编入构建；
+- 标准库板 hal_compat 层（未来）；
+- 真机联调验证（PWM/采样/CAN/UART/USB/IAP 时序）。

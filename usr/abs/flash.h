@@ -80,4 +80,47 @@ bool flash_unit_erase(tFlashStore *s);
 uint32_t flash_unit_free(tFlashStore *s);
 bool flash_unit_is_full(tFlashStore *s);
 
+// ==================== 业务对象：IAP 固件升级编排 ====================
+
+// 分区表与固件行为回调由上层（组装层）注入，abs 不依赖任何板头。
+typedef struct
+{
+    uint32_t bl_addr;  // Bootloader 区起始
+    uint32_t bl_size;  // Bootloader 区大小（字节）
+    uint32_t app_addr; // App 区起始
+    uint32_t app_size; // App 区大小（字节）
+
+    void (*jump)(uint32_t addr); // 跳转到指定固件地址（如 platform 包装）
+    void (*reset)(void);         // 系统复位
+} tFlashIAP;
+
+// 擦除分区（边界按介质擦除单元向上取整，由介质驱动保证）
+bool flash_iap_erase(const tFlashDriverOps *ops, FlashChipHandle h,
+                     uint32_t addr, uint32_t size);
+
+// 写分区数据（介质驱动处理页/字粒度）
+bool flash_iap_write(const tFlashDriverOps *ops, FlashChipHandle h,
+                     uint32_t addr, const uint8_t *data, uint32_t size);
+
+// 校验分区数据与内存一致
+bool flash_iap_verify(const tFlashDriverOps *ops, FlashChipHandle h,
+                      uint32_t addr, const uint8_t *data, uint32_t size);
+
+// 便捷：擦写/校验整个 App / BL 区
+bool flash_iap_erase_app(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap);
+bool flash_iap_write_app(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap,
+                         uint32_t offset, const uint8_t *data, uint32_t size);
+bool flash_iap_verify_app(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap,
+                          uint32_t offset, const uint8_t *data, uint32_t size);
+bool flash_iap_erase_bl(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap);
+bool flash_iap_write_bl(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap,
+                        uint32_t offset, const uint8_t *data, uint32_t size);
+bool flash_iap_verify_bl(const tFlashDriverOps *ops, FlashChipHandle h, const tFlashIAP *iap,
+                         uint32_t offset, const uint8_t *data, uint32_t size);
+
+// 跳转 / 复位
+void flash_iap_jump_app(const tFlashIAP *iap);
+void flash_iap_jump_bl(const tFlashIAP *iap);
+void flash_iap_reset(const tFlashIAP *iap);
+
 #endif // __ABS_FLASH_H

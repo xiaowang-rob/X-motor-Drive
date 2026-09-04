@@ -2,28 +2,26 @@
 #define __ENCODER_DRIVERS_H
 
 #include "usr/abs/encoder.h"
-#include "usr/if/spi_if.h"
-#include "usr/if/time_if.h"
 
 // ============================================================
-// encoder_drivers.h — 编码器芯片驱动统一出口（usr/drv）
+// encoder_drivers.h — 编码器芯片驱动统一出口（usr/drv，v2 直连版）
 //
-// 供组装层使用：选芯片 ops → create(注入总线+时间) → 交给 abs 业务对象。
-// 每个芯片驱动只依赖注入的 usr/if 接口表，不感知任何板级资源。
+// v2：驱动直接使用本板外设（经 platform.h），create 无参；
+// 板上编码器为固定唯一实例，由 dev_board 装配一个。
 // ============================================================
 
-// ---- AS5047（SPI Mode1 / 16bit / 14bit 分辨率 16384） ----
-EncoderChipHandle AS5047_create(const tSpiBusIf *bus, const tTimeIf *time);
+// ---- AS5047（SPI Mode1 / 16bit / 14bit，16384） ----
+EncoderChipHandle AS5047_create(void);
 void AS5047_destroy(EncoderChipHandle h);
 extern const tEncoderDriverOps AS5047_driver_ops;
 
-// ---- MT6816（SPI Mode3 / 16bit / 14bit 分辨率 16384） ----
-EncoderChipHandle MT6816_create(const tSpiBusIf *bus, const tTimeIf *time);
+// ---- MT6816（SPI Mode3 / 16bit / 14bit，16384） ----
+EncoderChipHandle MT6816_create(void);
 void MT6816_destroy(EncoderChipHandle h);
 extern const tEncoderDriverOps MT6816_driver_ops;
 
-// ---- MT6835（SPI Mode3 / 8bit / 14bit 分辨率 16384） ----
-EncoderChipHandle MT6835_create(const tSpiBusIf *bus, const tTimeIf *time);
+// ---- MT6835（SPI Mode3 / 8bit / 14bit，16384） ----
+EncoderChipHandle MT6835_create(void);
 void MT6835_destroy(EncoderChipHandle h);
 extern const tEncoderDriverOps MT6835_driver_ops;
 
