@@ -71,10 +71,7 @@ bool flash_init(tFlash *s, const tFlashDriverOps *ops, FlashChipHandle h)
 
     s->ops = ops;
     s->handle = h;
-
-    s->bl_sector_ids = s->ops->get_bl_ids(h, &s->bl_sector_count);
-    s->app_sector_ids = s->ops->get_app_ids(h, &s->app_sector_count);
-    s->usr_sector_ids = s->ops->get_usr_ids(h, &s->usr_sector_count);
+    s->usr_sector_count = s->ops->get_sector_count(s->handle);
 
     s->usr_sector_bit_status = 0xffff;
     s->usr_sector_bit_status << s->usr_sector_count; // 初始化：所有用户分区未注册
@@ -98,8 +95,8 @@ tFlashUnit *flash_unit_register(tFlash *s)
         if (0 == (s->usr_sector_bit_status & (1 << i)))
         {
             new_unit->id = i;
-            new_unit->base_addr = s->ops->get_sector_addr(s->handle, s->usr_sector_ids[i]);
-            new_unit->size = s->ops->get_sector_size(s->handle, s->usr_sector_ids[i]);
+            new_unit->base_addr = s->ops->get_sector_addr(s->handle, i);
+            new_unit->size = s->ops->get_sector_size(s->handle, i);
             if (flash_scan_free(s, new_unit))
             {
                 s->usr_sector_bit_status |= (1 << i);
@@ -149,89 +146,6 @@ bool flash_unit_read(tFlash *s, tFlashUnit *unit, uint8_t *data, uint32_t len)
 // 擦除整个单元并复位写位置
 bool flash_unit_erase(tFlash *s, tFlashUnit *unit)
 {
-    s->ops->erase_sector(s->handle, s->usr_sector_ids[unit->id]);
+    s->ops->erase_sector(s->handle, unit->id);
     unit->free_addr = 0U;
-}
-
-// 便捷：擦写/校验整个 App / BL 区
-bool flash_iap_erase_app(tFlash *s)
-{
-    for (uint32_t i = 0; i < s->app_sector_count; i++)
-    {
-        if (!s->ops->erase_sector(s->handle, s->app_sector_ids[i]))
-            return false;
-    }
-    return true;
-}
-bool flash_iap_write_app(tFlash *s, uint32_t offset,
-                         const uint8_t *data, uint32_t size)
-{
-    if (!s || !data || size == 0U)
-        return false;
-    uint32_t addr = offset + s->ops->get_sector_addr(s->handle, s->app_sector_ids[0]);
-    return s->ops->write(s->handle, addr, data, size);
-}
-bool flash_iap_verify_app(tFlash *s, uint32_t offset,
-                          const uint8_t *data, uint32_t size)
-{
-    if (!s || !data || size == 0U)
-        return false;
-    uint8_t verify_data;
-    uint32_t addr = offset + s->ops->get_sector_addr(s->handle, s->app_sector_ids[0]);
-    for (uint32_t i = 0U; i < size; i++)
-    {
-        if (!s->ops->read(s->handle, addr + i, &verify_data, 1))
-            return false;
-        if (verify_data != data[i])
-            return false;
-    }
-    return true;
-}
-bool flash_iap_erase_bl(tFlash *s)
-{
-    for (uint32_t i = 0; i < s->bl_sector_count; i++)
-    {
-
-        if (!s->ops->erase_sector(s->handle, s->bl_sector_ids[i]))
-            return false;
-    }
-    return true;
-}
-
-bool flash_iap_write_bl(tFlash *s, uint32_t offset,
-                        const uint8_t *data, uint32_t size)
-{
-    if (!s || !data || size == 0U)
-        return false;
-    uint32_t addr = offset + s->ops->get_sector_addr(s->handle, s->bl_sector_ids[0]);
-    return s->ops->write(s->handle, addr, data, size);
-}
-bool flash_iap_verify_bl(tFlash *s, uint32_t offset,
-                         const uint8_t *data, uint32_t size)
-{
-    if (!s || !data || size == 0U)
-        return false;
-    uint8_t verify_data;
-    uint32_t addr = offset + s->ops->get_sector_addr(s->handle, s->bl_sector_ids[0]);
-    for (uint32_t i = 0U; i < size; i++)
-    {
-        if (!s->ops->read(s->handle, addr + i, &verify_data, 1))
-            return false;
-        if (verify_data != data[i])
-            return false;
-    }
-    return true;
-}
-
-void flash_iap_jump_app(tFlash *s)
-{
-    if (!s)
-        return;
-    s->ops->jump_app(s->handle);
-}
-void flash_iap_reset(tFlash *s)
-{
-    if (!s)
-        return;
-    s->ops->jump_bl(s->handle);
 }

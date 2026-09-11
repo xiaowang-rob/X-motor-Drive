@@ -69,10 +69,7 @@ const uint32_t USR_SIZE = SECTOR_BOUNDS[MCU_FLASH_NUM_SECTORS] - USR_START_ADDR;
 // ---------- 启动配置 ----------
 #define VECT_TABLE_OFFSET BL_SIZE // 中断向量表偏移 整个BL的空间
 
-typedef struct
-{
-    eDeviceStatus dstate;
-} tMcuFlash_ctx;
+// ---------- flash 驱动 ----------
 
 // 地址 → 扇区索引（0..11）；越界返回 -1
 static int sector_index_at(uint32_t addr)
@@ -89,15 +86,6 @@ static int sector_index_at(uint32_t addr)
 }
 
 // ---- ops 实现 ----
-
-static bool mf_init(FlashChipHandle h)
-{
-    tMcuFlash_ctx *ctx = (tMcuFlash_ctx *)h;
-    if (!ctx)
-        return false;
-    ctx->dstate = DEV_ONLINE;
-    return true;
-}
 
 static bool mf_read(FlashChipHandle h, uint32_t addr, uint8_t *data, uint32_t len)
 {
@@ -143,15 +131,16 @@ static bool mf_write(FlashChipHandle h, uint32_t addr, const uint8_t *data, uint
     HAL_FLASH_Lock();
     return true;
 }
-static bool mf_erase_sector(FlashChipHandle h, uint8_t sec_id)
+static bool mf_erase_usr_sector(FlashChipHandle h, uint8_t sec_id)
 {
     (void)h;
-    if (sec_id < 0 || sec_id >= MCU_FLASH_NUM_SECTORS)
+    if (sec_id < 0 || sec_id >= MCU_NUM_SECTOR_USR)
         return false;
 
     if (HAL_FLASH_Unlock() != HAL_OK)
         return false;
 
+    uint32_t s = USR_SECTOR_ID[sec_id];
     platform_disable_irq();
     FLASH_EraseInitTypeDef erase = {0};
     uint32_t sector_err = 0U;
@@ -208,43 +197,78 @@ static bool mf_erase_addr(FlashChipHandle h, uint32_t addr, uint32_t len)
 
     return true;
 }
-static uint32_t mf_get_bl_ids(FlashChipHandle h, uint8_t *num)
+static uint8_t mf_get_usr_sector_count(FlashChipHandle h)
 {
     (void)h;
-    *num = MCU_NUM_SECTOR_BL;
-    return BL_SECTOR_ID;
-}
-static uint32_t mf_get_app_ids(FlashChipHandle h, uint8_t *num)
-{
-    (void)h;
-    *num = MCU_NUM_SECTOR_APP;
-    return APP_SECTOR_ID;
-}
-static uint32_t mf_get_usr_ids(FlashChipHandle h, uint8_t *num)
-{
-    (void)h;
-    *num = MCU_NUM_SECTOR_USR;
-    return USR_SECTOR_ID;
+    return MCU_NUM_SECTOR_USR;
 }
 
-static uint32_t mf_get_sec_addr(FlashChipHandle h, uint8_t sec_id)
+static uint32_t mf_get_usr_sec_addr(FlashChipHandle h, uint8_t sec_id)
 {
     (void)h;
-    return SECTOR_BOUNDS[sec_id];
+    return SECTOR_BOUNDS[USR_SECTOR_ID[sec_id]];
 }
-static uint32_t mf_get_sec_size(FlashChipHandle h, uint8_t sec_id)
+static uint32_t mf_get_usr_sec_size(FlashChipHandle h, uint8_t sec_id)
 {
     (void)h;
-    return SECTOR_BOUNDS[sec_id + 1U] - SECTOR_BOUNDS[sec_id];
+    return SECTOR_BOUNDS[USR_SECTOR_ID[sec_id] + 1U] - SECTOR_BOUNDS[USR_SECTOR_ID[sec_id]];
 }
-static void app_init(void)
+
+static uint8_t mf_get_state(FlashChipHandle h)
+{
+    (void)h;
+    return DEV_ONLINE;
+}
+
+const tFlashDriverOps mcu_flash_driver_ops = {
+    .init = NULL, // MCU Flash 无初始化
+    .read = mf_read,
+    .write = mf_write,
+    .erase_addr = mf_erase_addr,
+    .erase_sector = mf_erase_usr_sector,
+    .get_sector_count = mf_get_usr_sector_count,
+    .get_sector_addr = mf_get_usr_sec_addr,
+    .get_sector_size = mf_get_usr_sec_size,
+
+    .get_state = mf_get_state,
+};
+
+// ---------- IAP 驱动 ----------
+
+static void mf_app_init(void)
 {
     SCB->VTOR = VECT_TABLE_OFFSET;
 }
-static bool mf_jump_to_app(FlashChipHandle h)
+static bool mf_erase_app(void)
 {
-    if (!h)
-        return false;
+    return mf_erase_addr(void, APP_START_ADDR, APP_SIZE);
+}
+static bool mf_write_app(uint32_t offset, const uint8_t *data, uint32_t len)
+{
+    uint32_t addr = offset + APP_START_ADDR;
+    return mf_write(void, addr, data, len);
+}
+static bool mf_read_app(uint32_t offset, uint8_t *data, uint32_t len)
+{
+    uint32_t addr = offset + APP_START_ADDR;
+    return mf_read(void, addr, data, len);
+}
+static bool mf_erase_bl(void)
+{
+    return mf_erase_addr(void, BL_START_ADDR, BL_SIZE);
+}
+static bool mf_write_bl(uint32_t offset, const uint8_t *data, uint32_t len)
+{
+    uint32_t addr = offset + BL_START_ADDR;
+    return mf_write(void, addr, data, len);
+}
+static bool mf_read_bl(uint32_t offset, uint8_t *data, uint32_t len)
+{
+    uint32_t addr = offset + BL_START_ADDR;
+    return mf_read(void, addr, data, len);
+}
+static bool mf_jump_to_app(void)
+{
     // 校验向量表位于内部 flash 区（粗略防护），随后关中断并跳转
     if ((APP_START_ADDR & 0xFFF00000U) != 0x08000000U)
         return;
@@ -257,46 +281,20 @@ static bool mf_jump_to_app(FlashChipHandle h)
     jump();
     return true;
 }
-static bool mf_jump_to_bl(FlashChipHandle h)
+static bool mf_jump_to_bl(void)
 {
-    if (!h)
-        return false;
     NVIC_SystemReset();
     return true;
 }
-static uint8_t mf_get_state(FlashChipHandle h)
-{
-    tMcuFlash_ctx *ctx = (tMcuFlash_ctx *)h;
-    return (uint8_t)(ctx ? ctx->dstate : DEV_OFFLINE);
-}
 
-const tFlashDriverOps mcu_flash_driver_ops = {
-    .init = mf_init,
-    .read = mf_read,
-    .write = mf_write,
-    .erase_addr = mf_erase_addr,
-    .erase_sector = mf_erase_sector,
-    .get_bl_ids = mf_get_bl_ids,
-    .get_app_ids = mf_get_app_ids,
-    .get_usr_ids = mf_get_usr_ids,
-    .get_sector_addr = mf_get_sec_addr,
-    .get_sector_size = mf_get_sec_size,
+const tIAPDriverOps mcu_iap_driver_ops = {
+    .app_init = mf_app_init,
+    .app_erase = mf_erase_app,
+    .app_write = mf_write_app,
+    .app_read = mf_read_app,
+    .bl_erase = mf_erase_bl,
+    .bl_write = mf_write_bl,
+    .bl_read = mf_read_bl,
     .jump_app = mf_jump_to_app,
     .jump_bl = mf_jump_to_bl,
-    .get_state = mf_get_state,
 };
-
-FlashChipHandle mcu_flash_create(void)
-{
-    tMcuFlash_ctx *ctx = (tMcuFlash_ctx *)calloc(1U, sizeof(tMcuFlash_ctx));
-    if (!ctx)
-        return NULL;
-    ctx->dstate = DEV_OFFLINE;
-    return (FlashChipHandle)ctx;
-}
-
-void mcu_flash_destroy(FlashChipHandle h)
-{
-    free(h);
-    h = NULL;
-}

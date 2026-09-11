@@ -31,8 +31,29 @@
 #define FTIMEOUT_OP_MS 1000U // 操作超时（ms）
 #define READ_CHUNK 32U       // 读取数据时的分块大小（字节）
 
+#define BLOCK_SECTOR_NUM 16U // 每个块对应16个扇区
 static const uint8_t W25_JEDEC_ID[3] = {0xEFU, 0x40U, 0x18U};
 
+// 把扇区分为256块 每个块对应16个扇区 每次分配按照一个块分配 然后让所有块均匀磨损
+// TODO: 暂时先按照一个块分配 后续添加均匀磨损
+static const uint32_t W25_SECTOR_BOUNDS[BLOCK_SECTOR_NUM + 1] = {
+    0x00000000U,
+    0x00001000U,
+    0x00002000U,
+    0x00003000U,
+    0x00004000U,
+    0x00005000U,
+    0x00006000U,
+    0x00007000U,
+    0x00008000U,
+    0x00009000U,
+    0x0000A000U,
+    0x0000B000U,
+    0x0000C000U,
+    0x0000D000U,
+    0x0000E000U,
+    0x0000F000U,
+    0x00010000U} // 最后一个地址是为了方便计算
 // ---- 本板 Flash SPI（platform.h） ----
 
 static void fl_cs(bool active)
@@ -273,21 +294,32 @@ static bool w25_erase(FlashChipHandle h, uint32_t addr, uint32_t len)
     return true;
 }
 
-static uint32_t w25_get_capacity(FlashChipHandle h)
+static bool w25_erase_sector(FlashChipHandle h, uint8_t sec_id)
 {
-    (void)h;
-    return W25_CAPACITY_BYTES;
+    tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
+    if (!ctx || sec_id >= BLOCK_SECTOR_NUM)
+        return false;
+    return w25_erase_sector_at(ctx, W25_SECTOR_BOUNDS[sec_id]);
 }
-
-static uint32_t w25_get_page_size(FlashChipHandle h)
+static uint8_t w25_get_sector_count(FlashChipHandle h);
 {
-    (void)h;
-    return W25_PAGE_SIZE;
+    tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
+    if (!ctx)
+        return 0U;
+    return BLOCK_SECTOR_NUM;
 }
-
-static uint32_t w25_get_sector_size(FlashChipHandle h)
+static uint32_t w25_get_sector_addr(FlashChipHandle h, uint8_t sec_id)
 {
-    (void)h;
+    tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
+    if (!ctx || sec_id >= BLOCK_SECTOR_NUM)
+        return 0U;
+    return W25_SECTOR_BOUNDS[sec_id];
+}
+static uint32_t w25_get_sector_size(FlashChipHandle h, uint8_t sec_id)
+{
+    tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
+    if (!ctx || sec_id >= BLOCK_SECTOR_NUM)
+        return 0U;
     return W25_SECTOR_SIZE;
 }
 
@@ -301,9 +333,10 @@ const tFlashDriverOps w25qxx_driver_ops = {
     .init = w25_init,
     .read = w25_read,
     .write = w25_write,
-    .erase = w25_erase,
-    .get_capacity = w25_get_capacity,
-    .get_page_size = w25_get_page_size,
+    .erase_addr = w25_erase,
+    .erase_sector = w25_erase_sector,
+    .get_sector_count = w25_get_sector_count,
+    .get_sector_addr = w25_get_sector_addr,
     .get_sector_size = w25_get_sector_size,
     .get_state = w25_get_state,
 };

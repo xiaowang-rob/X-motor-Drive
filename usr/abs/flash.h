@@ -33,8 +33,11 @@ typedef struct
     // 擦除指定扇区
     bool (*erase_sector)(FlashChipHandle h, uint8_t sec_id);
 
-    // 设备状态（eDeviceStatus 值）
-    uint8_t (*get_state)(FlashChipHandle h);
+    uint8_t (*get_sector_count)(FlashChipHandle h);
+    uint32_t (*get_sector_addr)(FlashChipHandle h, uint8_t sec_id);
+    uint32_t (*get_sector_size)(FlashChipHandle h, uint8_t sec_id);
+
+    eDeviceStatus (*get_state)(FlashChipHandle h);
 } tFlashDriverOps;
 
 // flash对象
@@ -44,19 +47,11 @@ typedef struct
     FlashChipHandle handle;     // 介质句柄
 
     // 分区信息
-    const uint8_t *bl_sector_ids;
-    const uint8_t *app_sector_ids;
-    const uint8_t *usr_sector_ids;
-
-    uint32_t bl_sector_count;  // Bootloader 分区数
-    uint32_t app_sector_count; // App 分区数
     uint32_t usr_sector_count; // 用户分区数
 
     uint16_t usr_sector_bit_status; // 用户分区注册 位状态（0=未注册，1=已注册/不存在）
     uint8_t usr_sector_free;
 } tFlash;
-
-bool flash_init(tFlash *s, const tFlashDriverOps *ops, FlashChipHandle h);
 
 // ==================== 业务对象：日志式存储单元 ====================
 
@@ -73,6 +68,8 @@ typedef struct
     uint32_t free_addr; // 下一条记录的写入偏移（相对 base，0=空）
 } tFlashUnit;
 
+bool flash_init(tFlash *s, const tFlashDriverOps *ops, FlashChipHandle h);
+
 // 注册/注销 一个日志式存储单元
 tFlashUnit *flash_unit_register(tFlash *s);
 void flash_unit_unregister(tFlash *s, tFlashUnit *unit);
@@ -85,23 +82,5 @@ bool flash_unit_read(tFlash *s, tFlashUnit *unit, uint8_t *data, uint32_t len);
 
 // 擦除整个单元并复位写位置
 bool flash_unit_erase(tFlash *s, tFlashUnit *unit);
-
-// ==================== 业务对象：IAP 固件升级编排 ====================
-
-// 便捷：擦写/校验整个 App / BL 区
-bool flash_iap_erase_app(tFlash *s);
-bool flash_iap_write_app(tFlash *s, uint32_t offset,
-                         const uint8_t *data, uint32_t size);
-bool flash_iap_verify_app(tFlash *s, uint32_t offset,
-                          const uint8_t *data, uint32_t size);
-bool flash_iap_erase_bl(tFlash *s);
-bool flash_iap_write_bl(tFlash *s, uint32_t offset,
-                        const uint8_t *data, uint32_t size);
-bool flash_iap_verify_bl(tFlash *s, uint32_t offset,
-                         const uint8_t *data, uint32_t size);
-
-// 跳转 / 复位
-void flash_iap_jump_app(tFlash *s);
-void flash_iap_reset(tFlash *s);
 
 #endif // __ABS_FLASH_H

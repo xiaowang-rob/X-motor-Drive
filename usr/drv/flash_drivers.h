@@ -16,5 +16,5 @@ extern const tFlashDriverOps w25qxx_driver_ops;
 FlashChipHandle mcu_flash_create(void);
 void mcu_flash_destroy(FlashChipHandle h);
 extern const tFlashDriverOps mcu_flash_driver_ops;
-
+extern const tIAPDriverOps mcu_iap_driver_ops;
 #endif // __FLASH_DRIVERS_H
