@@ -17,14 +17,12 @@
 
 typedef struct
 {
-    eDeviceStatus dstate;
     eEncoderType type;
     uint16_t cmd_read; // 段1 tx（16bit 值的内存视图）
     uint16_t cmd_nop;  // 段2 tx
     uint8_t rx1[2];    // 段1 rx（弃用）
     uint8_t rx2[2];    // 段2 rx（角度帧）
     uint16_t raw;
-    uint32_t ts;
 } tAS5047_ctx;
 
 static bool AS5047_init(EncoderChipHandle h, eEncoderType type)
@@ -40,8 +38,6 @@ static bool AS5047_init(EncoderChipHandle h, eEncoderType type)
     ctx->cmd_read = AS5047_CMD_READ;
     ctx->cmd_nop = AS5047_CMD_NOP;
     ctx->raw = 0U;
-    ctx->ts = 0U;
-    ctx->dstate = DEV_ONLINE;
     return true;
 }
 
@@ -59,24 +55,15 @@ static bool AS5047_read_angle(EncoderChipHandle h, uint16_t *raw, uint32_t *ts_m
     segs[1].rx = ctx->rx2;
     segs[1].len = 2U;
 
-    if (!enc_engine_read(segs, ctx->type, 2U))
-    {
-        ctx->dstate = DEV_RUN_ERROR;
+    if (!enc_engine_read(segs, ctx->type, 2U, ts_ms))
         return false;
-    }
 
     uint16_t frame = (uint16_t)(ctx->rx2[0] | ((uint16_t)ctx->rx2[1] << 8));
     if (frame & AS5047_ERR_FLAG)
-    {
-        ctx->dstate = DEV_RUN_ERROR;
         return false;
-    }
 
     ctx->raw = frame & AS5047_ANGLE_MASK;
-    ctx->ts = enc_tick_ms();
-    ctx->dstate = DEV_RUNNING;
     *raw = ctx->raw;
-    *ts_ms = ctx->ts;
     return true;
 }
 
@@ -96,14 +83,6 @@ static void AS5047_reset(EncoderChipHandle h)
         return;
     enc_engine_abort(ctx->type);
     ctx->raw = 0U;
-    ctx->ts = 0U;
-    ctx->dstate = DEV_ONLINE;
-}
-
-static uint8_t AS5047_get_state(EncoderChipHandle h)
-{
-    tAS5047_ctx *ctx = (tAS5047_ctx *)h;
-    return (uint8_t)(ctx ? ctx->dstate : DEV_OFFLINE);
 }
 
 const tEncoderDriverOps AS5047_driver_ops = {
@@ -111,7 +90,6 @@ const tEncoderDriverOps AS5047_driver_ops = {
     .read_angle = AS5047_read_angle,
     .get_resolution = AS5047_get_resolution,
     .reset = AS5047_reset,
-    .get_state = AS5047_get_state,
 };
 
 EncoderChipHandle AS5047_create(void)
@@ -119,11 +97,11 @@ EncoderChipHandle AS5047_create(void)
     tAS5047_ctx *ctx = (tAS5047_ctx *)calloc(1U, sizeof(tAS5047_ctx));
     if (!ctx)
         return NULL;
-    ctx->dstate = DEV_OFFLINE;
     return (EncoderChipHandle)ctx;
 }
 
 void AS5047_destroy(EncoderChipHandle h)
 {
     free(h);
+    h = NULL;
 }

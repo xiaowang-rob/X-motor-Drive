@@ -10,10 +10,8 @@
 
 #include "flash_drivers.h"
 
-#include "platform.h"
 // 显式引入 FLASH 编程接口（HAL 总头按 conf 决定是否展开）
 #include "stm32f4xx_hal_flash.h"
-#include "stm32f4xx_hal_flash_ex.h"
 
 #define FLASH_START_ADDR 0x08000000U   // Flash 起始地址
 #define FLASH_CAPACITY (1024U * 1024U) // Flash 容量 (bytes)

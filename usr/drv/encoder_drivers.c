@@ -56,7 +56,7 @@ bool enc_spi_set_mode(uint8_t cpol, uint8_t cpha, uint8_t data_bits)
     return true;
 }
 
-bool enc_engine_read(const tEncXferSeg *segs, eEncoderType type, uint8_t n)
+bool enc_engine_read(const tEncXferSeg *segs, eEncoderType type, uint8_t n, uint32_t *ms)
 {
     if (!segs || n == 0U)
         return false;
@@ -76,15 +76,11 @@ bool enc_engine_read(const tEncXferSeg *segs, eEncoderType type, uint8_t n)
         }
     }
     enc_cs(type, false);
+    *ms = HAL_GetTick();
     return true;
 }
 
 void enc_engine_abort(eEncoderType type)
 {
     enc_cs(type, false);
-}
-
-uint32_t enc_tick_ms(void)
-{
-    return platform_get_ms();
 }

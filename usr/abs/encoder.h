@@ -40,8 +40,6 @@ typedef struct
     // 复位芯片
     void (*reset)(EncoderChipHandle h);
 
-    // 设备状态（eDeviceStatus 值）
-    eDeviceStatus (*get_state)(EncoderChipHandle h);
 } tEncoderDriverOps;
 
 // ==================== 业务对象 ====================
@@ -58,6 +56,7 @@ typedef struct
     const tEncoderDriverOps *drv_ops; // 绑定的芯片驱动 ops
     EncoderChipHandle drv_handle;     // 芯片句柄
     eEncoderType type;                // 编码器类型（外部/内部）
+    eDeviceStatus dstate;             // 设备状态
     uint16_t resolution;              // 单圈分辨率
     float rad_per_lsb;                // 每 LSB 弧度
 
@@ -82,7 +81,6 @@ typedef struct
     // ---- 数据有效性 ----
     uint16_t valid_counter; // 有效数据计数（成功-1/失败+10 的滑动指示）
     bool first_run;         // 首次读数标志
-    bool data_valid;        // 数据有效性
 } tEncoder;
 
 // 绑定驱动并初始化（含调用 ops->init）
@@ -105,12 +103,6 @@ static inline float encoder_get_velocity(tEncoder *enc) { return enc->vel; }
 static inline float encoder_get_pll_velocity(tEncoder *enc) { return enc->pll_vel; }
 static inline float encoder_get_pll_angle(tEncoder *enc) { return enc->pll_theta; }
 static inline int32_t encoder_get_turns(tEncoder *enc) { return enc->num_turns; }
-static inline bool encoder_is_data_valid(tEncoder *enc) { return enc->data_valid; }
-static inline eDeviceStatus encoder_get_dev_state(tEncoder *enc)
-{
-    if (!enc || !enc->drv_ops || !enc->drv_handle)
-        return DEV_OFFLINE;
-    return enc->drv_ops->get_state(enc->drv_handle);
-}
+static inline eDeviceStatus encoder_get_dev_state(tEncoder *enc) { return enc->dstate; }
 
 #endif // __ABS_ENCODER_H

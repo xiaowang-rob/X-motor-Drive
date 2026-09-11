@@ -16,14 +16,12 @@
 
 typedef struct
 {
-    eDeviceStatus dstate;
     eEncoderType type;
     uint16_t cmd_high;
     uint16_t cmd_low;
     uint8_t rx1[2];
     uint8_t rx2[2];
     uint16_t raw;
-    uint32_t ts;
 } tMT6816_ctx;
 
 static bool parity_odd(uint16_t v)
@@ -48,8 +46,6 @@ static bool MT6816_init(EncoderChipHandle h, eEncoderType type)
     ctx->cmd_high = MT6816_CMD_HIGH;
     ctx->cmd_low = MT6816_CMD_LOW;
     ctx->raw = 0U;
-    ctx->ts = 0U;
-    ctx->dstate = DEV_ONLINE;
     return true;
 }
 
@@ -67,11 +63,8 @@ static bool MT6816_read_angle(EncoderChipHandle h, uint16_t *raw, uint32_t *ts_m
     segs[1].rx = ctx->rx2;
     segs[1].len = 2U;
 
-    if (!enc_engine_read(segs, ctx->type, 2U))
-    {
-        ctx->dstate = DEV_RUN_ERROR;
+    if (!enc_engine_read(segs, ctx->type, 2U, ts_ms))
         return false;
-    }
 
     uint16_t high = (uint16_t)(ctx->rx1[0] | ((uint16_t)ctx->rx1[1] << 8));
     uint16_t low = (uint16_t)(ctx->rx2[0] | ((uint16_t)ctx->rx2[1] << 8));
@@ -85,10 +78,7 @@ static bool MT6816_read_angle(EncoderChipHandle h, uint16_t *raw, uint32_t *ts_m
         return false;
 
     ctx->raw = bits >> 1;
-    ctx->ts = enc_tick_ms();
-    ctx->dstate = DEV_RUNNING;
     *raw = ctx->raw;
-    *ts_ms = ctx->ts;
     return true;
 }
 
@@ -108,14 +98,6 @@ static void MT6816_reset(EncoderChipHandle h)
         return;
     enc_engine_abort(ctx->type);
     ctx->raw = 0U;
-    ctx->ts = 0U;
-    ctx->dstate = DEV_ONLINE;
-}
-
-static uint8_t MT6816_get_state(EncoderChipHandle h)
-{
-    tMT6816_ctx *ctx = (tMT6816_ctx *)h;
-    return (uint8_t)(ctx ? ctx->dstate : DEV_OFFLINE);
 }
 
 const tEncoderDriverOps MT6816_driver_ops = {
@@ -123,7 +105,6 @@ const tEncoderDriverOps MT6816_driver_ops = {
     .read_angle = MT6816_read_angle,
     .get_resolution = MT6816_get_resolution,
     .reset = MT6816_reset,
-    .get_state = MT6816_get_state,
 };
 
 EncoderChipHandle MT6816_create(void)
@@ -131,7 +112,6 @@ EncoderChipHandle MT6816_create(void)
     tMT6816_ctx *ctx = (tMT6816_ctx *)calloc(1U, sizeof(tMT6816_ctx));
     if (!ctx)
         return NULL;
-    ctx->dstate = DEV_OFFLINE;
     return (EncoderChipHandle)ctx;
 }
 

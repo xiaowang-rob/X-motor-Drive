@@ -5,14 +5,17 @@
 // 厂商库符号（htim8/GPIO）经 platform.h，中断回调只在本文件定义。
 // ============================================================
 
-#include "gate_fd6288q.h"
+#include "gate_drivers.h"
 
 #include "tim.h"
 
-#include "platform.h"
-
 // ---------- 栅极驱动驱动 PWM + POWER ----------
+#define GATE_FPWM 20000U
+#define GATE_TPWM 0.00005.f
 #define GATE_TIC_PWM 2099 // 定时器周期计数值（ARR，对应 F_PWM=20kHz）
+
+#define T_DEADTIME_us 0.5f // 死区时间
+#define T_NOISE_us 0.5f    // 开关噪声时间
 
 #define GATE_PWM_HTIM (htim8) // 电机控制定时器句柄
 #define GATE_PWM_A_CHANNEL TIM_CHANNEL_3

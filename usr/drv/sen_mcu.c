@@ -13,6 +13,8 @@
 #include "tim.h"
 #include "sense_drivers.h"
 
+#define T_SAMPLE_us 7 // 采样 4-7us
+
 #define RATE_CURRENT_SAMPLE 100.0f // 电流采样放大比率
 #define RATE_VOLTAGE_SAMPLE 16     // 电压采样分压比率
 

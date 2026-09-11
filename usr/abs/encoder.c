@@ -1,21 +1,21 @@
 // ============================================================
-// encoder.c — 编码器业务对象（usr/abs，纯逻辑）
+// encoder.c — 编码器业务对象
 //
 // 输入：tEncoderDriverOps（同步 read_angle）+ 芯片句柄
 // 输出：多圈位置 pos、绝对角 angle_abs、M-T 速度 vel、PLL 平滑角度/速度、
 //       数据有效性 data_valid（连续读数失败判失效）
 // ============================================================
 
-#include "math_fast.h"
-
 #include "encoder.h"
+
+#include "math_fast.h"
 
 bool encoder_init(tEncoder *enc, const tEncoderDriverOps *ops,
                   EncoderChipHandle handle, eEncoderType type)
 {
     if (!enc || !ops || !handle)
         return false;
-
+    enc->dstate = DEV_OFFLINE;
     memset(enc, 0, sizeof(tEncoder));
     enc->drv_ops = ops;
     enc->drv_handle = handle;
@@ -29,6 +29,7 @@ bool encoder_init(tEncoder *enc, const tEncoderDriverOps *ops,
 
     enc->first_run = true;
     enc->data_valid = false;
+    enc->dstate = DEV_ONLINE;
     return true;
 }
 
@@ -44,14 +45,14 @@ void encoder_task(tEncoder *enc)
         // 读取失败：滑动计数向失效方向走
         enc->valid_counter = (enc->valid_counter < 110U) ? (uint16_t)(enc->valid_counter + 10U) : 110U;
         if (enc->valid_counter > ENCODER_ERR_VALID_LIMIT)
-            enc->data_valid = false;
+            enc->dstate = DEV_RUN_ERROR;
         return;
     }
 
     // 读取成功：计数向有效方向衰减
     enc->valid_counter = (enc->valid_counter > 0U) ? (uint16_t)(enc->valid_counter - 1U) : 0U;
     if (enc->valid_counter <= ENCODER_ERR_VALID_LIMIT)
-        enc->data_valid = true;
+        enc->dstate = DEV_RUNNING;
 
     float angle_abs = (float)raw * enc->rad_per_lsb;
 
@@ -132,6 +133,6 @@ void encoder_set_zero(tEncoder *enc)
     enc->pos_offset = (float)enc->last_raw_angle;
     enc->num_turns = 0;
     enc->pos = 0.0f;
-    enc->pll_theta = enc->angle_abs;
+    enc->pll_theta = edata_validnc->angle_abs;
     enc->pll_integ = 0.0f;
 }

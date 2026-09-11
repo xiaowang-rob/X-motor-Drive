@@ -1,12 +1,13 @@
 // ============================================================
-// can_drv.c — CAN 通讯底层驱动（usr/drv，v2 直连版）
+// can_drv.c — CAN 通讯底层驱动
 // ============================================================
 #include "bus_drivers.h"
 
 #include "can.h"
 
 #define CAN_CH (hcan2)
-
+#define STD_ID_MASK 0x7FF      // 标准帧11位ID掩码
+#define EXT_ID_MASK 0xFFFFFFFF // 扩展帧29位ID掩码
 #define CAN_SEND_TIMEOUT_MS 1000U
 
 static bus_rx_frame_cb s_rx_cb = NULL;
@@ -44,7 +45,7 @@ static bool can_config_filter(uint32_t std_id)
     return HAL_CAN_ConfigFilter(&CAN_CH, &f) == HAL_OK;
 }
 
-bool can_init(uint32_t std_id)
+static bool can_init(uint32_t std_id)
 {
     if (!can_config_filter(std_id))
         return false;
@@ -55,7 +56,7 @@ bool can_init(uint32_t std_id)
     return true;
 }
 
-bool can_send(uint32_t id, const uint8_t *data, uint16_t len)
+static bool can_send(uint32_t id, const uint8_t *data, uint16_t len)
 {
     if (!data || len > 8U)
         return false;
@@ -75,7 +76,7 @@ bool can_send(uint32_t id, const uint8_t *data, uint16_t len)
     return true;
 }
 
-void can_register_rx(bus_rx_frame_cb cb)
+static void can_register_rx(bus_rx_frame_cb cb)
 {
     s_rx_cb = cb;
 }

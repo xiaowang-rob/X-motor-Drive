@@ -5,9 +5,6 @@
 
 // ============================================================
 // encoder_drivers.h — 编码器芯片驱动统一出口
-//
-// 板上编码器为固定唯一实例，由 dev_board 装配一个。
-//
 // 还包含 SPI 编码器芯片驱动函数，用于统一 SPI 读角时序。
 // ============================================================
 
@@ -39,7 +36,7 @@ typedef struct
 bool enc_spi_set_mode(uint8_t cpol, uint8_t cpha, uint8_t data_bits);
 
 // 执行一次读角序列（CS 自管理）；任一段失败立即抬 CS 返回 false
-bool enc_engine_read(const tEncXferSeg *segs, eEncoderType type, uint8_t n);
+bool enc_engine_read(const tEncXferSeg *segs, eEncoderType type, uint8_t n, uint32_t *ms);
 
 // 中止并复位总线（抬 CS）
 void enc_engine_abort(eEncoderType type);

@@ -1,5 +1,5 @@
-#ifndef __ABS_FLASH_H
-#define __ABS_FLASH_H
+#ifndef __FLASH_H
+#define __FLASH_H
 
 #include "device.h"
 
@@ -33,14 +33,6 @@ typedef struct
     // 擦除指定扇区
     bool (*erase_sector)(FlashChipHandle h, uint8_t sec_id);
 
-    // ---- 几何 ----// 获取 Bootloader 分区 ID 和 数量
-    uint32_t (*get_bl_ids)(FlashChipHandle h, uint8_t *num);
-    uint32_t (*get_app_ids)(FlashChipHandle h, uint8_t *num); // 获取 App 分区 ID
-    uint32_t (*get_usr_ids)(FlashChipHandle h, uint8_t *num); // 获取用户分区 ID
-    uint32_t (*get_sector_addr)(FlashChipHandle h, uint8_t sec_id);
-    uint32_t (*get_sector_size)(FlashChipHandle h, uint8_t sec_id);
-    bool (*jump_app)(FlashChipHandle h);
-    bool (*jump_bl)(FlashChipHandle h);
     // 设备状态（eDeviceStatus 值）
     uint8_t (*get_state)(FlashChipHandle h);
 } tFlashDriverOps;

@@ -17,11 +17,9 @@ static const uint8_t MT6835_CMD[MT6835_FRAME_LEN] = {0xA0U, 0x03U, 0x00U, 0x00U,
 
 typedef struct
 {
-    eDeviceStatus dstate;
     eEncoderType type;
     uint8_t rx[MT6835_FRAME_LEN];
     uint16_t raw;
-    uint32_t ts;
 } tMT6835_ctx;
 
 static bool MT6835_init(EncoderChipHandle h, eEncoderType type)
@@ -35,8 +33,6 @@ static bool MT6835_init(EncoderChipHandle h, eEncoderType type)
 
     ctx->type = type; // 编码器类型 内编/外编
     ctx->raw = 0U;
-    ctx->ts = 0U;
-    ctx->dstate = DEV_ONLINE;
     return true;
 }
 
@@ -51,11 +47,8 @@ static bool MT6835_read_angle(EncoderChipHandle h, uint16_t *raw, uint32_t *ts_m
     seg.rx = ctx->rx;
     seg.len = MT6835_FRAME_LEN;
 
-    if (!enc_engine_read(&seg, ctx->type, 1U))
-    {
-        ctx->dstate = DEV_RUN_ERROR;
+    if (!enc_engine_read(&seg, ctx->type, 1U, ts_ms))
         return false;
-    }
 
     if (ctx->rx[4] & MT6835_MAG_WEAK_BIT)
         return false;
@@ -65,10 +58,7 @@ static bool MT6835_read_angle(EncoderChipHandle h, uint16_t *raw, uint32_t *ts_m
                         ((uint32_t)ctx->rx[4] >> 3);
 
     ctx->raw = (uint16_t)(angle_21 >> 7);
-    ctx->ts = enc_tick_ms();
-    ctx->dstate = DEV_RUNNING;
     *raw = ctx->raw;
-    *ts_ms = ctx->ts;
     return true;
 }
 
@@ -88,14 +78,6 @@ static void MT6835_reset(EncoderChipHandle h)
         return;
     enc_engine_abort(ctx->type);
     ctx->raw = 0U;
-    ctx->ts = 0U;
-    ctx->dstate = DEV_ONLINE;
-}
-
-static uint8_t MT6835_get_state(EncoderChipHandle h)
-{
-    tMT6835_ctx *ctx = (tMT6835_ctx *)h;
-    return (uint8_t)(ctx ? ctx->dstate : DEV_OFFLINE);
 }
 
 const tEncoderDriverOps MT6835_driver_ops = {
@@ -103,7 +85,6 @@ const tEncoderDriverOps MT6835_driver_ops = {
     .read_angle = MT6835_read_angle,
     .get_resolution = MT6835_get_resolution,
     .reset = MT6835_reset,
-    .get_state = MT6835_get_state,
 };
 
 EncoderChipHandle MT6835_create(void)
@@ -111,7 +92,6 @@ EncoderChipHandle MT6835_create(void)
     tMT6835_ctx *ctx = (tMT6835_ctx *)calloc(1U, sizeof(tMT6835_ctx));
     if (!ctx)
         return NULL;
-    ctx->dstate = DEV_OFFLINE;
     return (EncoderChipHandle)ctx;
 }
 

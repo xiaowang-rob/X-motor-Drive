@@ -13,14 +13,14 @@
 #define HFI_PLL_KP 50.0f      // PLL 比例增益
 #define HFI_PLL_KI 1000.0f    // PLL 积分增益
 
-#define HFI_INIT_VOLT 0.4f     // 初始辨识电压
+#define HFI_INIT_VOLT 0.4f   // 初始辨识电压
 #define HFI_MAX_VEL_E 2.618f // 最大电转速 (rad/s) 划分 HFI和SMO的界限, 原 150°/s
 
 // ================= 数据结构 =================
 typedef struct
 {
     // 注入状态
-     s8 inj_signal; // 当前注入极性 (+1/-1)
+    s8 inj_signal; // 当前注入极性 (+1/-1)
     u8 inj_count;
     u8 freq_ticks;
 
@@ -34,7 +34,7 @@ typedef struct
 
     // PLL
     float theta_e; // 电角度 (rad)
-    float vel_e; //
+    float vel_e;   //
     float pll_error;
     float pll_integrator;
     float vel_filtered; // 滤波后角速度

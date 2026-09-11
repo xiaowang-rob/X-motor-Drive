@@ -6,6 +6,19 @@
 #include "math_fast.h"
 #include "usr_config.h"
 
+// ---------- 速度 LPF（2nd Butterworth fc=120Hz fs=20kHz，由 tools/filter_coeffs.py 生成） ----------
+
+#define LPF_W_B0 0.0003460413
+#define LPF_W_B1 0.0006920827
+#define LPF_W_B2 0.0003460413
+#define LPF_W_A1 1.9466975408
+#define LPF_W_A2 -0.9480817061
+
+#define HFI_INJ_VOLT_AMP 2.0f      // 高频注入电压幅值 (V)
+#define HFI_INJ_FREQ_HZ 5000.0f    // 高频注入频率 (Hz)
+#define HFI_PLL_BANDWIDTH_HZ 60.0f // HFI-PLL 带宽 (Hz)
+#define SPEED_LPF_FACTOR 2.0f      // 速度 LPF 截止频率系数
+
 // ================ 全局/静态变量 =================
 tHFI_Handle g_hfi;
 
@@ -116,7 +129,7 @@ void hfi_detect_initial_position(float id, float *ualpha, float *ubeta)
     }
     else if (detect_timer < 600)
     {
-         ud_ref = HFI_INIT_VOLT; // 正脉冲
+        ud_ref = HFI_INIT_VOLT; // 正脉冲
     }
     else if (detect_timer < 610)
     {
@@ -129,14 +142,14 @@ void hfi_detect_initial_position(float id, float *ualpha, float *ubeta)
     }
     else if (detect_timer < 1200)
     {
-         ud_ref = -HFI_INIT_VOLT; // 负脉冲
+        ud_ref = -HFI_INIT_VOLT; // 负脉冲
     }
     else if (detect_timer < 1210)
     {
         ud_ref = -HFI_INIT_VOLT;
         g_hfi.init_curr_neg += FABSF(g_hfi.id_h);
     }
-     else // 判决：电流大的一侧为N极
+    else // 判决：电流大的一侧为N极
     {
         ud_ref = 0.0f;
         if (g_hfi.init_curr_pos < g_hfi.init_curr_neg)
