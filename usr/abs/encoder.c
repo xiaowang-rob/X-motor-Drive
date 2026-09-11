@@ -6,32 +6,9 @@
 //       数据有效性 data_valid（连续读数失败判失效）
 // ============================================================
 
-#include <math.h>
+#include "math_fast.h"
 
 #include "encoder.h"
-
-#define TWO_PI 6.28318530718f
-#define PI 3.14159265359f
-
-// 角度归一化：[-π, π)
-static float norm_angle_pi(float a)
-{
-    while (a >= PI)
-        a -= TWO_PI;
-    while (a < -PI)
-        a += TWO_PI;
-    return a;
-}
-
-// 角度归一化：[0, 2π)
-static float norm_angle_360(float a)
-{
-    while (a >= TWO_PI)
-        a -= TWO_PI;
-    while (a < 0.0f)
-        a += TWO_PI;
-    return a;
-}
 
 bool encoder_init(tEncoder *enc, const tEncoderDriverOps *ops,
                   EncoderChipHandle handle, eEncoderType type)
@@ -48,14 +25,14 @@ bool encoder_init(tEncoder *enc, const tEncoderDriverOps *ops,
 
     if (!ops->get_resolution(handle, &enc->resolution) || enc->resolution == 0U)
         return false;
-    enc->rad_per_lsb = TWO_PI / (float)enc->resolution;
+    enc->rad_per_lsb = MATH_2PI / (float)enc->resolution;
 
     enc->first_run = true;
     enc->data_valid = false;
     return true;
 }
 
-void encoder_update(tEncoder *enc)
+void encoder_task(tEncoder *enc)
 {
     if (!enc || !enc->drv_ops)
         return;
@@ -102,13 +79,13 @@ void encoder_update(tEncoder *enc)
         enc->num_turns--;
 
     // 连续位置（零位偏移 + 圈数）
-    enc->pos = ((float)raw - enc->pos_offset) * enc->rad_per_lsb + (float)enc->num_turns * TWO_PI;
+    enc->pos = ((float)raw - enc->pos_offset) * enc->rad_per_lsb + (float)enc->num_turns * MATH_2PI;
 
     // M/T 测速（未平滑，可作为快速量；平滑速度用 PLL）
     float dt = (float)(ts - enc->last_ts_ms) / 1000.0f;
     if (dt > 0.001f)
     {
-        float delta_angle = norm_angle_pi(angle_abs - enc->last_angle_abs);
+        float delta_angle = normalize_angle_pi(angle_abs - enc->last_angle_abs);
         enc->vel = delta_angle / dt;
         if (fabsf(enc->vel) > ENCODER_VEL_PHYS_LIMIT)
             enc->vel = 0.0f;
@@ -126,7 +103,7 @@ void encoder_pll_update(tEncoder *enc, float dt)
     if (!enc || dt <= 0.0f)
         return;
 
-    enc->pll_theta_delta = norm_angle_pi(enc->angle_abs - enc->pll_theta);
+    enc->pll_theta_delta = normalize_angle_pi(enc->angle_abs - enc->pll_theta);
 
     enc->pll_integ += enc->pll_theta_delta * dt;
     if (enc->pll_integ > ENCODER_PLL_INTEG_LIMIT)
@@ -136,7 +113,7 @@ void encoder_pll_update(tEncoder *enc, float dt)
 
     float estimated_speed = ENCODER_PLL_KP * enc->pll_theta_delta + ENCODER_PLL_KI * enc->pll_integ;
     enc->pll_theta += estimated_speed * dt;
-    enc->pll_theta = norm_angle_360(enc->pll_theta);
+    enc->pll_theta = normalize_angle_2pi(enc->pll_theta);
     enc->pll_vel = (fabsf(estimated_speed) < 0.05f) ? 0.0f : estimated_speed;
 
     // 超物理速度视为失锁，重锁到当前角度

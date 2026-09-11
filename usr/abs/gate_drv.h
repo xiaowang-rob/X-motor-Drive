@@ -3,16 +3,32 @@
 
 #include "device.h"
 
-typedef void *GateDrvHandle;
+typedef struct
+{
+    // 获取pwm配置
+    void (*get_pwm_config)(uint32_t *pwm_period);
+    void (*power_ctrl)(bool on);
+    void (*start)(void);
+    void (*stop)(void);
+    void (*set_compare)(uint16_t ticA, uint16_t ticB, uint16_t ticC);
+
+} tGateDrvOps;
 
 typedef struct
 {
-    void (*get_pwm_config)(GateDrvHandle handle, uint32_t *pwm_period, uint32_t *pwm_duty);
-    void (*power_ctrl)(GateDrvHandle handle, bool on);
-    void (*start)(GateDrvHandle handle);
-    void (*stop)(GateDrvHandle handle);
-    void (*set_compare)(GateDrvHandle handle, uint16_t ticA, uint16_t ticB, uint16_t ticC);
+    tGateDrvOps *ops;
 
-} tGateDrvOps;
+    uint16_t pwm_period;
+    eDeviceStatus dstate;
+    // 其他私有数据
+} tGateDrv;
+
+void gate_drv_init(tGateDrv *drv, tGateDrvOps *ops);
+uint16_t gate_drv_get_pwm_period(tGateDrv *drv) { return drv->pwm_period; };
+void gate_drv_power_on(tGateDrv *drv, bool on);
+void gate_drv_start(tGateDrv *drv);
+void gate_drv_stop(tGateDrv *drv);
+void gate_drv_set_compare(tGateDrv *drv, uint16_t ticA, uint16_t ticB, uint16_t ticC);
+eDeviceStatus gate_drv_get_status(tGateDrv *drv) { return drv->dstate; };
 
 #endif

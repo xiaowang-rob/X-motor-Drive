@@ -29,14 +29,13 @@ static const uint8_t SINE_TABLE[64] = {
 
 // ==================== tLed ====================
 
-bool led_init(tLed *led, const tLedDriverOps *ops, LedHandle handle, const tTimeIf *time)
+bool led_init(tLed *led, const tLedDriverOps *ops, LedHandle handle)
 {
-    if (!led || !ops || !handle || !time)
+    if (!led || !ops || !handle)
         return false;
 
     led->ops = ops;
     led->handle = handle;
-    led->time = time;
     led->state = LED_OFF;
     led->fast_ms = 300U; // 默认：快速闪烁 300ms 半周期
     led->slow_ms = 800U; // 默认：慢速闪烁 800ms 半周期
@@ -78,7 +77,7 @@ void led_task(tLed *led)
     case LED_BLINK_SLOW:
     case LED_BLINK_FAST:
     {
-        uint32_t now = led->time->get_ms(led->time->ctx);
+        uint32_t now = time_get_ms();
         if ((now - led->next_change_ms) >= (uint32_t)(led->state == LED_BLINK_FAST ? led->fast_ms : led->slow_ms))
         {
             led->ops->toggle(led->handle);
@@ -93,14 +92,13 @@ void led_task(tLed *led)
 
 // ==================== tRgb ====================
 
-bool rgb_init(tRgb *rgb, const tRgbDriverOps *ops, RgbHandle handle, const tTimeIf *time)
+bool rgb_init(tRgb *rgb, const tRgbDriverOps *ops, RgbHandle handle)
 {
-    if (!rgb || !ops || !handle || !time)
+    if (!rgb || !ops || !handle)
         return false;
 
     rgb->ops = ops;
     rgb->handle = handle;
-    rgb->time = time;
     rgb->state = RGB_OFF;
     rgb->color = RGB_BLACK;
     rgb->fast_ms = 300U;
@@ -155,7 +153,7 @@ void rgb_task(tRgb *rgb)
     case RGB_BLINK_SLOW:
     case RGB_BLINK_FAST:
     {
-        uint32_t now = rgb->time->get_ms(rgb->time->ctx);
+        uint32_t now = time_get_ms();
         uint32_t half = (rgb->state == RGB_BLINK_FAST) ? rgb->fast_ms : rgb->slow_ms;
         if ((now - rgb->next_change_ms) >= half)
         {
@@ -169,7 +167,7 @@ void rgb_task(tRgb *rgb)
     }
     case RGB_BREATHE:
     {
-        uint32_t now = rgb->time->get_ms(rgb->time->ctx);
+        uint32_t now = time_get_ms();
         if ((now - rgb->next_change_ms) >= (uint32_t)rgb->breathe_ms)
         {
             rgb->ops->set_brightness(rgb->handle, SINE_TABLE[rgb->breath_idx]);

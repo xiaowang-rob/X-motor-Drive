@@ -2,7 +2,7 @@
 #define __ABS_LED_H
 
 #include "device.h"
-#include "time.h"
+#include "timeIF.h"
 
 // ============================================================
 // led.h — LED / RGB 灯（usr/abs）
@@ -69,7 +69,6 @@ typedef struct
 {
     const tLedDriverOps *ops;
     LedHandle handle;
-    const tTimeIf *time; // 注入：时间基准
 
     volatile eLedState state;
 
@@ -78,7 +77,7 @@ typedef struct
     uint32_t next_change_ms;
 } tLed;
 
-bool led_init(tLed *led, const tLedDriverOps *ops, LedHandle handle, const tTimeIf *time);
+bool led_init(tLed *led, const tLedDriverOps *ops, LedHandle handle);
 void led_set_state(tLed *led, eLedState state);
 void led_set_times(tLed *led, uint16_t fast_ms, uint16_t slow_ms);
 void led_task(tLed *led); // 周期调用，按状态驱动硬件
@@ -97,7 +96,6 @@ typedef struct
 {
     const tRgbDriverOps *ops;
     RgbHandle handle;
-    const tTimeIf *time; // 注入：时间基准
 
     volatile eRgbState state;
     tRGBColor color;
@@ -109,7 +107,7 @@ typedef struct
     uint8_t breath_idx;      // 呼吸查表索引（0~63）
 } tRgb;
 
-bool rgb_init(tRgb *rgb, const tRgbDriverOps *ops, RgbHandle handle, const tTimeIf *time);
+bool rgb_init(tRgb *rgb, const tRgbDriverOps *ops, RgbHandle handle);
 void rgb_set_state(tRgb *rgb, eRgbState state);
 void rgb_set_color(tRgb *rgb, tRGBColor color);
 void rgb_set_times(tRgb *rgb, uint16_t fast_ms, uint16_t slow_ms, uint16_t breathe_ms);

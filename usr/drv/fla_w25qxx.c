@@ -6,9 +6,14 @@
 // 容量 16MB；操作前写使能(0x06)，完成后轮询状态寄存器 BUSY。
 // 底层直接使用本板 Flash SPI（platform.h 的 FLASH_HSPI/hspi2）。
 // ============================================================
-
-#include "platform.h"
 #include "flash_drivers.h"
+
+#include "spi.h"
+
+// ---------- Flash SPI + CS ----------
+#define FLASH_HSPI (hspi2)
+#define FLASH_CS_GPIOx GPIOB
+#define FLASH_CS_GPIOx_PIN GPIO_PIN_12
 
 #define W25_CAPACITY_BYTES (16U * 1024U * 1024U)
 #define W25_PAGE_SIZE 256U

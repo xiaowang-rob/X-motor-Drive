@@ -8,11 +8,15 @@
 // 灯珠数取 Pixel_NUM；传输完成中断 HAL_TIM_PWM_PulseFinishedCallback
 // 由本文件唯一持有（复位忙标志）。
 // ============================================================
+#include "led_drivers.h"
+#include "tim.h"
 
-#include "led.h"
-
-#include "platform.h"
-#include "rgb_drivers.h"
+// ---------- RGB PWM  ----------
+#define RGB_PWM_HTIM (htim4)
+#define RGB_PWM_CHANNEL TIM_CHANNEL_2
+#define RGB_NUM 2   // 板上灯珠数量
+#define CODE_1 (75) // 逻辑 1 占空比 CCR 值
+#define CODE_0 (35) // 逻辑 0 占空比 CCR 值
 
 #define WS_RESET_BITS 100U // 帧尾复位（低电平）位数
 

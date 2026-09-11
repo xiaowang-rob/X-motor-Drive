@@ -10,8 +10,16 @@
 // init 首帧超时返回 false，上层可见不可用。
 // ============================================================
 
-#include "platform.h"
+#include "tim.h"
 #include "sense_drivers.h"
+
+#define RATE_CURRENT_SAMPLE 100.0f // 电流采样放大比率
+#define RATE_VOLTAGE_SAMPLE 16     // 电压采样分压比率
+
+// ---------- 采样触发 PWM  ----------
+#define SAMPLE_TIC_PWM 2099
+#define SAMPLE_PWM_HTIM (htim8)
+#define SAMPLE_PWM_CHANNEL TIM_CHANNEL_4
 
 #define ADC_CUR_CH 3U
 #define ADC_VT_CH 2U

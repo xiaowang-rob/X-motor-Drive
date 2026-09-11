@@ -1,13 +1,15 @@
 // ============================================================
 // can_drv.c — CAN 通讯底层驱动（usr/drv，v2 直连版）
 // ============================================================
+#include "bus_drivers.h"
 
-#include "platform.h" // CAN_CH / CAN_INSTANCE / STD_ID_MASK / 时间
-#include "com_drivers.h"
+#include "can.h"
+
+#define CAN_CH (hcan2)
 
 #define CAN_SEND_TIMEOUT_MS 1000U
 
-static can_rx_cb s_rx_cb = NULL;
+static bus_rx_frame_cb s_rx_cb = NULL;
 
 // ---- 收帧中断（只在本文件定义） ----
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
@@ -42,7 +44,7 @@ static bool can_config_filter(uint32_t std_id)
     return HAL_CAN_ConfigFilter(&CAN_CH, &f) == HAL_OK;
 }
 
-bool can_drv_start(uint32_t std_id)
+bool can_init(uint32_t std_id)
 {
     if (!can_config_filter(std_id))
         return false;
@@ -53,9 +55,9 @@ bool can_drv_start(uint32_t std_id)
     return true;
 }
 
-bool can_drv_send(uint32_t id, const uint8_t *msg, uint8_t len)
+bool can_send(uint32_t id, const uint8_t *data, uint16_t len)
 {
-    if (!msg || len > 8U)
+    if (!data || len > 8U)
         return false;
 
     CAN_TxHeaderTypeDef hdr;
@@ -67,19 +69,19 @@ bool can_drv_send(uint32_t id, const uint8_t *msg, uint8_t len)
     hdr.TransmitGlobalTime = DISABLE;
 
     uint32_t mailbox;
-    if (HAL_CAN_AddTxMessage(&CAN_CH, &hdr, (uint8_t *)msg, &mailbox) != HAL_OK)
-        return false;
+    if (HAL_CAN_AddTxMessage(&CAN_CH, &hdr, (uint8_t *)data, &mailbox) != HAL_OK)
+        return false; // 未成功发送，返回 false 上层重试
 
-    uint32_t t0 = platform_get_ms();
-    while (HAL_CAN_GetTxMailboxesFreeLevel(&CAN_CH) < 3U)
-    {
-        if ((platform_get_ms() - t0) > CAN_SEND_TIMEOUT_MS)
-            return false;
-    }
     return true;
 }
 
-void can_drv_register_rx(can_rx_cb cb)
+void can_register_rx(bus_rx_frame_cb cb)
 {
     s_rx_cb = cb;
 }
+
+const tBusDriverOps can_drv_ops = {
+    .init = can_init,
+    .send = can_send,
+    .register_callback = can_register_rx,
+};

@@ -4,12 +4,15 @@
 // 板上两颗普通 LED（CAN 状态灯 / 编码器状态灯）的 tLedDriverOps 实现。
 // 引脚映射与极性只出现在本文件（经 platform.h 宏）。
 // ============================================================
-
-#include "platform.h"
 #include "led_drivers.h"
+#include "gpio.h"
 
 #define LED_DRV_NUM 2U
 
+#define LED_0_GPIOx GPIOD
+#define LED_0_GPIOx_PIN GPIO_PIN_2
+#define LED_1_GPIOx GPIOB
+#define LED_1_GPIOx_PIN GPIO_PIN_3
 typedef struct
 {
     GPIO_TypeDef *port;

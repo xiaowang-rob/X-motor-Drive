@@ -1,10 +1,7 @@
 #ifndef __COM_DRIVERS_H
 #define __COM_DRIVERS_H
 
-#include "message.h"
-
-// 收帧回调（中断上下文，尽快拷贝）
-typedef void (*can_rx_cb)(uint32_t id, const uint8_t *data, uint8_t len);
+#include "uart_com.h"
 
 // 以标准帧 ID 配置过滤器并启动（可重复调用以改 ID）
 bool can_drv_start(uint32_t std_id);
@@ -28,7 +25,7 @@ void uart_drv_rx_start(uint8_t *buf, uint16_t len);
 bool uart_drv_tx(uint8_t *data, uint16_t len);
 
 // 接收完成回调（中断上下文）
-typedef void (*uart_rx_done_cb)(uint16_t len);
+
 void uart_drv_register_rx_done(uart_rx_done_cb cb);
 
 // CDC 发送（总线忙返回 false）

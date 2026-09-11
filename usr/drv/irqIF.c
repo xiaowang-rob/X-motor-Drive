@@ -1,6 +1,19 @@
 #include "irqIF.h"
 #include "platform.h"
 
+void irq_enable(void)
+{
+    __enable_irq();
+}
+void irq_disable(void)
+{
+    __disable_irq();
+}
+void system_reset(void)
+{
+    NVIC_SystemReset();
+}
+
 static void (*s_sample_cb)(void) = NULL; // 上溢：电流采样
 static void (*s_ctrl_cb)(void) = NULL;   // 下溢：FOC 控制
 

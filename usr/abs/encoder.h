@@ -50,8 +50,8 @@ typedef struct
 #define ENCODER_PLL_KP 80.0f
 #define ENCODER_PLL_KI 2000.0f
 #define ENCODER_PLL_INTEG_LIMIT 0.1745f // ±10°
-#define ENCODER_VEL_PHYS_LIMIT 10472.0f // rad/s 物理上限（≈100k rpm）
-#define ENCODER_ERR_VALID_LIMIT 100     // valid_counter 超过该值判数据无效
+#define ENCODER_VEL_PHYS_LIMIT 1046.0f  // rad/s 物理上限（≈10k rpm）
+#define ENCODER_ERR_VALID_LIMIT 100     // valid_counter 超过该值判编码器通讯出问题
 
 typedef struct
 {
@@ -89,8 +89,8 @@ typedef struct
 bool encoder_init(tEncoder *enc, const tEncoderDriverOps *ops,
                   EncoderChipHandle handle, eEncoderType type);
 
-// 每周期调用：读取一次角度并更新多圈位置/测速/有效性
-void encoder_update(tEncoder *enc);
+// 处理任务：读取一次角度并更新多圈位置/测速/有效性
+void encoder_task(tEncoder *enc);
 
 // PLL 平滑更新（由上层按固定周期 dt 调用，输出 pll_vel/pll_theta）
 void encoder_pll_update(tEncoder *enc, float dt);

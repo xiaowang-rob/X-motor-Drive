@@ -221,8 +221,8 @@ typedef enum
 #define USB_PACKET_TAIL 0xAA
 
 /* ---------- UART 协议格式 ---------- */
-#define PACKET_HEAD 0x55
-#define PACKET_TAIL 0xAA
+#define UART_PACKET_HEAD 0x55
+#define UART_PACKET_TAIL 0xAA
 
 /* ---------- 帧长度 ---------- */
 #define MAX_FRAME_LENGTH 128

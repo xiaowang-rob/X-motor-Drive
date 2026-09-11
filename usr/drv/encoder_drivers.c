@@ -8,8 +8,14 @@
 // ============================================================
 
 #include "encoder_drivers.h"
+#include "spi.h"
+// ---------- 编码器 SPI + CS ----------
+#define ENCODER_HSPI (hspi3)
 
-#include "platform.h"
+#define ENCODER_INT_CS_GPIOx GPIOA
+#define ENCODER_INT_CS_GPIOx_PIN GPIO_PIN_15
+#define ENCODER_EXT_CS_GPIOx GPIOA
+#define ENCODER_EXT_CS_GPIOx_PIN GPIO_PIN_15
 
 #define ENC_XFER_TIMEOUT_MS 100U // SPI 读取超时时间（ms）
 

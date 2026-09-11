@@ -83,7 +83,7 @@ uint16_t queue_remaining(const tStaticQueue *queue)
     return (queue->capacity - queue->count);
 }
 
-//  入队
+//  单字节入队
 eQueueStatus queue_static_enqueue(tStaticQueue *queue, const uint8_t *data)
 {
     if (isQueueNull(queue) || data == NULL)
@@ -143,9 +143,6 @@ eQueueStatus queue_static_dequeue(tStaticQueue *queue, uint8_t *data)
     if (isQueueNull(queue))
         return QUEUE_STATUS_ERROR;
 
-    if (queue->count == 0)
-        return QUEUE_STATUS_EMPTY;
-
     QUEUE_ENTER_CRITICAL();
 
     if (queue->count == 0)
@@ -159,6 +156,121 @@ eQueueStatus queue_static_dequeue(tStaticQueue *queue, uint8_t *data)
 
     queue->front = (queue->front + 1) & queue->mask;
     queue->count--;
+
+    QUEUE_EXIT_CRITICAL();
+    return QUEUE_STATUS_OK;
+}
+//  多字节入队
+eQueueStatus queue_static_enqueue_bulk(tStaticQueue *queue, const uint8_t *data, uint16_t len)
+{
+    if (isQueueNull(queue) || data == NULL)
+        return QUEUE_STATUS_ERROR;
+
+    if (len == 0)
+        return QUEUE_STATUS_OK;
+
+    QUEUE_ENTER_CRITICAL();
+
+    uint16_t free = queue->capacity - queue->count;
+
+    // 情况1：空间足够，直接写入
+    if (len <= free)
+    {
+        // 拷贝 len 字节到环形缓冲区
+        uint16_t rear = queue->rear;
+        uint16_t first = queue->capacity - rear; // 从 rear 到缓冲区末尾的连续空间
+        if (first >= len)
+        {
+            memcpy(&queue->buffer[rear], data, len);
+        }
+        else
+        {
+            memcpy(&queue->buffer[rear], data, first);
+            memcpy(queue->buffer, data + first, len - first);
+        }
+        queue->rear = (rear + len) & queue->mask;
+        queue->count += len;
+        QUEUE_EXIT_CRITICAL();
+        return QUEUE_STATUS_OK;
+    }
+
+    // 空间不足，检查是否允许覆盖
+    if (!queue->cover)
+    {
+        QUEUE_EXIT_CRITICAL();
+        return QUEUE_STATUS_FULL;
+    }
+
+    // ---------- 覆盖模式 ----------
+    // 如果 len >= capacity，则只保留最后 capacity 个字节，重置整个队列
+    if (len >= queue->capacity)
+    {
+        const uint8_t *src = data + (len - queue->capacity);
+        memcpy(queue->buffer, src, queue->capacity);
+        queue->front = 0;
+        queue->rear = 0;
+        queue->count = queue->capacity;
+        QUEUE_EXIT_CRITICAL();
+        return QUEUE_STATUS_OK;
+    }
+
+    // 此时 len < capacity 且 len > free，需要覆盖 (len - free) 个旧数据
+    uint16_t overwrite = len - free;
+    // 丢弃队首的 overwrite 个字节
+    queue->front = (queue->front + overwrite) & queue->mask;
+    queue->count -= overwrite; // 现在 count = capacity - len
+
+    // 现在有足够的空闲空间（正好 len 个），写入新数据
+    uint16_t rear = queue->rear;
+    uint16_t first = queue->capacity - rear;
+    if (first >= len)
+    {
+        memcpy(&queue->buffer[rear], data, len);
+    }
+    else
+    {
+        memcpy(&queue->buffer[rear], data, first);
+        memcpy(queue->buffer, data + first, len - first);
+    }
+    queue->rear = (rear + len) & queue->mask;
+    queue->count += len; // 变为 capacity
+
+    QUEUE_EXIT_CRITICAL();
+    return QUEUE_STATUS_OK;
+}
+
+//  多字节出队
+eQueueStatus queue_static_dequeue_bulk(tStaticQueue *queue, uint8_t *data, uint16_t len)
+{
+    if (isQueueNull(queue) || data == NULL)
+        return QUEUE_STATUS_ERROR;
+
+    if (len == 0)
+        return QUEUE_STATUS_OK;
+
+    QUEUE_ENTER_CRITICAL();
+
+    if (queue->count < len)
+    {
+        QUEUE_EXIT_CRITICAL();
+        return QUEUE_STATUS_EMPTY;
+    }
+
+    // 拷贝 len 字节从环形缓冲区到 data
+    uint16_t front = queue->front;
+    uint16_t first = queue->capacity - front;
+    if (first >= len)
+    {
+        memcpy(data, &queue->buffer[front], len);
+    }
+    else
+    {
+        memcpy(data, &queue->buffer[front], first);
+        memcpy(data + first, queue->buffer, len - first);
+    }
+
+    queue->front = (front + len) & queue->mask;
+    queue->count -= len;
 
     QUEUE_EXIT_CRITICAL();
     return QUEUE_STATUS_OK;

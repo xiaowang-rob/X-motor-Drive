@@ -223,7 +223,6 @@ bool flash_iap_verify_bl(tFlash *s, uint32_t offset,
     return true;
 }
 
-// 跳转 / 复位
 void flash_iap_jump_app(tFlash *s)
 {
     if (!s)
@@ -234,5 +233,5 @@ void flash_iap_reset(tFlash *s)
 {
     if (!s)
         return;
-    s->ops->reset(s->handle);
+    s->ops->jump_bl(s->handle);
 }
