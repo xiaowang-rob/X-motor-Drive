@@ -40,7 +40,8 @@ typedef struct
 } tBusDriver;
 
 // 初始化总线驱动 和 内存池 和 队列
-bool bus_init(tBusDriver *bus, tBusDriverOps *ops, uint32_t device_id);
+bool bus_init(tBusDriver *bus, tBusDriverOps *ops);
+bool bus_start(tBusDriver *bus, uint32_t device_id);
 bool bus_send(tBusDriver *bus, tBus_Frame *frame);
 
 // 这个会持续从队列中提取数据帧并返回 没有数据帧则返回NULL

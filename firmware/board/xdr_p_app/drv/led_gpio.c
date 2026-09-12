@@ -50,16 +50,11 @@ static void led_drv_toggle(LedHandle h)
     HAL_GPIO_TogglePin(r->port, r->pin);
 }
 
-static const tLedDriverOps g_led_drv_ops = {
+const tLedDriverOps led_drv_ops = {
     .init = led_drv_init,
     .set = led_drv_set,
     .toggle = led_drv_toggle,
 };
-
-const tLedDriverOps *led_drv_ops(void)
-{
-    return &g_led_drv_ops;
-}
 
 LedHandle led_drv_handle(uint8_t idx)
 {

@@ -1,10 +1,4 @@
-#include "bsp_base.h"
-#include "bsp_rgb.h"
 #include "status_feedback.h"
-#include "foc_main.h"
-#include "bsp_led.h"
-#include "protection_manager.h"
-#include "device.h"
 
 void status_feedback_main_loop()
 {

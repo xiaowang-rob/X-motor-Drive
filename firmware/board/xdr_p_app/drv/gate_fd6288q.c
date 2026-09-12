@@ -68,6 +68,6 @@ const tGateDrvOps gate_fd6288q_ops = {
     .get_pwm_config = fd_get_pwm_config,
     .power_ctrl = fd_power_ctrl,
     .set_compare = fd_set_compare,
-    .start_output = fd_start_output,
-    .stop_output = fd_stop_output,
+    .start = fd_start_output,
+    .stop = fd_stop_output,
 };

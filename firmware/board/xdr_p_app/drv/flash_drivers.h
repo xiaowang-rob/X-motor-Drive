@@ -2,6 +2,7 @@
 #define __FLASH_DRIVERS_H
 
 #include "flash.h"
+#include "iap.h"
 
 // ============================================================
 // flash_drivers.h — Flash 芯片驱动统一出口（usr/drv，v2 直连版）

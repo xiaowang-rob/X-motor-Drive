@@ -35,17 +35,16 @@ void bus_rx_frame_cb(tBusDriver *bus, uint32_t id, const uint8_t *data, uint8_t 
         return;
     }
 }
-// 初始化总线驱动 和 内存池 和 队列
-bool bus_init(tBusDriver *bus, tBusDriverOps *ops, uint32_t device_id)
+
+// 初始化内存池 和 队列
+bool bus_init(tBusDriver *bus, tBusDriverOps *ops)
 {
     if (bus == NULL || ops == NULL)
         return false;
 
     bus->ops = ops;
-    bus->device_id = device_id;
+
     bus->dstate = DEV_OFFLINE;
-    if (!bus->ops->init(device_id)) // 初始化总线驱动
-        return false;
 
     // 创建内存池
     mp_init(&bus->mem_pool, bus_mp_buf0, MP0_BLOCK_SIZE, MP0_BLOCK_NUM);
@@ -57,11 +56,21 @@ bool bus_init(tBusDriver *bus, tBusDriverOps *ops, uint32_t device_id)
     // 注册回调函数
     bus->ops->register_callback(bus_rx_frame_cb);
 
+    return true;
+}
+
+bool bus_start(tBusDriver *bus, uint32_t device_id)
+{
+    if (!bus)
+        return false;
+    bus->device_id = device_id;
+    if (!bus->ops->init(device_id)) // 初始化总线驱动
+        return false;
     bus->dstate = DEV_ONLINE;
     bus->rstate = DEV_ONLINE; // 初始化总线状态为在线
     bus->tstate = DEV_ONLINE; // 初始化总线状态为在线
-    return true;
 }
+
 bool bus_send(tBusDriver *bus, tBus_Frame *frame)
 {
     if (bus == NULL || frame == NULL)

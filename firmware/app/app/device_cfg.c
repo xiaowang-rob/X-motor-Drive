@@ -1,3 +1,23 @@
+
+// 在这里对板上的所有驱动进行组装 然后给高层提供设备接口
+
+#include "device_cfg.h"
+
+void dv_init(void)
+{
+
+    flash_init(&flash_mcu, &mcu_flash_driver_ops, void); // mcu flash没有句柄
+    iap_init(&iap_app, &mcu_iap_driver_ops, IAP_APP);
+
+    led_init(&led0, &g_led_drv_ops)
+        bus_init(&can, &can_drv_ops);
+
+    // TODO:读取参数添加上位机设置好的编码器
+    EncoderChipHandle mt6816_int = MT6816_create();
+    encoder_init(&int_encoder, &MT6816_driver_ops, mt6816_int, INT_ENCODER);
+
+    gate_drv_init(&motor_drv, &gate_fd6288q_ops);
+}
 // ============================================================
 // dev_board.c — 组装层：板级设备装配（usr/app，v2）
 //
@@ -10,7 +30,7 @@
 
 #include <stddef.h> // NULL
 
-#include "board.h"   // BL/APP/PARAM 分区（产品配置单点）
+#include "board.h"    // BL/APP/PARAM 分区（产品配置单点）
 #include "platform.h" // platform_init / platform_get_ms/us / jump/reset
 
 #include "usr/drv/encoder_drivers.h"

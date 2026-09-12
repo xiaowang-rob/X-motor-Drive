@@ -10,22 +10,44 @@
 #define EXT_ID_MASK 0xFFFFFFFF // 扩展帧29位ID掩码
 #define CAN_SEND_TIMEOUT_MS 1000U
 
-static bus_rx_frame_cb s_rx_cb = NULL;
+// static bus_rx_frame_cb s_rx_cb = NULL;
+typedef struct
+{
+    CAN_HandleTypeDef *hcan;
+    tBusDriverOps *ops;
+    bus_rx_frame_cb s_rx_cb;
+} tCan_ctx;
+
+const tBusDriverOps can_drv_ops = {
+    .init = can_init,
+    .send = can_send,
+    .register_callback = can_register_rx,
+};
+
+// 创建一个驱动实例
+tCan_ctx can2 = {
+    .hcan = &hcan2,
+    .ops = can_drv_ops,
+    .s_rx_cb = NULL,
+};
 
 // ---- 收帧中断（只在本文件定义） ----
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
-    uint8_t data[8];
-    CAN_RxHeaderTypeDef hdr;
-    if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &hdr, data) == HAL_OK)
+    if (hcan == can2.hcan)
     {
-        if (s_rx_cb)
-            s_rx_cb(hdr.StdId, data, hdr.DLC);
+        uint8_t data[8];
+        CAN_RxHeaderTypeDef hdr;
+        if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &hdr, data) == HAL_OK)
+        {
+            if (can2.s_rx_cb)
+                can2.s_rx_cb(hdr.StdId, data, hdr.DLC);
+        }
     }
 }
 
 // CAN2 专用过滤组（14 起）
-static bool can_config_filter(uint32_t std_id)
+static bool can_config_filter(tCan_ctx *can, uint32_t std_id)
 {
     CAN_FilterTypeDef f;
     memset(&f, 0, sizeof(f));
@@ -42,12 +64,13 @@ static bool can_config_filter(uint32_t std_id)
     f.FilterMaskIdHigh = (uint16_t)(mask_reg >> 16);
     f.FilterMaskIdLow = (uint16_t)mask_reg;
 
-    return HAL_CAN_ConfigFilter(&CAN_CH, &f) == HAL_OK;
+    return HAL_CAN_ConfigFilter(can->hcan, &f) == HAL_OK;
 }
 
-static bool can_init(uint32_t std_id)
+static bool can_init(tCan_ctx *can, uint32_t std_id)
 {
-    if (!can_config_filter(std_id))
+
+    if (!can2_config_filter(std_id))
         return false;
     if (HAL_CAN_Start(&CAN_CH) != HAL_OK)
         return false;
@@ -80,9 +103,3 @@ static void can_register_rx(bus_rx_frame_cb cb)
 {
     s_rx_cb = cb;
 }
-
-const tBusDriverOps can_drv_ops = {
-    .init = can_init,
-    .send = can_send,
-    .register_callback = can_register_rx,
-};

@@ -1,24 +1,28 @@
 #ifndef __DEV_BOARD_H
 #define __DEV_BOARD_H
 
-#include <stdbool.h>
+#include "bus_drivers.h"
+#include "encoder_drivers.h"
+#include "flash_drivers.h"
+#include "gate_drivers.h"
+#include "led_drivers.h"
+#include "sense_drivers.h"
+#include "uart_drivers.h"
 
-#include "usr/abs/device.h"
-#include "usr/abs/encoder.h"
-#include "usr/abs/flash.h"
-#include "usr/abs/led.h"
-#include "usr/abs/sense.h"
-#include "usr/abs/time.h"
+tFlash flash_mcu;
+tIAP iap_app;
+tLed led0;
+tLed led1;
+tRgb rgb;
+tSense sen;
 
-// ============================================================
-// dev_board.h — 组装层（usr/app）：板级设备装配的唯一入口
-//
-// 组装层是唯一同时 include hw 头 + drv 头 + abs 头的地方；
-// 它把"板上资源(hw) + 芯片实现(drv)"绑定成实例、初始化 abs 业务对象，
-// 并以全局对象 g_dev 暴露给业务层。
-//
-// 业务层只 include 本头（及 usr/abs），永远接触不到 hw/drv/厂商符号。
-// ============================================================
+tGateDrv motor_drv;
+tEncoder int_encoder;
+tEncoder ext_encoder;
+
+tBusDriver can;
+tUartDriver usart;
+tUartDriver usb;
 
 // 全板设备集合（由 dev_board_init 一次性装配）
 typedef struct
