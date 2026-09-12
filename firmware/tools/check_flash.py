@@ -4,7 +4,7 @@ import sys
 import subprocess
 from pathlib import Path
 
-from utils import get_cmake_project_name
+from firmware.tools.utils import get_cmake_project_name
 
 TOOLS_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = TOOLS_DIR.parent

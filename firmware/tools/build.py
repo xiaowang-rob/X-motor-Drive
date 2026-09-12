@@ -18,7 +18,7 @@ from pathlib import Path
 TOOLS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS_DIR))
 
-import flash_core
+import firmware.tools.flash_core as flash_core
 
 PROJECT_ROOT = TOOLS_DIR.parent
 BUILD_DIR = PROJECT_ROOT / "build"

@@ -6,10 +6,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import config_parser
-import filter_coeffs
-import linker_mod
-from utils import get_cmake_project_name, get_firmware_out_dir, clean_ansi
+import firmware.tools.config_parser as config_parser
+import firmware.tools.filter_coeffs as filter_coeffs
+import firmware.tools.linker_mod as linker_mod
+from firmware.tools.utils import get_cmake_project_name, get_firmware_out_dir, clean_ansi
 
 
 def _fmt_f(val):

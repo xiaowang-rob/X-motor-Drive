@@ -3,7 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from utils import get_cmake_project_name
+from firmware.tools.utils import get_cmake_project_name
 
 
 def _elf_name(project_root, fw_type):

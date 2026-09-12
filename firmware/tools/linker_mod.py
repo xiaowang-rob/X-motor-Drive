@@ -2,7 +2,7 @@
 import re
 import sys
 
-import config_parser
+import firmware.tools.config_parser as config_parser
 
 
 def modify_linker_script(config_h_path, ld_path):
