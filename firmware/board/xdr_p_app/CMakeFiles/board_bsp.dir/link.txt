@@ -1,2 +1,0 @@
-/usr/bin/ar qc libboard_bsp.a CMakeFiles/board_bsp.dir/bsp/bsp_adc.c.o CMakeFiles/board_bsp.dir/bsp/bsp_base.c.o CMakeFiles/board_bsp.dir/bsp/bsp_can.c.o CMakeFiles/board_bsp.dir/bsp/bsp_flash.c.o CMakeFiles/board_bsp.dir/bsp/bsp_led.c.o CMakeFiles/board_bsp.dir/bsp/bsp_pwm.c.o CMakeFiles/board_bsp.dir/bsp/bsp_rgb.c.o CMakeFiles/board_bsp.dir/bsp/bsp_spi.c.o CMakeFiles/board_bsp.dir/bsp/bsp_uart.c.o CMakeFiles/board_bsp.dir/bsp/bsp_usb.c.o CMakeFiles/board_bsp.dir/usb/usbd_desc.c.o CMakeFiles/board_bsp.dir/startup_stm32f405xx.s.o
-/usr/bin/ranlib libboard_bsp.a

@@ -1,9 +1,0 @@
-/data/Github/X-motor-Drive/CMakeFiles/XDr.dir
-/data/Github/X-motor-Drive/CMakeFiles/edit_cache.dir
-/data/Github/X-motor-Drive/CMakeFiles/rebuild_cache.dir
-/data/Github/X-motor-Drive/board/xdr_p_o1.2/CMakeFiles/stm32_hal.dir
-/data/Github/X-motor-Drive/board/xdr_p_o1.2/CMakeFiles/stm32_core.dir
-/data/Github/X-motor-Drive/board/xdr_p_o1.2/CMakeFiles/stm32_usb.dir
-/data/Github/X-motor-Drive/board/xdr_p_o1.2/CMakeFiles/board_bsp.dir
-/data/Github/X-motor-Drive/board/xdr_p_o1.2/CMakeFiles/edit_cache.dir
-/data/Github/X-motor-Drive/board/xdr_p_o1.2/CMakeFiles/rebuild_cache.dir
