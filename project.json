@@ -1,5 +1,5 @@
 {
-    "board": "xdr_p_o1.2",
+    "board": "xdr_p_app",
     "fw_type": "app",
     "build_type": "Debug",
     "debugger": "stlink"

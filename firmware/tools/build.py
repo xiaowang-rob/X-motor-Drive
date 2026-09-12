@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 """
 XDr 统一构建脚本
+
 用法:
-  python3 tools/build.py build --board=xdr_p --type=app
-  python3 tools/build.py flash --board=xdr_p
-  python3 tools/build.py clean
+  python3 firmware/tools/build.py build --board=xdr_p_app --type=app
+  python3 firmware/tools/build.py flash --board=xdr_p_app
+  python3 firmware/tools/build.py bf          # 编译 + 烧录
+  python3 firmware/tools/build.py clean
+
+项目结构（构建单元在 firmware/ 下）：
+  firmware/board/<board>/   板级：HAL + CubeMX Core + USB + drv + startup
+  firmware/app/             应用侧：abs / app / ctl / srv / utils
+  firmware/bootload/        引导固件（--type=bl）
+  firmware/build/<board>-<type>/  CMake 构建目录（与 CMakePresets 的目录一致）
+  firmware/firmware_out/    输出 bin/hex
 """
 import json
 import re
@@ -18,21 +27,22 @@ from pathlib import Path
 TOOLS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS_DIR))
 
-import firmware.tools.flash_core as flash_core
+import flash_core
 
-PROJECT_ROOT = TOOLS_DIR.parent
-BUILD_DIR = PROJECT_ROOT / "build"
+PROJECT_ROOT = TOOLS_DIR.parent        # firmware/
+REPO_ROOT = PROJECT_ROOT.parent        # 仓库根
+BUILD_ROOT = PROJECT_ROOT / "build"
 FIRMWARE_OUT = PROJECT_ROOT / "firmware_out"
 
+# 板级目录名 -> 产品显示名（对应 firmware/board/<board>/）
 BOARDS = {
-    "xdr_p_o1.2":    ("stm32f4xx", "XDr-P O1.2"),
-    "xdr_s_o2.1":    ("stm32g4xx", "XDr-S O2.1"),
+    "xdr_p_app": "XDr-P",
 }
 
 
 def _load_project_config():
-    """读取项目根目录 project.json，返回配置字典"""
-    cfg_path = PROJECT_ROOT / "project.json"
+    """读取仓库根 project.json，返回配置字典"""
+    cfg_path = REPO_ROOT / "project.json"
     if cfg_path.exists():
         return json.loads(cfg_path.read_text())
     return {}
@@ -51,6 +61,11 @@ def _load_board_config(board, debugger=None):
     if debugger:
         cfg["debugger_type"] = debugger
     return cfg
+
+
+def _build_dir(board, fw_type):
+    """构建目录：firmware/build/<board>-<type>（与 CMakePresets 中的同名 preset 共用）"""
+    return BUILD_ROOT / f"{board}-{fw_type}"
 
 
 def _stream(proc):
@@ -106,61 +121,42 @@ def _stream(proc):
 
 def cmd_build(board, fw_type):
     """编译固件"""
-    platform, desc = BOARDS[board]
-    fw_name = f"XDr-{fw_type.upper()}" if fw_type == "bl" else "XDr"
+    desc = BOARDS[board]
     elf_name = "XDr-BL.elf" if fw_type == "bl" else "XDr.elf"
 
     # 编译类型：来自 project.json，默认 Debug
     build_type = _project_cfg.get('build_type', 'Debug')
 
     print(f"\n  \033[1m{desc} ({fw_type})\033[0m")
-    print(f"  平台: {platform}")
+    print(f"  板级: board/{board}")
+    print(f"  固件: {'bootload/' if fw_type == 'bl' else 'app/'}")
     print(f"  编译类型: {build_type}")
     print()
 
     toolchain = PROJECT_ROOT / "board" / board / "cmake" / "gcc-arm-none-eabi.cmake"
+    if not toolchain.exists():
+        print(f"  \033[31m✗ 找不到工具链文件: {toolchain}\033[0m")
+        sys.exit(1)
 
-    # CMake 配置（如果固件类型变了就清理）
-    marker = BUILD_DIR / ".last_fw_type"
-    last_type = marker.read_text().strip() if marker.exists() else ""
-    if last_type != f"{board}_{fw_type}":
-        if BUILD_DIR.exists():
-            shutil.rmtree(BUILD_DIR)
-        BUILD_DIR.mkdir(parents=True, exist_ok=True)
-        marker.write_text(f"{board}_{fw_type}")
-        print("  \033[36mCMake 配置...\033[0m")
-        r = subprocess.run([
-            "cmake", f"-B{BUILD_DIR}", f"-S{PROJECT_ROOT}",
-            f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
-            f"-DBOARD={board}", f"-DPLATFORM={platform}",
-            f"-DFW_TYPE={fw_type}",
-            f"-DCMAKE_BUILD_TYPE={build_type}",
-        ], capture_output=True, text=True)
-        if r.returncode != 0:
-            print(f"  \033[31m✗ CMake 配置失败:\033[0m")
-            for line in r.stderr.splitlines():
-                print(f"    {line}")
-            sys.exit(r.returncode)
-    else:
-        # 确保 CMakeCache 存在
-        if not (BUILD_DIR / "CMakeCache.txt").exists():
-            print("  \033[36mCMake 配置...\033[0m")
-            r = subprocess.run([
-                "cmake", f"-B{BUILD_DIR}", f"-S{PROJECT_ROOT}",
-                f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
-                f"-DBOARD={board}", f"-DPLATFORM={platform}",
-                f"-DFW_TYPE={fw_type}",
-                f"-DCMAKE_BUILD_TYPE={build_type}",
-            ], capture_output=True, text=True)
-            if r.returncode != 0:
-                print(f"  \033[31m✗ CMake 配置失败:\033[0m")
-                for line in r.stderr.splitlines():
-                    print(f"    {line}")
-                sys.exit(r.returncode)
+    build_dir = _build_dir(board, fw_type)
+
+    # CMake 配置（幂等：每次运行都执行，参数变化即时生效）
+    print("  \033[36mCMake 配置...\033[0m")
+    r = subprocess.run([
+        "cmake", f"-B{build_dir}", f"-S{PROJECT_ROOT}",
+        f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
+        f"-DBOARD={board}", f"-DFW_TYPE={fw_type}",
+        f"-DCMAKE_BUILD_TYPE={build_type}",
+    ], capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"  \033[31m✗ CMake 配置失败:\033[0m")
+        for line in (r.stdout + r.stderr).splitlines():
+            print(f"    {line}")
+        sys.exit(r.returncode)
 
     # 编译
     proc = subprocess.Popen(
-        ["cmake", "--build", str(BUILD_DIR), "--", "-k"],
+        ["cmake", "--build", str(build_dir), "--", "-k"],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, bufsize=1,
     )
@@ -179,7 +175,7 @@ def cmd_build(board, fw_type):
     print(f"\n  \033[32m✓ 编译成功\033[0m  {'  '.join(status)}\n")
 
     # 固件大小 + 输出
-    elf = BUILD_DIR / elf_name
+    elf = build_dir / elf_name
     if elf.exists():
         r = subprocess.run(["arm-none-eabi-size", str(elf)], capture_output=True, text=True)
         if r.returncode == 0:
@@ -241,7 +237,7 @@ def cmd_build(board, fw_type):
 
         # 输出到 firmware_out/
         date_str = datetime.now().strftime("%y%m%d")
-        # 固件输出命名：XDr-P_O1.2_BL260627 或 XDr-P_O1.2_260627
+        # 固件输出命名：XDr-P_BL260627 或 XDr-P_260627
         fw_tag = f"{fw_type.upper()}" if fw_type == "bl" else ""
         dist = f"{desc.replace(' ', '_')}_{fw_tag}{date_str}"
         FIRMWARE_OUT.mkdir(parents=True, exist_ok=True)
@@ -257,7 +253,7 @@ def cmd_build(board, fw_type):
                 print(f"    \033[32m✓\033[0m {dst.name}  ({sz:.1f} KB)")
 
         # 创建统一调试入口符号链接
-        current = BUILD_DIR / "current.elf"
+        current = build_dir / "current.elf"
         try:
             if current.exists() or current.is_symlink():
                 current.unlink()
@@ -266,22 +262,9 @@ def cmd_build(board, fw_type):
             pass  # Windows 可能不支持符号链接，忽略
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("XDr 构建脚本")
-        print("用法: python3 tools/build.py build --board=xdr_p --type=app")
-        print("       python3 tools/build.py flash --board=xdr_p --debugger=jlink")
-        print("命令: build | flash | bf (编译+烧录) | erase | clean")
-        print(f"板卡: {', '.join(BOARDS.keys())}")
-        print("选项:")
-        print("  --board=<board>      板卡名称")
-        print("  --type=<app|bl>      固件类型")
-        print("  --debugger=<type>    调试器类型: stlink/jlink/daplink")
-        print("默认值取自 project.json，未配置时: board=xdr_p, type=app, debugger=stlink")
-        sys.exit(1)
-
-    cmd = sys.argv[1]
-    board = _project_cfg.get("board", "xdr_p")
+def _resolve_cli():
+    """解析命令行参数，返回 (cmd, board, fw_type, debugger)"""
+    board = _project_cfg.get("board", "xdr_p_app")
     fw_type = _project_cfg.get("fw_type", "app")
     debugger = _project_cfg.get("debugger")
 
@@ -293,26 +276,48 @@ def main():
         elif a.startswith("--debugger="):
             debugger = a.split("=", 1)[1]
 
+    return board, fw_type, debugger
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("XDr 构建脚本")
+        print("用法: python3 firmware/tools/build.py build --board=xdr_p_app --type=app")
+        print("       python3 firmware/tools/build.py flash --board=xdr_p_app --debugger=jlink")
+        print("命令: build | flash | bf (编译+烧录) | erase | clean")
+        print(f"板卡: {', '.join(BOARDS.keys())}")
+        print("选项:")
+        print("  --board=<board>      板卡名称（board/<board>/）")
+        print("  --type=<app|bl>      固件类型")
+        print("  --debugger=<type>    调试器类型: stlink/jlink/daplink")
+        print("默认值取自 project.json，未配置时: board=xdr_p_app, type=app, debugger=stlink")
+        sys.exit(1)
+
+    cmd = sys.argv[1]
+    board, fw_type, debugger = _resolve_cli()
+
     if board not in BOARDS:
-        print(f"未知板卡: {board}")
+        print(f"未知板卡: {board}（可用: {', '.join(BOARDS.keys())}）")
         sys.exit(1)
 
     if cmd == "build":
         cmd_build(board, fw_type)
     elif cmd == "flash":
         cfg = _load_board_config(board, debugger)
-        flash_core.cmd_flash(cfg, PROJECT_ROOT, fw_type)
+        elf = _build_dir(board, fw_type) / flash_core.elf_name(PROJECT_ROOT, fw_type)
+        flash_core.cmd_flash(cfg, elf)
     elif cmd == "bf":
         cmd_build(board, fw_type)
         cfg = _load_board_config(board, debugger)
-        flash_core.cmd_flash(cfg, PROJECT_ROOT, fw_type)
+        elf = _build_dir(board, fw_type) / flash_core.elf_name(PROJECT_ROOT, fw_type)
+        flash_core.cmd_flash(cfg, elf)
     elif cmd == "erase":
         cfg = _load_board_config(board, debugger)
-        flash_core.cmd_erase(cfg, PROJECT_ROOT, fw_type)
+        flash_core.cmd_erase(cfg)
     elif cmd == "clean":
-        if BUILD_DIR.exists():
-            shutil.rmtree(BUILD_DIR)
-            print(f"[OK] 已清除 {BUILD_DIR}")
+        if BUILD_ROOT.exists():
+            shutil.rmtree(BUILD_ROOT)
+            print(f"[OK] 已清除 {BUILD_ROOT}")
         else:
             print("build/ 不存在")
     else:

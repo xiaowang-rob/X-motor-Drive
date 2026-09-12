@@ -1,0 +1,46 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "xdr_p_app-app",
+      "displayName": "XDr-P xdr_p_app APP",
+      "description": "应用固件：firmware/app + firmware/board/xdr_p_app",
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/board/xdr_p_app/cmake/gcc-arm-none-eabi.cmake",
+      "cacheVariables": {
+        "BOARD": "xdr_p_app",
+        "FW_TYPE": "app"
+      }
+    },
+    {
+      "name": "xdr_p_app-bl",
+      "displayName": "XDr-P xdr_p_app BL",
+      "description": "引导固件：firmware/bootload + firmware/board/xdr_p_app",
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/board/xdr_p_app/cmake/gcc-arm-none-eabi.cmake",
+      "cacheVariables": {
+        "BOARD": "xdr_p_app",
+        "FW_TYPE": "bl"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "xdr_p_app-app",
+      "configurePreset": "xdr_p_app-app"
+    },
+    {
+      "name": "xdr_p_app-bl",
+      "configurePreset": "xdr_p_app-bl"
+    }
+  ]
+}

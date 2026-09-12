@@ -1,5 +1,5 @@
-#ifndef __LOOP_CONTROL_H
-#define __LOOP_CONTROL_H
+#ifndef __SLOT_CON_H
+#define __SLOT_CON_H
 
 #include "bsp_base.h"
 #include "parameter_manager.h"

@@ -1,8 +1,11 @@
 """修改 CubeMX 生成的链接脚本，根据 bsp/config.h 调整 FLASH 起始地址和长度"""
 import re
 import sys
+from pathlib import Path
 
-import firmware.tools.config_parser as config_parser
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import config_parser
 
 
 def modify_linker_script(config_h_path, ld_path):
