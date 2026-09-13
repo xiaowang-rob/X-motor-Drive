@@ -1,84 +1,97 @@
 #include "bus_com.h"
+#include <string.h>
 
-// 内存池 0
-#define MP0_BLOCK_SIZE sizeof(tBus_Frame) // 每个块数据大小 byte 一定大于等于总线消息帧
-#define MP0_BLOCK_NUM 16                  // 存储最多消息帧数量
+// ============================================================
+// bus_com.c — 总线式通信业务对象（abs，纯逻辑）
+//
+// 职责：把驱动送来的原始帧放进"内存池 + 队列"，供主线程提取。
+// 驱动侧只负责在中断里回调注册进来的 cb（回传 ctx = 本实例）。
+// 内存池 / 队列缓冲由调用方提供（见 tBusBuffer），本文件无静态缓冲。
+// ============================================================
 
-CREATE_MEM_POOL_BUF(bus_mp_buf0, MP0_BLOCK_SIZE, MP0_BLOCK_NUM)
-
-// 内存池列表 暂时只创建一个内存池 暂时只有一个总线
-// TODO:可以修改为多个内存池 初始化分配
-
-// 创建数据帧队列缓存区-存储bus消息内存池指针 这里对应的也分配一个队列
-static uint8_t bus_frame_buf0[MP0_BLOCK_NUM];
-
-void bus_rx_frame_cb(tBusDriver *bus, uint32_t id, const uint8_t *data, uint8_t len)
+// 收帧回调（中断上下文）：ctx 为 bus_init 时注册的 tBusDriver 实例
+static void bus_on_rx_frame(void *ctx, uint32_t id, const uint8_t *data, uint8_t len)
 {
-    uint8_t *rx_data = (uint8_t *)mp_alloc(&bus->mem_pool);
-    if (!rx_data)
+    tBusDriver *bus = (tBusDriver *)ctx;
+    if (!bus || !data)
         return;
-    tBus_Frame *frame = (tBus_Frame *)rx_data; // 将内存池分配的内存转换为tCAN_Frame结构体指针
-    frame->id = id;
-    frame->data_len = len;
-    memcpy(frame->data, data, len);
 
-    // 将消息内存地址放入队列 单字节入队即可
-    eQueueStatus qs = queue_static_enqueue(&bus->frame_queue, rx_data);
-    if (QUEUE_STATUS_ERROR == qs)
+    tBus_Frame *frame = (tBus_Frame *)mp_alloc(&bus->mem_pool);
+    if (!frame)
     {
-        bus->rstate = DEV_RUN_ERROR; // 如果内存分配失败 则总线状态为错误
+        bus->rstate = DEV_RUN_ERROR; // 内存池耗尽
         return;
     }
-    else if (QUEUE_STATUS_OK != qs)
+
+    frame->id = id;
+    frame->data_len = (len > sizeof(frame->data)) ? (uint8_t)sizeof(frame->data) : len;
+    memcpy(frame->data, data, frame->data_len);
+
+    // 入队的是"帧实体地址"（按 bulk 写入 sizeof(指针) 字节）
+    tBus_Frame *slot = frame;
+    eQueueStatus qs = queue_static_enqueue_bulk(&bus->frame_queue,
+                                                (const uint8_t *)&slot, sizeof(slot));
+    if (qs == QUEUE_STATUS_OK)
     {
-        bus->rstate = DEV_BUSY; // 满队列则总线状态为忙
-        return;
+        bus->rstate = DEV_RUNNING;
+    }
+    else
+    {
+        mp_free(&bus->mem_pool, frame); // 入队失败：立即回收块，避免泄漏
+        bus->rstate = DEV_BUSY;
     }
 }
 
-// 初始化内存池 和 队列
-bool bus_init(tBusDriver *bus, tBusDriverOps *ops)
+bool bus_init(tBusDriver *bus, const tBusDriverOps *ops, BusHandle handle,
+              const tBusBuffer *buf)
 {
-    if (bus == NULL || ops == NULL)
+    if (!bus || !ops || !handle || !buf)
+        return false;
+    if (!buf->mp_buf || buf->mp_block_num == 0U || !buf->queue_buf || buf->queue_bytes == 0U)
         return false;
 
+    memset(bus, 0, sizeof(*bus));
     bus->ops = ops;
-
+    bus->handle = handle;
     bus->dstate = DEV_OFFLINE;
 
-    // 创建内存池
-    mp_init(&bus->mem_pool, bus_mp_buf0, MP0_BLOCK_SIZE, MP0_BLOCK_NUM);
+    mp_init(&bus->mem_pool, buf->mp_buf, sizeof(tBus_Frame), (uint8_t)buf->mp_block_num);
 
-    bus->frame_queue.cover = false; // 不允许覆盖旧数据 阻塞式接收
-    if (QUEUE_STATUS_OK != queue_static_init(&bus->frame_queue, bus_frame_buf0, MP0_BLOCK_NUM))
+    bus->frame_queue.cover = false; // 不允许覆盖旧数据：满则丢弃新帧并置忙
+    if (QUEUE_STATUS_OK != queue_static_init(&bus->frame_queue, buf->queue_buf, buf->queue_bytes))
         return false;
 
-    // 注册回调函数
-    bus->ops->register_callback(bus_rx_frame_cb);
-
+    // 注册回调并把本实例作为 ctx 回传
+    ops->register_callback(handle, bus_on_rx_frame, bus);
     return true;
 }
 
 bool bus_start(tBusDriver *bus, uint32_t device_id)
 {
-    if (!bus)
+    if (!bus || !bus->ops || !bus->handle)
         return false;
+
     bus->device_id = device_id;
-    if (!bus->ops->init(device_id)) // 初始化总线驱动
+    if (!bus->ops->init(bus->handle, device_id))
+    {
+        bus->dstate = DEV_RUN_ERROR;
         return false;
+    }
+
     bus->dstate = DEV_ONLINE;
-    bus->rstate = DEV_ONLINE; // 初始化总线状态为在线
-    bus->tstate = DEV_ONLINE; // 初始化总线状态为在线
+    bus->rstate = DEV_ONLINE;
+    bus->tstate = DEV_ONLINE;
+    return true;
 }
 
-bool bus_send(tBusDriver *bus, tBus_Frame *frame)
+bool bus_send(tBusDriver *bus, const tBus_Frame *frame)
 {
-    if (bus == NULL || frame == NULL)
+    if (!bus || !bus->ops || !bus->handle || !frame)
         return false;
 
-    if (!bus->ops->send(frame->id, frame->data, frame->data_len)) // 发送总线消息
+    if (!bus->ops->send(bus->handle, frame->id, frame->data, frame->data_len))
     {
-        bus->tstate = DEV_BUSY; // 如果发送失败 则一般总线状态为忙
+        bus->tstate = DEV_BUSY; // 发送失败一般因邮箱忙
         return false;
     }
 
@@ -86,20 +99,14 @@ bool bus_send(tBusDriver *bus, tBus_Frame *frame)
     return true;
 }
 
-// 这个会持续从队列中提取数据帧并返回 没有数据帧则返回NULL
 tBus_Frame *bus_process_frame(tBusDriver *bus)
 {
-    if (bus == NULL)
+    if (!bus)
         return NULL;
 
-    // 检查队列是否为空
-    if (queue_static_is_empty(&bus->frame_queue))
+    tBus_Frame *slot = NULL;
+    if (QUEUE_STATUS_OK != queue_static_dequeue_bulk(&bus->frame_queue,
+                                                     (uint8_t *)&slot, sizeof(slot)))
         return NULL;
-
-    // 从队列中取出数据帧
-    tBus_Frame *frame;
-    queue_static_dequeue(&bus->frame_queue, (uint8_t *)frame);
-    if (frame == NULL)
-        return NULL;
-    return frame; // 返回数据帧
+    return slot;
 }

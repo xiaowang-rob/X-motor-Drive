@@ -1,62 +1,104 @@
 // ============================================================
-// uart_drv.c — 串口通讯底层驱动（usr/drv，v2 直连版）
+// uart_mcu.c — MCU 串口通讯驱动（板级，直连 HAL）
+//
+// 实例形态：文件内静态 handle，内含
+//   - ops 指针、外设句柄（huart）
+//   - 配置（DMA 接收缓冲 + 长度）
+//   - 收字节回调 + ctx（回调把实例送回 abs 层）
+// 接收：HAL_UARTEx_ReceiveToIdle_DMA（空闲/完成事件判定一帧结束）
+// 发送：DMA（缓冲由 abs 层实例持有，见 uart_com.c 的 tx_buf）
+// HAL_UARTEx_RxEventCallback / HAL_UART_ErrorCallback 由本文件唯一持有。
 // ============================================================
 #include "uart_drivers.h"
 
 #include "usart.h"
 
-#define UART_CH (huart1)
+// ---------- 本板配置 ----------
+#define UART_MCU_RX_BUFFER_SIZE 128U
 
-#define RX_BUFFER_SIZE 128
-static uint8_t rx_buffer[RX_BUFFER_SIZE];
+// ---------- 实例 handle ----------
+typedef struct
+{
+    const tUartDriverOps *ops;                  // 该实例的操作表
+    UART_HandleTypeDef *huart;                  // 外设
+    uint8_t rx_buffer[UART_MCU_RX_BUFFER_SIZE]; // 配置：DMA 接收缓冲
+    uint16_t rx_buffer_size;                    // 配置：缓冲长度
+    uart_rx_done_cb rx_cb;                      // 收字节回调（由 abs 层注册）
+    void *rx_ctx;                               // 回调上下文（abs 层实例）
+} tUartMcu;
 
-static uart_rx_done_cb s_rx_done_cb = NULL;
+static bool uart_mcu_init(UartHandle h);
+static bool uart_mcu_send(UartHandle h, const uint8_t *data, uint16_t len);
+static void uart_mcu_register(UartHandle h, uart_rx_done_cb cb, void *ctx);
 
+const tUartDriverOps uart_mcu_ops = {
+    .init = uart_mcu_init,
+    .send = uart_mcu_send,
+    .register_callback = uart_mcu_register,
+};
+
+// 静态实例
+static tUartMcu s_uart1 = {
+    .ops = &uart_mcu_ops,
+    .huart = &huart1,
+    .rx_buffer_size = UART_MCU_RX_BUFFER_SIZE,
+    .rx_cb = NULL,
+    .rx_ctx = NULL,
+};
+
+UartHandle uart_mcu_get_handle(void)
+{
+    return (UartHandle)&s_uart1;
+}
+
+// ---- 中断（只在本文件定义） ----
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
-    if (huart->Instance == UART_CH.Instance)
-    {
-        HAL_UART_RxEventTypeTypeDef eventType = HAL_UARTEx_GetRxEventType(huart);
+    if (huart != s_uart1.huart)
+        return;
 
-        switch (eventType)
-        {
-        case HAL_UART_RXEVENT_IDLE: // 总线空闲
-            s_rx_done_cb(rx_buffer, Size);
-            break;
+    HAL_UART_RxEventTypeTypeDef ev = HAL_UARTEx_GetRxEventType(huart);
 
-        case HAL_UART_RXEVENT_TC: // DMA缓冲区满
-            s_rx_done_cb(rx_buffer, Size);
-            break;
+    // 空闲(IDLE)：不定长帧结束；完成(TC)：缓冲满。
+    // 半传输(HT) 不上报 —— 否则会把半个缓冲当成一帧。
+    if ((ev == HAL_UART_RXEVENT_IDLE || ev == HAL_UART_RXEVENT_TC) && s_uart1.rx_cb)
+        s_uart1.rx_cb(s_uart1.rx_ctx, s_uart1.rx_buffer, Size);
 
-        case HAL_UART_RXEVENT_HT: // DMA半传输完成
-            s_rx_done_cb(rx_buffer, Size);
-            break;
-        }
-
-        // 如果是 Normal 模式，通常在此处重新启动接收
-        HAL_UARTEx_ReceiveToIdle_DMA(&UART_CH, rx_buffer, RX_BUFFER_SIZE);
-    }
+    HAL_UARTEx_ReceiveToIdle_DMA(huart, s_uart1.rx_buffer, s_uart1.rx_buffer_size);
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-    // 错误后重新挂起接收，保证链路可用
-    if (huart == &UART_CH && huart->RxState == HAL_UART_STATE_READY)
-        HAL_UARTEx_ReceiveToIdle_DMA(&UART_CH, rx_buffer, RX_BUFFER_SIZE);
-}
-bool uart_init(void)
-{
-    HAL_UARTEx_ReceiveToIdle_DMA(&UART_CH, rx_buffer, RX_BUFFER_SIZE); // 启动
+    if (huart != s_uart1.huart)
+        return;
+    // 出错后重新挂起接收，保证链路可用（错误后 RxState 未必是 READY）
+    HAL_UARTEx_ReceiveToIdle_DMA(huart, s_uart1.rx_buffer, s_uart1.rx_buffer_size);
 }
 
-bool uart_tx(uint8_t *data, uint16_t len)
+// ---- ops 实现 ----
+
+static bool uart_mcu_init(UartHandle h)
 {
-    if (!data || len == 0U)
+    tUartMcu *inst = (tUartMcu *)h;
+    if (!inst || !inst->huart || inst->rx_buffer_size == 0U)
         return false;
-    return HAL_OK == HAL_UART_Transmit_DMA(&UART_CH, data, len);
+    return HAL_UARTEx_ReceiveToIdle_DMA(inst->huart, inst->rx_buffer,
+                                        inst->rx_buffer_size) == HAL_OK;
 }
 
-void uart_register_rx_done(uart_rx_done_cb cb)
+static bool uart_mcu_send(UartHandle h, const uint8_t *data, uint16_t len)
 {
-    s_rx_done_cb = cb;
+    tUartMcu *inst = (tUartMcu *)h;
+    if (!inst || !inst->huart || !data || len == 0U)
+        return false;
+    return HAL_UART_Transmit_DMA(inst->huart, (uint8_t *)data, len) == HAL_OK;
+}
+
+static void uart_mcu_register(UartHandle h, uart_rx_done_cb cb, void *ctx)
+{
+    tUartMcu *inst = (tUartMcu *)h;
+    if (!inst)
+        return;
+    inst->rx_cb = cb;
+    inst->rx_ctx = ctx;
 }

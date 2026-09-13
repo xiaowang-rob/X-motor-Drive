@@ -1,12 +1,12 @@
 // ============================================================
-// sense.c — 采样业务对象实现（usr/abs，纯逻辑）
+// sense.c — 采样业务对象实现（abs，纯逻辑）
 //
 // 原始码 → 物理量；零点 EMA 在空闲阶段累积；
 // Vbus/温度按周期节流触发并换算（NTC 温度查表）。
 // ============================================================
 
 #include "sense.h"
-#include "timeIF.h"
+#include "IF_time.h"
 
 // 温度查表：Vbus 归一化后的 NTC 采样码 → ℃
 // 表项 adc_eq 按旧驱动公式 adc_eq = code*24/(Vbus-0.3)+0.5 截断取整
@@ -30,13 +30,14 @@ static const uint8_t SENSE_TEMP_TABLE[256] = {
   5,   5,   5,   5,   5,   5,   5,   5,   5,   4,   4,   4,   4,   4,   4,   4,};
 // clang-format on
 
-bool sense_init(tSense *s, const tSampleMcuOps *ops)
+bool sense_init(tSense *s, const tSampleMcuOps *ops, SampleHandle handle)
 {
-    if (!s || !ops)
+    if (!s || !ops || !handle)
         return false;
 
     s->ops = ops;
-    ops->get_gain(ops->ctx, &s->cur_scale, &s->vbus_scale);
+    s->handle = handle;
+    ops->get_gain(handle, &s->cur_scale, &s->vbus_scale);
 
     for (uint8_t i = 0U; i < 3U; i++)
     {
@@ -55,7 +56,7 @@ void sense_set_sample_point(tSense *s, uint32_t tic)
 {
     if (!s || !s->ops)
         return;
-    s->ops->set_sample_cmp(s->ops->ctx, tic);
+    s->ops->set_sample_cmp(s->handle, tic);
 }
 
 void sense_update(tSense *s, bool motor_idle)
@@ -64,7 +65,7 @@ void sense_update(tSense *s, bool motor_idle)
         return;
 
     uint16_t raw[3];
-    if (!s->ops->get_cur_raw(s->ops->ctx, raw))
+    if (!s->ops->get_cur_raw(s->handle, raw))
         return;
 
     // ---- 三相电流 / 零点 ----
@@ -100,12 +101,12 @@ void sense_update(tSense *s, bool motor_idle)
     uint32_t now = time_get_ms();
     if ((now - s->last_vt_ms) >= SENSE_VT_REFRESH_MS)
     {
-        s->ops->vt_trigger(s->ops->ctx);
+        s->ops->vt_trigger(s->handle);
         s->last_vt_ms = now;
     }
 
     uint16_t vbus_raw, temp_raw;
-    if (s->ops->get_vt_raw(s->ops->ctx, &vbus_raw, &temp_raw))
+    if (s->ops->get_vt_raw(s->handle, &vbus_raw, &temp_raw))
     {
         s->vbus = (float)vbus_raw * s->vbus_scale;
 

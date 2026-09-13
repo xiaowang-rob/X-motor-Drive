@@ -11,9 +11,6 @@
 #include "spi.h"
 
 // ---------- Flash SPI + CS ----------
-#define FLASH_HSPI (hspi2)
-#define FLASH_CS_GPIOx GPIOB
-#define FLASH_CS_GPIOx_PIN GPIO_PIN_12
 
 #define W25_CAPACITY_BYTES (16U * 1024U * 1024U)
 #define W25_PAGE_SIZE 256U
@@ -53,71 +50,77 @@ static const uint32_t W25_SECTOR_BOUNDS[BLOCK_SECTOR_NUM + 1] = {
     0x0000D000U,
     0x0000E000U,
     0x0000F000U,
-    0x00010000U} // 最后一个地址是为了方便计算
-// ---- 本板 Flash SPI（platform.h） ----
-
-static void fl_cs(bool active)
-{
-    HAL_GPIO_WritePin(FLASH_CS_GPIOx, FLASH_CS_GPIOx_PIN,
-                      active ? GPIO_PIN_RESET : GPIO_PIN_SET);
-}
-
-static bool fl_xfer(const uint8_t *tx, uint8_t *rx, uint16_t len)
-{
-    if (!tx || !rx || len == 0U)
-        return false;
-    if (HAL_SPI_GetState(&FLASH_HSPI) != HAL_SPI_STATE_READY)
-        return false;
-    return HAL_SPI_TransmitReceive(&FLASH_HSPI, (uint8_t *)tx, rx, len, 100U) == HAL_OK;
-}
-
-// ---- 驱动上下文 ----
+    0x00010000U}; // 最后一个地址是为了方便计算
+// ---- 实例 handle ----
 
 typedef struct
 {
-    eDeviceStatus dstate;
+    const tFlashDriverOps *ops; // 该实例的操作表
+    SPI_HandleTypeDef *hspi;    // 外设：SPI
+    GPIO_TypeDef *cs_port;      // 配置：片选端口
+    uint16_t cs_pin;            // 配置：片选引脚
     uint8_t tx_buf[4U + W25_PAGE_SIZE];
     uint8_t rx_buf[4U + W25_PAGE_SIZE];
     uint8_t rd_ff[READ_CHUNK];
-} tW25Qxx_ctx;
+} tW25Qxx;
 
-// ---- 底层原语（CS 由调用处控制） ----
+// ---- 底层原语（CS 由调用处控制；外设/引脚取自实例） ----
 
-static bool w25_tx(tW25Qxx_ctx *ctx, uint16_t len)
+static void fl_cs(tW25Qxx *ctx, bool active)
 {
-    return fl_xfer(ctx->tx_buf, ctx->rx_buf, len);
+    HAL_GPIO_WritePin(ctx->cs_port, ctx->cs_pin,
+                      active ? GPIO_PIN_RESET : GPIO_PIN_SET);
+}
+
+static bool fl_xfer(tW25Qxx *ctx, const uint8_t *tx, uint8_t *rx, uint16_t len)
+{
+    if (!ctx || !tx || !rx || len == 0U)
+        return false;
+    if (HAL_SPI_GetState(ctx->hspi) != HAL_SPI_STATE_READY)
+        return false;
+    return HAL_SPI_TransmitReceive(ctx->hspi, (uint8_t *)tx, rx, len, 100U) == HAL_OK;
+}
+
+static bool w25_tx(tW25Qxx *ctx, uint16_t len)
+{
+    return fl_xfer(ctx, ctx->tx_buf, ctx->rx_buf, len);
 }
 
 // 读取状态寄存器（BUSY 位）----
-static uint8_t w25_read_sr(tW25Qxx_ctx *ctx)
+static uint8_t w25_read_sr(tW25Qxx *ctx)
 {
     ctx->tx_buf[0] = FCMD_READ_STATUS;
     ctx->tx_buf[1] = 0xFFU;
-    fl_cs(true);
-    bool ok = fl_xfer(ctx->tx_buf, ctx->rx_buf, 2U);
-    fl_cs(false);
+    fl_cs(ctx, true);
+    bool ok = fl_xfer(ctx, ctx->tx_buf, ctx->rx_buf, 2U);
+    fl_cs(ctx, false);
     return ok ? ctx->rx_buf[1] : 0xFFU;
 }
 
-// 等待操作完成（BUSY 位清零）----
-static bool w25_wait_idle(tW25Qxx_ctx *ctx, uint32_t timeout_ms)
+// 等待操作完成（BUSY 位清零）
+// 优化：读一次状态寄存器要发 2 字节 SPI，轮询太密纯属白占总线；
+//       改为"读状态 → 短延时"节奏，且每轮只取一次 tick。
+// 注：仅在主循环上下文调用（HAL_Delay 依赖 SysTick，不可在 ISR 内使用）。
+static bool w25_wait_idle(tW25Qxx *ctx, uint32_t timeout_ms)
 {
-    uint32_t t0 = plat_get_ms();
-    while (w25_read_sr(ctx) & FBIT_SR_BUSY)
+    uint32_t t0 = HAL_GetTick();
+    for (;;)
     {
-        if ((plat_get_ms() - t0) >= timeout_ms)
+        if ((w25_read_sr(ctx) & FBIT_SR_BUSY) == 0U)
+            return true;
+        HAL_Delay(1U); // 擦除 ~45ms / 页编程 ~0.7ms，1ms 粒度足够
+        if ((HAL_GetTick() - t0) >= timeout_ms)
             return false;
     }
-    return true;
 }
 // 写使能（写使能指令）----
-static bool w25_write_enable(tW25Qxx_ctx *ctx)
+static bool w25_write_enable(tW25Qxx *ctx)
 {
     ctx->tx_buf[0] = FCMD_WRITE_ENABLE;
     ctx->tx_buf[1] = 0xFFU;
-    fl_cs(true);
-    bool ok = fl_xfer(ctx->tx_buf, ctx->rx_buf, 2U);
-    fl_cs(false);
+    fl_cs(ctx, true);
+    bool ok = fl_xfer(ctx, ctx->tx_buf, ctx->rx_buf, 2U);
+    fl_cs(ctx, false);
     return ok;
 }
 
@@ -125,7 +128,7 @@ static bool w25_write_enable(tW25Qxx_ctx *ctx)
 
 static bool w25_init(FlashChipHandle h)
 {
-    tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
+    tW25Qxx *ctx = (tW25Qxx *)h;
     if (!ctx)
         return false;
 
@@ -139,27 +142,25 @@ static bool w25_init(FlashChipHandle h)
         ctx->tx_buf[2] = 0xFFU;
         ctx->tx_buf[3] = 0xFFU;
 
-        fl_cs(true);
-        bool ok = fl_xfer(ctx->tx_buf, ctx->rx_buf, 4U);
-        fl_cs(false);
+        fl_cs(ctx, true);
+        bool ok = fl_xfer(ctx, ctx->tx_buf, ctx->rx_buf, 4U);
+        fl_cs(ctx, false);
 
         if (ok && ctx->rx_buf[1] == W25_JEDEC_ID[0] &&
             ctx->rx_buf[2] == W25_JEDEC_ID[1] &&
             ctx->rx_buf[3] == W25_JEDEC_ID[2])
         {
-            ctx->dstate = DEV_ONLINE;
             return true;
         }
-        plat_delay_ms(10U);
+        HAL_Delay(10U);
     }
 
-    ctx->dstate = DEV_OFFLINE;
     return false;
 }
 // 读取数据（读数据指令）----
 static bool w25_read(FlashChipHandle h, uint32_t addr, uint8_t *data, uint32_t len)
 {
-    tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
+    tW25Qxx *ctx = (tW25Qxx *)h;
     if (!ctx || !data || (addr + len) > W25_CAPACITY_BYTES)
         return false;
 
@@ -168,11 +169,10 @@ static bool w25_read(FlashChipHandle h, uint32_t addr, uint8_t *data, uint32_t l
     ctx->tx_buf[2] = (uint8_t)(addr >> 8);
     ctx->tx_buf[3] = (uint8_t)addr;
 
-    fl_cs(true);
+    fl_cs(ctx, true);
     if (!w25_tx(ctx, 4U))
     {
-        fl_cs(false);
-        ctx->dstate = DEV_RUN_ERROR;
+        fl_cs(ctx, false);
         return false;
     }
 
@@ -185,22 +185,20 @@ static bool w25_read(FlashChipHandle h, uint32_t addr, uint8_t *data, uint32_t l
         uint32_t n = len - done;
         if (n > READ_CHUNK)
             n = READ_CHUNK;
-        if (!fl_xfer(ctx->rd_ff, data + done, (uint16_t)n))
+        if (!fl_xfer(ctx, ctx->rd_ff, data + done, (uint16_t)n))
         {
-            fl_cs(false);
-            ctx->dstate = DEV_RUN_ERROR;
+            fl_cs(ctx, false);
             return false;
         }
         done += n;
     }
 
-    fl_cs(false);
-    ctx->dstate = DEV_RUNNING;
+    fl_cs(ctx, false);
     return true;
 }
 
 // 页编程（写页指令）----
-static bool w25_page_program(tW25Qxx_ctx *ctx, uint32_t addr, const uint8_t *data, uint16_t len)
+static bool w25_page_program(tW25Qxx *ctx, uint32_t addr, const uint8_t *data, uint16_t len)
 {
     if (len == 0U || len > W25_PAGE_SIZE)
         return false;
@@ -215,9 +213,9 @@ static bool w25_page_program(tW25Qxx_ctx *ctx, uint32_t addr, const uint8_t *dat
     for (uint16_t i = 0U; i < len; i++)
         ctx->tx_buf[4U + i] = data[i];
 
-    fl_cs(true);
-    bool ok = fl_xfer(ctx->tx_buf, ctx->rx_buf, (uint16_t)(4U + len));
-    fl_cs(false);
+    fl_cs(ctx, true);
+    bool ok = fl_xfer(ctx, ctx->tx_buf, ctx->rx_buf, (uint16_t)(4U + len));
+    fl_cs(ctx, false);
 
     if (!ok)
         return false;
@@ -227,7 +225,7 @@ static bool w25_page_program(tW25Qxx_ctx *ctx, uint32_t addr, const uint8_t *dat
 // 按地址写入-自动换页
 static bool w25_write(FlashChipHandle h, uint32_t addr, const uint8_t *data, uint32_t len)
 {
-    tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
+    tW25Qxx *ctx = (tW25Qxx *)h;
     if (!ctx || !data || (addr + len) > W25_CAPACITY_BYTES)
         return false;
 
@@ -241,18 +239,16 @@ static bool w25_write(FlashChipHandle h, uint32_t addr, const uint8_t *data, uin
 
         if (!w25_page_program(ctx, addr + done, data + done, (uint16_t)n))
         {
-            ctx->dstate = DEV_RUN_ERROR;
             return false;
         }
         done += n;
     }
 
-    ctx->dstate = DEV_RUNNING;
     return true;
 }
 
 // 扇区擦除（扇区擦除指令）----
-static bool w25_erase_sector_at(tW25Qxx_ctx *ctx, uint32_t sector_addr)
+static bool w25_erase_sector_at(tW25Qxx *ctx, uint32_t sector_addr)
 {
     if (!w25_write_enable(ctx))
         return false;
@@ -262,9 +258,9 @@ static bool w25_erase_sector_at(tW25Qxx_ctx *ctx, uint32_t sector_addr)
     ctx->tx_buf[2] = (uint8_t)(sector_addr >> 8);
     ctx->tx_buf[3] = (uint8_t)sector_addr;
 
-    fl_cs(true);
-    bool ok = fl_xfer(ctx->tx_buf, ctx->rx_buf, 4U);
-    fl_cs(false);
+    fl_cs(ctx, true);
+    bool ok = fl_xfer(ctx, ctx->tx_buf, ctx->rx_buf, 4U);
+    fl_cs(ctx, false);
 
     if (!ok)
         return false;
@@ -274,7 +270,7 @@ static bool w25_erase_sector_at(tW25Qxx_ctx *ctx, uint32_t sector_addr)
 // 扇区擦除（按地址擦除）----
 static bool w25_erase(FlashChipHandle h, uint32_t addr, uint32_t len)
 {
-    tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
+    tW25Qxx *ctx = (tW25Qxx *)h;
     if (!ctx || len == 0U || (addr + len) > W25_CAPACITY_BYTES)
         return false;
 
@@ -285,48 +281,40 @@ static bool w25_erase(FlashChipHandle h, uint32_t addr, uint32_t len)
     {
         if (!w25_erase_sector_at(ctx, i << 12))
         {
-            ctx->dstate = DEV_RUN_ERROR;
             return false;
         }
     }
 
-    ctx->dstate = DEV_RUNNING;
     return true;
 }
 
 static bool w25_erase_sector(FlashChipHandle h, uint8_t sec_id)
 {
-    tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
+    tW25Qxx *ctx = (tW25Qxx *)h;
     if (!ctx || sec_id >= BLOCK_SECTOR_NUM)
         return false;
     return w25_erase_sector_at(ctx, W25_SECTOR_BOUNDS[sec_id]);
 }
-static uint8_t w25_get_sector_count(FlashChipHandle h);
+static uint8_t w25_get_sector_count(FlashChipHandle h)
 {
-    tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
+    tW25Qxx *ctx = (tW25Qxx *)h;
     if (!ctx)
         return 0U;
     return BLOCK_SECTOR_NUM;
 }
 static uint32_t w25_get_sector_addr(FlashChipHandle h, uint8_t sec_id)
 {
-    tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
+    tW25Qxx *ctx = (tW25Qxx *)h;
     if (!ctx || sec_id >= BLOCK_SECTOR_NUM)
         return 0U;
     return W25_SECTOR_BOUNDS[sec_id];
 }
 static uint32_t w25_get_sector_size(FlashChipHandle h, uint8_t sec_id)
 {
-    tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
+    tW25Qxx *ctx = (tW25Qxx *)h;
     if (!ctx || sec_id >= BLOCK_SECTOR_NUM)
         return 0U;
     return W25_SECTOR_SIZE;
-}
-
-static uint8_t w25_get_state(FlashChipHandle h)
-{
-    tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)h;
-    return (uint8_t)(ctx ? ctx->dstate : DEV_OFFLINE);
 }
 
 const tFlashDriverOps w25qxx_driver_ops = {
@@ -338,20 +326,17 @@ const tFlashDriverOps w25qxx_driver_ops = {
     .get_sector_count = w25_get_sector_count,
     .get_sector_addr = w25_get_sector_addr,
     .get_sector_size = w25_get_sector_size,
-    .get_state = w25_get_state,
 };
 
-FlashChipHandle w25qxx_create(void)
-{
-    tW25Qxx_ctx *ctx = (tW25Qxx_ctx *)calloc(1U, sizeof(tW25Qxx_ctx));
-    if (!ctx)
-        return NULL;
-    ctx->dstate = DEV_OFFLINE;
-    return (FlashChipHandle)ctx;
-}
+// 静态实例（外部 SPI NOR：W25Q128）
+static tW25Qxx s_w25 = {
+    .ops = &w25qxx_driver_ops,
+    .hspi = &hspi2,
+    .cs_port = GPIOB,
+    .cs_pin = GPIO_PIN_12,
+};
 
-void w25qxx_destroy(FlashChipHandle h)
+FlashChipHandle w25_get_handle(void)
 {
-    free(h);
-    h = NULL;
+    return (FlashChipHandle)&s_w25;
 }

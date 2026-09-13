@@ -68,7 +68,7 @@ void traj_Update(tTraj *traj, float dt)
     if (dist <= stop_dist)
     {
         //  减速段：使用 ARM 优化 sqrt
-        arm_sqrt_f32(2.0f * traj->cfg.limit_d2 * dist, &rate_limit);
+        rate_limit = SQRTF(2.0f * traj->cfg.limit_d2 * dist);
     }
     else
     {

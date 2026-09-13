@@ -1,30 +1,56 @@
 // ============================================================
-// led_drv.c — 板载 GPIO LED 驱动（usr/drv，v2 直连版）
+// led_gpio.c — 板载 GPIO LED 驱动（板级，直连 HAL）
 //
 // 板上两颗普通 LED（CAN 状态灯 / 编码器状态灯）的 tLedDriverOps 实现。
-// 引脚映射与极性只出现在本文件（经 platform.h 宏）。
+// 实例形态：文件内静态 handle 数组，每个实例含
+//   - ops 指针、配置（端口 / 引脚 / 触发电平）
+// 引脚映射与极性只出现在本文件。
 // ============================================================
 #include "led_drivers.h"
+
 #include "gpio.h"
 
-#define LED_DRV_NUM 2U
+// ---------- 本板配置 ----------
+#define LED_DRV_NUM 2U // 板上普通 LED 数量
 
-#define LED_0_GPIOx GPIOD
-#define LED_0_GPIOx_PIN GPIO_PIN_2
-#define LED_1_GPIOx GPIOB
-#define LED_1_GPIOx_PIN GPIO_PIN_3
+#define LED_0_GPIO_PORT GPIOD
+#define LED_0_GPIO_PIN GPIO_PIN_2
+#define LED_1_GPIO_PORT GPIOB
+#define LED_1_GPIO_PIN GPIO_PIN_3
+
+// ---------- 实例 handle ----------
 typedef struct
 {
-    GPIO_TypeDef *port;
-    uint16_t pin;
-    bool active_level; // 触发电平 true 高电平 / false 低电平
-} tLedDrvRes;
+    const tLedDriverOps *ops; // 该实例的操作表
+    GPIO_TypeDef *port;       // 配置：端口
+    uint16_t pin;             // 配置：引脚
+    bool active_level;        // 配置：触发电平（true 高电平点亮）
+} tLedGpio;
 
-// （低电平点亮）
-static tLedDrvRes g_leds[LED_DRV_NUM] = {
-    {LED_0_GPIOx, LED_0_GPIOx_PIN, false},
-    {LED_1_GPIOx, LED_1_GPIOx_PIN, false},
+static bool led_drv_init(LedHandle h);
+static void led_drv_set(LedHandle h, bool active);
+static void led_drv_toggle(LedHandle h);
+
+const tLedDriverOps led_drv_ops = {
+    .init = led_drv_init,
+    .set = led_drv_set,
+    .toggle = led_drv_toggle,
 };
+
+// 静态实例（低电平点亮）
+static tLedGpio s_leds[LED_DRV_NUM] = {
+    {.ops = &led_drv_ops, .port = LED_0_GPIO_PORT, .pin = LED_0_GPIO_PIN, .active_level = false},
+    {.ops = &led_drv_ops, .port = LED_1_GPIO_PORT, .pin = LED_1_GPIO_PIN, .active_level = false},
+};
+
+LedHandle led_get_handle(uint8_t idx)
+{
+    if (idx >= LED_DRV_NUM)
+        return NULL;
+    return (LedHandle)&s_leds[idx];
+}
+
+// ---- ops 实现 ----
 
 static bool led_drv_init(LedHandle h)
 {
@@ -35,30 +61,17 @@ static bool led_drv_init(LedHandle h)
 
 static void led_drv_set(LedHandle h, bool active)
 {
-    if (!h)
+    tLedGpio *inst = (tLedGpio *)h;
+    if (!inst)
         return;
-    tLedDrvRes *r = (tLedDrvRes *)h;
-    GPIO_PinState level = active == r->active_level ? GPIO_PIN_SET : GPIO_PIN_RESET;
-    HAL_GPIO_WritePin(r->port, r->pin, level);
+    GPIO_PinState level = (active == inst->active_level) ? GPIO_PIN_SET : GPIO_PIN_RESET;
+    HAL_GPIO_WritePin(inst->port, inst->pin, level);
 }
 
 static void led_drv_toggle(LedHandle h)
 {
-    if (!h)
+    tLedGpio *inst = (tLedGpio *)h;
+    if (!inst)
         return;
-    tLedDrvRes *r = (tLedDrvRes *)h;
-    HAL_GPIO_TogglePin(r->port, r->pin);
-}
-
-const tLedDriverOps led_drv_ops = {
-    .init = led_drv_init,
-    .set = led_drv_set,
-    .toggle = led_drv_toggle,
-};
-
-LedHandle led_drv_handle(uint8_t idx)
-{
-    if (idx >= LED_DRV_NUM)
-        return NULL;
-    return (LedHandle)&g_leds[idx];
+    HAL_GPIO_TogglePin(inst->port, inst->pin);
 }

@@ -3,7 +3,7 @@
 //
 // 输入：tEncoderDriverOps（同步 read_angle）+ 芯片句柄
 // 输出：多圈位置 pos、绝对角 angle_abs、M-T 速度 vel、PLL 平滑角度/速度、
-//       数据有效性 data_valid（连续读数失败判失效）
+//       数据有效性 valid_counter（连续读数失败的滑动指示）
 // ============================================================
 
 #include "encoder.h"
@@ -15,11 +15,13 @@ bool encoder_init(tEncoder *enc, const tEncoderDriverOps *ops,
 {
     if (!enc || !ops || !handle)
         return false;
-    enc->dstate = DEV_OFFLINE;
+
     memset(enc, 0, sizeof(tEncoder));
     enc->drv_ops = ops;
     enc->drv_handle = handle;
     enc->type = type;
+    enc->dstate = DEV_OFFLINE;
+
     if (!ops->init(handle, type))
         return false;
 
@@ -28,7 +30,7 @@ bool encoder_init(tEncoder *enc, const tEncoderDriverOps *ops,
     enc->rad_per_lsb = MATH_2PI / (float)enc->resolution;
 
     enc->first_run = true;
-    enc->data_valid = false;
+    enc->valid_counter = 0U;
     enc->dstate = DEV_ONLINE;
     return true;
 }
@@ -88,7 +90,7 @@ void encoder_task(tEncoder *enc)
     {
         float delta_angle = normalize_angle_pi(angle_abs - enc->last_angle_abs);
         enc->vel = delta_angle / dt;
-        if (fabsf(enc->vel) > ENCODER_VEL_PHYS_LIMIT)
+        if (FABSF(enc->vel) > ENCODER_VEL_PHYS_LIMIT)
             enc->vel = 0.0f;
         enc->last_ts_ms = ts;
         enc->last_angle_abs = angle_abs;
@@ -115,7 +117,7 @@ void encoder_pll_update(tEncoder *enc, float dt)
     float estimated_speed = ENCODER_PLL_KP * enc->pll_theta_delta + ENCODER_PLL_KI * enc->pll_integ;
     enc->pll_theta += estimated_speed * dt;
     enc->pll_theta = normalize_angle_2pi(enc->pll_theta);
-    enc->pll_vel = (fabsf(estimated_speed) < 0.05f) ? 0.0f : estimated_speed;
+    enc->pll_vel = (FABSF(estimated_speed) < 0.05f) ? 0.0f : estimated_speed;
 
     // 超物理速度视为失锁，重锁到当前角度
     if (enc->pll_vel > ENCODER_VEL_PHYS_LIMIT || enc->pll_vel < -ENCODER_VEL_PHYS_LIMIT)
@@ -133,6 +135,6 @@ void encoder_set_zero(tEncoder *enc)
     enc->pos_offset = (float)enc->last_raw_angle;
     enc->num_turns = 0;
     enc->pos = 0.0f;
-    enc->pll_theta = edata_validnc->angle_abs;
+    enc->pll_theta = enc->angle_abs;
     enc->pll_integ = 0.0f;
 }

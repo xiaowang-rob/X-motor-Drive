@@ -3,40 +3,64 @@
 
 #include "flash.h"
 
+// ============================================================
+// iap.h — 在线升级（IAP）契约与业务对象（abs）
+//
+// 设计要点：
+//   1) IAP **不再自建一套读写 ops**，而是复用 tFlashDriverOps 介质契约
+//      + 一份分区表（消除原 app_*/bl_* 六函数重复）；
+//   2) 跳转能力是平台行为，由板级以回调注入；
+//   3) 校验采用**整区 CRC32**：上位机只给期望值，设备流式遍历 flash 计算，
+//      无需把固件数据再搬一遍（省 RAM 与传输）。
+// ============================================================
+
 typedef enum
 {
-    IAP_BL,
+    IAP_BL = 0,
     IAP_APP
 } eIAPtype;
+
+#define IAP_PART_COUNT 2U
+
+// 分区几何（绝对地址 / 大小）
 typedef struct
 {
-    void (*app_init)(void);
-    bool (*app_erase)(void);
-    bool (*app_write)(uint32_t offset, const uint8_t *data, uint32_t len);
-    bool (*app_read)(uint32_t offset, uint8_t *data, uint32_t len);
-    bool (*bl_erase)(void);
-    bool (*bl_write)(uint32_t offset, const uint8_t *data, uint32_t len);
-    bool (*bl_read)(uint32_t offset, uint8_t *data, uint32_t len);
-    bool (*jump_app)(void);
-    bool (*jump_bl)(void);
-} tIAPDriverOps;
+    uint32_t base;
+    uint32_t size;
+} tIAPPartition;
+
+// IAP 配置：介质 + 分区表 + 平台跳转
+typedef struct
+{
+    const tFlashDriverOps *flash_ops; // 复用的介质 ops
+    FlashChipHandle flash_handle;     // 介质句柄
+    const tIAPPartition *parts;       // 分区表，按 eIAPtype 索引
+    uint8_t part_count;               // 分区表长度
+    bool (*jump)(eIAPtype type);      // 平台跳转（板级注入）
+    eIAPtype type;                    // 默认操作分区
+} tIAPConfig;
 
 typedef struct
 {
-    tIAPDriverOps *ops;
-    eIAPtype type;
+    tIAPConfig cfg;       // 配置副本
+    eDeviceStatus dstate; // 设备状态（本层维护）
 } tIAP;
 
-void iap_init(tIAP *iap, tIAPDriverOps *ops, eIAPtype type);
-// 便捷：擦写/校验整个 App / BL 区
+bool iap_init(tIAP *iap, const tIAPConfig *cfg);
+
+// ---- 分区操作（以 iap->cfg.type 为默认分区） ----
 bool iap_erase(tIAP *iap);
-bool iap_write(tIAP *iap, uint32_t offset,
-               const uint8_t *data, uint32_t size);
-bool iap_verify(tIAP *iap, uint32_t offset,
-                const uint8_t *data, uint32_t size);
+bool iap_write(tIAP *iap, uint32_t offset, const uint8_t *data, uint32_t len);
+bool iap_read(tIAP *iap, uint32_t offset, uint8_t *data, uint32_t len);
 
-// 跳转 / 复位
-void iap_jump_app(tIAP *iap);
-void iap_reset(tIAP *iap);
+// 整区校验：流式计算整个分区的 CRC32 并与 expect_crc 比对
+bool iap_verify_crc(tIAP *iap, uint32_t expect_crc);
 
-#endif
+// 跳转到默认分区 / 复位回 BL
+bool iap_jump(tIAP *iap);
+bool iap_reset(tIAP *iap);
+
+// 取分区几何（供上层计算偏移/大小）
+const tIAPPartition *iap_get_partition(const tIAP *iap, eIAPtype type);
+
+#endif // __IAP_H

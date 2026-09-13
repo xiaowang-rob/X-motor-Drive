@@ -1,151 +1,151 @@
 // ============================================================
-// ws28xx.c — WS2812/WS28xx RGB 灯驱动（usr/drv，v2 直连版）
+// led_ws28xx.c — WS2812/WS28xx RGB 灯驱动（板级，PWM + DMA）
 //
-// 芯片协议：单线串行、每灯 24bit（GRB）、每位由高低占空比定时脉冲表达，
-// 整体由 PWM+DMA 推 CCR 值序列产生。驱动负责 颜色+亮度 → CCR 编码。
-//
-// v2：直接用本板 PWM-DMA（platform.h 的 RGB_PWM_GET_HTIM/CH1），
-// 灯珠数取 Pixel_NUM；传输完成中断 HAL_TIM_PWM_PulseFinishedCallback
-// 由本文件唯一持有（复位忙标志）。
+// 芯片协议：单线串行、每灯 24bit（GRB），每位由高低占空比定时脉冲表达，
+// 整体由 PWM+DMA 推 CCR 值序列产生。
+// 实例形态：文件内静态 handle，内含
+//   - ops 指针、外设句柄（htim）、配置（通道 / 灯珠数 / 占空比编码 / 缓冲长度）
+//   - 静态 CCR 缓冲（不再堆分配）
+// HAL_TIM_PWM_PulseFinishedCallback 由本文件唯一持有（复位忙标志）。
 // ============================================================
 #include "led_drivers.h"
+
 #include "tim.h"
 
-// ---------- RGB PWM  ----------
-#define RGB_PWM_HTIM (htim4)
+// ---------- 本板配置 ----------
 #define RGB_PWM_CHANNEL TIM_CHANNEL_2
-#define RGB_NUM 2   // 板上灯珠数量
-#define CODE_1 (75) // 逻辑 1 占空比 CCR 值
-#define CODE_0 (35) // 逻辑 0 占空比 CCR 值
+#define RGB_PIXEL_NUM 2U    // 板上灯珠数量
+#define RGB_CODE_1 75U      // 逻辑 1 的 CCR 值
+#define RGB_CODE_0 35U      // 逻辑 0 的 CCR 值
+#define RGB_RESET_BITS 100U // 帧尾复位（低电平）位数
 
-#define WS_RESET_BITS 100U // 帧尾复位（低电平）位数
+#define RGB_BUF_LEN (RGB_PIXEL_NUM * 24U + RGB_RESET_BITS)
 
-static volatile bool s_busy = false; // DMA 推流中
-
-// ---- 传输完成中断（只在本文件定义） ----
-void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
-{
-    if (htim->Instance == RGB_PWM_GET_HTIM.Instance)
-        s_busy = false;
-}
-
+// ---------- 实例 handle ----------
 typedef struct
 {
-    uint8_t num_pixels;
-    uint32_t buf_len; // num*24 + reset
-    tRGBColor color;
-    uint8_t brightness;
-    bool inited;
-    uint32_t *ccr_buf;
-} tWs28xx_ctx;
+    const tRgbDriverOps *ops; // 该实例的操作表
+    TIM_HandleTypeDef *htim;  // 外设：PWM 定时器
+    uint32_t channel;         // 配置：PWM 通道
+    uint8_t num_pixels;       // 配置：灯珠数量
+    uint32_t buf_len;         // 配置：CCR 序列长度（含帧尾复位位）
+    uint16_t code_1;          // 配置：逻辑 1 占空比
+    uint16_t code_0;          // 配置：逻辑 0 占空比
 
-// 改变亮度时，亮度值范围 0-255，颜色值范围 0-255
-static inline uint8_t scale_brightness(uint8_t v, uint8_t b)
-{
-    return (uint8_t)(((uint16_t)v * b + 127U) / 255U);
-}
-// RGB 编码
-static void ws28xx_build_stream(tWs28xx_ctx *ctx)
-{
-    uint32_t idx = 0U;
-    for (uint8_t pixel = 0U; pixel < ctx->num_pixels; pixel++)
-    {
-        uint8_t ch[3]; // G,R,B（WS2812 数据格式）
-        ch[0] = scale_brightness(ctx->color.G, ctx->brightness);
-        ch[1] = scale_brightness(ctx->color.R, ctx->brightness);
-        ch[2] = scale_brightness(ctx->color.B, ctx->brightness);
+    tRGBColor color;               // 运行时：颜色
+    uint8_t brightness;            // 运行时：亮度
+    bool inited;                   // 运行时：初始化标志
+    volatile bool busy;            // 运行时：DMA 推流中
+    uint32_t ccr_buf[RGB_BUF_LEN]; // 静态 DMA 缓冲
+} tWs28xx;
 
-        for (uint8_t c = 0U; c < 3U; c++)
-            for (int bit = 7; bit >= 0; bit--)
-                ctx->ccr_buf[idx++] = ((ch[c] >> bit) & 0x01U) ? CODE_1 : CODE_0;
-    }
-    for (uint32_t i = idx; i < ctx->buf_len; i++)
-        ctx->ccr_buf[i] = 0U; // 复位（低电平）
-}
+static bool ws28xx_init(RgbHandle h);
+static void ws28xx_set_rgb(RgbHandle h, tRGBColor color);
+static void ws28xx_set_brightness(RgbHandle h, uint8_t brightness);
+static void ws28xx_refresh(RgbHandle h);
 
-// ---- ops 实现 ----
-
-static bool ws28xx_init(RgbHandle h)
-{
-    tWs28xx_ctx *ctx = (tWs28xx_ctx *)h;
-    if (!ctx)
-        return false;
-
-    memset(ctx->ccr_buf, 0, ctx->buf_len * sizeof(uint32_t));
-    ctx->brightness = 255U;
-    ctx->color.R = ctx->color.G = ctx->color.B = 0U;
-    ctx->inited = true;
-    return true;
-}
-
-static void ws28xx_set_rgb(RgbHandle h, tRGBColor color)
-{
-    tWs28xx_ctx *ctx = (tWs28xx_ctx *)h;
-    if (!ctx)
-        return;
-    ctx->color = color;
-}
-
-static void ws28xx_set_brightness(RgbHandle h, uint8_t brightness)
-{
-    tWs28xx_ctx *ctx = (tWs28xx_ctx *)h;
-    if (!ctx)
-        return;
-    ctx->brightness = brightness;
-}
-
-static void ws28xx_refresh(RgbHandle h)
-{
-    tWs28xx_ctx *ctx = (tWs28xx_ctx *)h;
-    if (!ctx || !ctx->inited)
-        return;
-
-    if (s_busy)
-        return; // 上一帧仍在推，丢弃本次
-
-    ws28xx_build_stream(ctx);
-    s_busy = true;
-    if (HAL_TIM_PWM_Start_DMA(&RGB_PWM_GET_HTIM, RGB_PWM_CHANNEL1,
-                              ctx->ccr_buf, (uint16_t)ctx->buf_len) != HAL_OK)
-        s_busy = false;
-}
-
-const tRgbDriverOps ws28xx_driver_ops = {
+const tRgbDriverOps rgb_ws28xx_ops = {
     .init = ws28xx_init,
     .set_rgb = ws28xx_set_rgb,
     .set_brightness = ws28xx_set_brightness,
     .refresh = ws28xx_refresh,
 };
 
-RgbHandle ws28xx_create(void)
+// 静态实例
+static tWs28xx s_rgb = {
+    .ops = &rgb_ws28xx_ops,
+    .htim = &htim4,
+    .channel = RGB_PWM_CHANNEL,
+    .num_pixels = RGB_PIXEL_NUM,
+    .buf_len = RGB_BUF_LEN,
+    .code_1 = RGB_CODE_1,
+    .code_0 = RGB_CODE_0,
+    .brightness = 255U,
+    .inited = false,
+    .busy = false,
+};
+
+RgbHandle rgb_get_handle(void)
 {
-    uint8_t num_pixels = Pixel_NUM; // 板上灯珠数（platform）
-    if (num_pixels == 0U)
-        return NULL;
-
-    tWs28xx_ctx *ctx = (tWs28xx_ctx *)calloc(1U, sizeof(tWs28xx_ctx));
-    if (!ctx)
-        return NULL;
-
-    ctx->buf_len = (uint32_t)num_pixels * 24U + WS_RESET_BITS;
-    ctx->ccr_buf = (uint32_t *)calloc(ctx->buf_len, sizeof(uint32_t));
-    if (!ctx->ccr_buf)
-    {
-        free(ctx);
-        return NULL;
-    }
-
-    ctx->num_pixels = num_pixels;
-    ctx->brightness = 255U;
-    return (RgbHandle)ctx;
+    return (RgbHandle)&s_rgb;
 }
 
-void ws28xx_destroy(RgbHandle h)
+// ---- 传输完成中断（只在本文件定义） ----
+void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
 {
-    tWs28xx_ctx *ctx = (tWs28xx_ctx *)h;
-    if (!ctx)
+    if (htim != s_rgb.htim)
         return;
-    free(ctx->ccr_buf);
-    free(ctx);
-    h = NULL;
+    s_rgb.busy = false;
+}
+
+// 亮度缩放（0-255）
+static inline uint8_t scale_brightness(uint8_t v, uint8_t b)
+{
+    return (uint8_t)(((uint16_t)v * b + 127U) / 255U);
+}
+
+// 颜色 + 亮度 → CCR 序列
+static void ws28xx_build_stream(tWs28xx *inst)
+{
+    uint32_t idx = 0U;
+    for (uint8_t pixel = 0U; pixel < inst->num_pixels; pixel++)
+    {
+        uint8_t ch[3]; // G, R, B（WS2812 数据格式）
+        ch[0] = scale_brightness(inst->color.G, inst->brightness);
+        ch[1] = scale_brightness(inst->color.R, inst->brightness);
+        ch[2] = scale_brightness(inst->color.B, inst->brightness);
+
+        for (uint8_t c = 0U; c < 3U; c++)
+            for (int8_t bit = 7; bit >= 0; bit--)
+                inst->ccr_buf[idx++] = ((ch[c] >> bit) & 0x01U) ? inst->code_1 : inst->code_0;
+    }
+    for (uint32_t i = idx; i < inst->buf_len; i++)
+        inst->ccr_buf[i] = 0U; // 帧尾复位（低电平）
+}
+
+// ---- ops 实现 ----
+
+static bool ws28xx_init(RgbHandle h)
+{
+    tWs28xx *inst = (tWs28xx *)h;
+    if (!inst || !inst->htim)
+        return false;
+
+    memset(inst->ccr_buf, 0, inst->buf_len * sizeof(uint32_t));
+    inst->brightness = 255U;
+    inst->color.R = inst->color.G = inst->color.B = 0U;
+    inst->busy = false;
+    inst->inited = true;
+    return true;
+}
+
+static void ws28xx_set_rgb(RgbHandle h, tRGBColor color)
+{
+    tWs28xx *inst = (tWs28xx *)h;
+    if (!inst)
+        return;
+    inst->color = color;
+}
+
+static void ws28xx_set_brightness(RgbHandle h, uint8_t brightness)
+{
+    tWs28xx *inst = (tWs28xx *)h;
+    if (!inst)
+        return;
+    inst->brightness = brightness;
+}
+
+static void ws28xx_refresh(RgbHandle h)
+{
+    tWs28xx *inst = (tWs28xx *)h;
+    if (!inst || !inst->inited)
+        return;
+    if (inst->busy)
+        return; // 上一帧仍在推，丢弃本次
+
+    ws28xx_build_stream(inst);
+    inst->busy = true;
+    if (HAL_TIM_PWM_Start_DMA(inst->htim, inst->channel,
+                              inst->ccr_buf, (uint16_t)inst->buf_len) != HAL_OK)
+        inst->busy = false;
 }

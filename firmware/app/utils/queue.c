@@ -1,5 +1,8 @@
 #include "queue.h"
 
+#include <stddef.h> // NULL
+#include <string.h> // memcpy
+
 //  临界区开关
 #define QUEUE_ENABLE_CRITICAL 0 // 0-关闭（单线程），1-开启（多任务/中断）
 

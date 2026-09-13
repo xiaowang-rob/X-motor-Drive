@@ -7,8 +7,27 @@
 ## firmware 存主要的app固件和bl固件
 
 ### app app固件
+```
+app/
+├── abs/     抽象层：设备契约(ops) + 业务对象（可 host 编译的纯逻辑）
+├── app/     组装层 + 通讯端口（高层，重构中）
+├── ctl/     控制层：FOC 核心 / SVPWM / 无感(SMO,HFI) / 整定（高层，重构中）
+├── srv/     服务层：时隙调度 slot_con / 参数 / 保护 / 状态反馈 / 日志（高层，重构中）
+└── utils/   工具：math_fast / crc / pid / filter / queue / memory_pool / trajectory
+```
 ### bootload bl固件
 ### board 板级：HAL/CubeMX/USB 厂商层 + drv 芯片驱动 + startup
+
+```
+board/<board>/
+├── drv/      芯片驱动层（直连 HAL）：bus_can / uart_* / sen_mcu / gate_* /
+│             led_* / fla_* / enc_* / encoder_drivers / IF_irq / IF_time / IF_config
+├── Core/     CubeMX 外设初始化
+├── Drivers/  厂商 HAL + CMSIS
+├── Middlewares/ USB Device + CMSIS-DSP
+├── USB_DEVICE/  USB 应用层（usbd_cdc_if 的 USER CODE 为驱动回调入口）
+└── cmake/    工具链文件（gcc-arm-none-eabi.cmake）
+```
 ### firmware_out 存放输出的hex、bin文件
 ### tools 存放编译脚本
 
@@ -20,151 +39,193 @@
 
 ---
 
-# 分层架构评审
+# 分层架构约定（当前实现）
 
-> **评审快照**：`HEAD = dbac051`（含当时工作区未提交的高层重构：`dev_board.*` 已删、新增 `device_cfg.*`、`slot_con.*` 在改）
-> **评审方式**：静态阅读 `firmware/{app,bootload,board/xdr_p_app/drv}` 全部源码，未运行硬件实测
-> **一句话结论**：分层骨架成立，但 **abs ↔ drv ↔ 高层之间目前是三套并存的 API**，热路径上存在若干效率损失与正确性隐患。
+> 适用范围：`firmware/app/abs`（抽象层）、`firmware/board/<board>/drv`（驱动层）。
+> 高层 `app/{ctl,srv,app}` **仍在重构中，尚未接入本约定**（见"遗留项"）。
 
-## 一、总体判断
+## 1. 两层 handle
 
-| 层 | 分配（职责划分） | 写法（效率/健壮性） |
+| | 抽象层 abs | 驱动层 drv |
 |---|---|---|
-| 底层抽象 `app/abs` | 思路对，**契约不统一** | 中 |
-| 驱动层 `board/<board>/drv` | **清晰** | 偏低（多处会卡死/越界） |
-| 高层 `app/{ctl,srv,app}` | **层与层没接上** | 中（实时设计有亮点） |
+| 结构 | `tBusDriver` `tUartDriver` `tFlash` `tIAP` `tEncoder` `tSense` `tGateDrv` | `tCanBus` `tUartMcu` `tUartUsb` `tSenseAdc` `tGateHw` `tWs28xx` `tLedGpio` `tW25Qxx` `tMcuFlash` `tEncEngine` `tAS5047/tMT6816/tMT6835` |
+| 持有 | `ops` 指针、业务状态、队列/内存池**对象** | `ops` 指针、**外设句柄**(hcan/hadc/htim/hspi/huart)、**配置**、运行时缓冲 |
+| 位置 | 头文件（跨层契约） | `.c` 内私有 |
 
-## 二、底层抽象层 `app/abs`
+三条硬规则：
 
-### 做得好的
+1. 抽象层只对外暴露**不透明句柄**（`BusHandle` / `UartHandle` / `FlashChipHandle` …，均为 `void *`）；
+2. 驱动实例一律**文件内静态**——无 `malloc/calloc`，无 `create/destroy`；
+3. 厂商类型（`CAN_HandleTypeDef` 等）只出现在 drv 的 `.c` 里，**共享头文件不被 HAL 污染**。
 
-- ops 表 + 不透明句柄的多态；`device.h` 统一 `eDeviceStatus`。
-- `tEncoder` 把"原始角 → 多圈/零位/M-T/PLL/有效性"收在 abs，业务侧只吃物理量——正确的抽象切分。
-- `flash` 的**日志式顺序追加 + 写满才擦除**（见 `flash.h`），磨损友好，比"原地改写"高一个层次。
-- 查询接口全用 `static inline`（`encoder.h:100-106`），零调用开销。
+## 2. ops 契约
 
-### 存在的问题
+- 每个 ops 表的**函数首参 = 该设备的 handle**；**表内不存 ctx / 外设**；
+- 需要回调的设备在注册时显式带 ctx：`register_callback(h, cb, ctx)`，由驱动回传，把实例送回抽象层；
+- 现有 ops：`tEncoderDriverOps` `tFlashDriverOps` `tLedDriverOps` `tRgbDriverOps` `tSampleMcuOps` `tGateDrvOps` `tBusDriverOps` `tUartDriverOps`。
 
-1. **9 个 ops 契约里 4 个没有实例上下文**（最该统一的一处）：
+## 3. 实例获取接口（统一命名）
 
-   | ops | 上下文 |
-   |---|---|
-   | `tEncoderDriverOps` / `tFlashDriverOps` / `tLedDriverOps` / `tRgbDriverOps` | `void *handle` ✅ |
-   | `tSampleMcuOps` | `void *ctx` + 每函数首参 ✅ |
-   | `tGateDrvOps` / `tBusDriverOps` / `tUartDriverOps` / `tIAPDriverOps` | **无** ❌ |
+| 设备 | 接口 |
+|---|---|
+| CAN | `can_get_handle()` |
+| UART（MCU / USB CDC） | `uart_mcu_get_handle()` / `uart_usb_get_handle()` |
+| ADC 采样 | `sense_get_handle()` |
+| 功率级 | `gate_get_handle()` |
+| GPIO LED（2 颗） | `led_get_handle(uint8_t idx)` |
+| WS2812 RGB | `rgb_get_handle()` |
+| 外部 SPI NOR | `w25_get_handle()` |
+| MCU 内部 Flash | `mcu_flash_get_handle()` |
+| IAP 配置 | `mcu_iap_config(eIAPtype type)` |
+| 编码器 SPI 引擎 | `enc_engine_get_handle()` |
+| 编码器芯片（内/外） | `as5047_get_handle(type)` / `mt6816_get_handle(type)` / `mt6835_get_handle(type)` |
 
-   后 4 个**天生只能单例**——想挂 CAN1+CAN2 或两路 UART 就无法复用同一套 ops 实现；两种 ctx 风格（`ctx` vs `handle`）也分裂。
+> 选择"函数获取"而非 `extern` 实例：`extern` 要求头文件给出**完整类型**，而 handle 结构含厂商类型，会迫使共享头 include HAL、破坏分层。函数返回不透明句柄则不会（且只在组装阶段调用一次，无性能代价）。
 
-2. **头文件里定义函数体**：`gate_drv.h:27` / `:31` 直接写 `{ return ...; }` 且**不是 inline** → 多编译单元重复定义。
+## 4. 缓冲归属
 
-3. **abs 层用堆**：`flash.c:90` `malloc(sizeof(tFlashUnit))`——破坏"纯逻辑 / 可 host 编译 / 确定性"底线，`flash_unit_register` 应改为调用方传静态存储。
+大缓冲**由调用方提供**，实例只持指针：
 
-4. **命名与注释脱节**：`encoder.h:82` 注释写 `data_valid`，实现里字段叫 `valid_counter`（`encoder.c:31` 残留 `enc->data_valid`）；`encoder.c:136` 出现 `edata_validnc->angle_abs`（改名事故）。
+- `tBusBuffer`：内存池缓冲 + 帧队列缓冲（帧队列存**帧实体地址**，按 `sizeof(pointer)` 入队）
+- `tUartBuffer`：接收字节队列 + 帧解析缓冲 + 发送组帧缓冲
 
-5. **`tIAPDriverOps` 六函数成对重复**：`app_erase/app_write/app_read/bl_erase/bl_write/bl_read` 本可用"分区描述 + 参数"压掉一半。
+收益：同一份代码可挂多路总线/串口；实例不再内嵌大数组（uart 实例因此瘦身约 265 字节）。
 
-6. **`fmodf` 进了热路径**：`math_fast.h:44/55` 的 `normalize_angle_2pi/pi` 用 `fmodf`，被 PLL（每中频周期 2 次）与电角度归一调用；M4 上 `fmodf` 是几十~上百周期，改用常量倒数 + 取整（或 `[0,2π)` 定点表示）可省掉大部分。
+## 5. 状态归属
 
-## 三、驱动层 `board/<board>/drv`
+- `eDeviceStatus` 由**抽象实例**持有（业务视角）；驱动只返回单次操作的 `bool` 成败；
+- **按需设置**：`flash` / `iap` / `encoder` / `bus` / `uart` / `gate` 有状态；`sense` / `led` / `rgb` **无**（纯数据流/纯输出，加状态无意义）；
+- 已删除死接口 `tFlashDriverOps.get_state`（历史遗留：定义了但全工程无人调用）。
 
-### 做得好的
+## 6. 驱动层文件模板
 
-- v2"直连 HAL、不做中间适配"在板少的前提下省事且高效。
-- 中断回调"单文件唯一持有"执行得不错（`sen_mcu.c` ADC、`led_ws28xx.c` PWM_PulseFinished、`bus_can.c` RxFifo0）。
-- 实例判别规范：`sen_mcu.c` 判 `hadc->Instance == ADC2`、`led_ws28xx.c` 判 `htim->Instance`。
+所有 `drv/*.c` 统一为下面骨架（`sen_mcu.c` 为范例）：
 
-### 存在的问题（按危害排序）
+```c
+// ============================================================
+// xxx.c — 名称（板级，直连 HAL）
+// （芯片/外设协议说明；实例形态说明；必要 TODO）
+// ============================================================
+#include "xxx_drivers.h"
+#include "...hal 头"
 
-1. **ISR 里直接回调上层，自己建的队列没用上**：`bus_com.h` 开篇即写"接收数据进内存池 → 地址进队列 → 主线程提取"，但 `bus_can.c:16-25` 在 CAN 中断里直接 `s_rx_cb(...)`；`uart_mcu.c`、`uart_usb_cdc.c` 同样。`queue.c` / `memory_pool.c` 已建好却**根本没接线**。后果：上层耗时的回调直接压在通讯 ISR 里，重活即丢帧。
+// ---------- 本板配置 ----------
+#define ...
 
-2. **`fla_mcu.c` 扇区表本身是错的**（数据完整性问题）：
-   - F405 只有 12 个扇区（0–11），但 `USR_SECTOR_ID[3] = {10,11,12}` 用了**不存在的扇区 12**；
-   - `APP_SECTOR_ID[MCU_NUM_SECTOR_APP]`（宏 = 7）却给了 **8 个初值** → 越界。
+// ---------- 实例 handle ----------
+typedef struct { const tXxxOps *ops; /* 外设 + 配置 + 运行时 */ } tXxx;
 
-3. **`fla_mcu.c` 两处会崩 / 会锁死**：
-   - `mf_write` 用 **`uint16_t i`** 索引 `len`（uint32_t）→ IAP 写 >64KB 固件必然回绕；
-   - `mf_erase_usr_sector` 失败分支**漏了 `platform_enable_irq()`** → 擦除失败后**中断永久关闭**；
-   - `mf_read` **逐字节 `*(volatile uint8_t*)`** → IAP 校验 800KB 会非常慢，应改字读 / `memcpy`。
+static <ops 函数> 前置声明
 
-4. **编码器 SPI 是隐藏瓶颈**：`encoder_drivers.c:39` 预分频**写死 `SPI_BAUDRATEPRESCALER_32`**（APB1 42MHz → **1.3MHz**），16bit 读角约 **30µs**，而 PWM 周期才 50µs（20kHz）——**占周期 60%**；`HAL_SPI_TransmitReceive` 超时 **100ms**，在控制路径上是阻塞风险；且内外编码器 CS **都写成 PA15**（复制未改）。
+const tXxxOps xxx_ops = { ... };
 
-5. **堆分配实例**（6 处）：`enc_as5047` / `enc_mt6816` / `enc_mt6835` / `led_ws28xx` / `fla_w25qxx` 都用 `calloc` 建 ctx 并配 `create/destroy`。对固定单例硬件，**静态实例更快、更确定**，省掉堆依赖、NULL 检查与整套 destroy API。
+// 静态实例
+static tXxx s_xxx = { ... };
 
-6. **判空 / 判实例不一致**：`bus_can.c:22` 判了 `if (s_rx_cb)`；`uart_mcu.c`、`uart_usb_cdc.c` **没判** → 空指针风险。`bus_can.c` 还**忽略 `hcan` 参数**（多路 CAN 会串），而 ADC/PWM 都判了。
+XxxHandle xxx_get_handle(void) { return (XxxHandle)&s_xxx; }
 
-7. **宏名 / 函数名不统一造成的编译错误**：`ENCODER_SPI_CH` vs `ENCODER_HSPI`、`platform_disable_irq` vs `plat_disable_irq`、`RGB_PWM_CHANNEL` vs `RGB_PWM_CHANNEL1`、`USB_CS_GPIOx` vs `USB_DP_GPIOx`、`PWM_GET_HTIM` vs `SAMPLE_PWM_HTIM`。
+// ---- 中断（只在本文件定义） ----
+void HAL_xxx_Callback(...) { ... }
 
-8. **命名留痕**：文件注释仍是旧名（`gate_fd6288q.c` 写 motor_drv、`encoder_drivers.c` 写 enc_spi_engine、`fla_mcu.c` 写 mcu_flash_drv）；`uart_drivers.h` 里**混进了 CAN 的声明**。
+// ---- ops 实现 ----
+```
 
-## 四、高层 `app/{ctl,srv,app}`
+## 7. 工具约定
 
-### 做得好的
+| 用途 | 入口 | 说明 |
+|---|---|---|
+| 数学 | `utils/math_fast.h` | `FABSF` / `SQRTF` / `CLAMP` / `FSIGN` / `normalize_angle_2pi/pi` / clarke·park；**不裸调** `fabsf/sqrtf/fmodf` |
+| 校验 | `utils/crc.h` | `crc8`（帧校验）、`crc32`（固件整区，与 `zlib.crc32` 一致，便于上位机配合） |
+| 基础类型 | `abs/device.h` | `eDeviceStatus` + 统一使用 `uintN_t`，**不用** `u8/u16/u32` 别名 |
+| 角度归一 | `math_fast.h` | 用"常量倒数 + 取整"替代 `fmodf`（后者是库调用，数十~上百周期） |
 
-- **分频时隙调度**（`slot_con` + `high/medium/low_update`）：把高/中/低频任务**错位分摊到不同 PWM 周期**，避免单周期耗时尖峰——本工程最漂亮的一处实时设计。
-- FOC 状态机（IDLE/ENABLE/RUNNING/TUNE/FAULT）+ 故障锁存（`foc_main.c:113-121`）。
-- PI/PID 连续域 → 离散域转换规范（`pid.c:52` `kd = kd_cont/dt`）。
+---
 
-### 存在的问题
+# 整改记录（原评审问题 → 处置）
 
-1. **ctl 层与 abs 层是两套 API，完全对不上**（分层最大的断裂）：
+> 原评审快照 `HEAD=dbac051`。下表记录本轮整改结果；"✅"= 已修，"⏳"= 明确保留待办。
 
-   | ctl 调用 | abs 实际提供 |
-   |---|---|
-   | `encoder_init((eEncoderChip)…)` | `encoder_init(tEncoder*, ops, handle, eEncoderType)` |
-   | `encoder_get_angle_inc()` | `encoder_get_position(tEncoder*)` |
-   | `encoder_get_vel()` | `encoder_get_velocity(tEncoder*)` |
-   | `encoder_pll_update(dt)` | `encoder_pll_update(tEncoder*, dt)` |
-   | `encoder_set_angle_zero()` | `encoder_set_zero(tEncoder*)` |
-   | `encoder_get_num_turns()` | `encoder_get_turns(tEncoder*)` |
+## 抽象层 `app/abs`
 
-   其中 `eEncoderChip` **类型根本不存在**。即 ctl 仍在调用一套**未实现的旧 bsp 全局接口**。
+| 原问题 | 处置 |
+|---|---|
+| 9 个 ops 中 4 个无实例上下文（`gate/bus/uart/iap`），只能单例 | ✅ 全部统一为"函数首参 = handle"，ops 表内不再存 ctx |
+| `gate_drv.h` 头文件里定义函数体（非 inline）→ 重复定义 | ✅ 改为 `static inline` |
+| abs 层用堆（`flash.c` `malloc`） | ✅ 改为调用方传 `tFlashUnit *` |
+| 命名与注释脱节（`data_valid` / `edata_validnc`） | ✅ 修正为 `valid_counter` / `enc` |
+| `tIAPDriverOps` 六函数成对重复 | ✅ 合并为 `erase/write/read/jump` + `eIAPtype`；**并进一步复用 `tFlashDriverOps`**（IAP 不再自建读写 ops） |
+| `fmodf` 在热路径 | ✅ 改"常量倒数 + 取整" |
+| （新）`flash.c` 隐性缺陷 | ✅ 修 5 处：`!s \| !unit` 按位或误用、位图初始化结果被丢弃、`append` 未推进 `free_addr`、`erase` 缺返回值、`unregister` 无效赋 NULL |
 
-2. **新组装层 `device_cfg` 退化**：
-   - 在**头文件里定义全局变量**（`tFlash flash_mcu; tIAP iap_app; …`）→ 每个包含它的 TU 都来一份 tentative definition；
-   - **app 层直接 include 板级 `*_drivers.h`** 并**硬编码板级型号**（`MT6816_create()`、`gate_fd6288q_ops`、`mcu_flash_driver_ops`）→ app 与 board **编译期强耦合**，换板必须改 app。该文件本质是"板专属组装"，更应放 `board/<board>/` 下；
-   - `device_cfg.c` 有 `flash_init(&flash_mcu, &mcu_flash_driver_ops, void);`、`led_init(&led0, &g_led_drv_ops)`（缺 `)` 与 `;`），且**文件后半段残留整篇旧 `dev_board.c`**（拼贴事故）；
-   - 头文件 guard 仍为 `__DEV_BOARD_H`，且残留 `g_dev` / `tDevBoard` / `dev_board_init` 旧声明。
+## 驱动层 `board/<board>/drv`
 
-3. **主循环全速空转**：`app_main.c` 的 `while(1)` **没有 `__WFI()`、没有统一节拍**，各 task 各自判期 → CPU 空耗、发热。电机控制器应加 `__WFI()` 或统一 tick 调度。
+| 原问题 | 处置 |
+|---|---|
+| ISR 里直接回调上层，队列/内存池白建 | ✅ 驱动只回调（带回 ctx），由 **abs 层**入内存池 + 队列；业务逻辑不再跑在通讯 ISR |
+| `fla_mcu` 扇区表越界（`{10,11,12}` 与 7/8 个初值不匹配） | ✅ 已修正为 `BL={0,1}` / `APP={2..8}` / `USR={9,10,11}` |
+| `fla_mcu` 会崩/会锁死（`uint16_t i` 索引、擦除失败漏恢复中断、逐字节读） | ✅ 全修；`mf_read` 改 `memcpy` |
+| 编码器 SPI 是瓶颈（预分频 32 → 1.3MHz，占周期 60%；超时 100ms；内外 CS 同引脚） | ⏳ **保留**（你后续完善）；CS 引脚已加 TODO |
+| 堆分配实例（6 处 `calloc` + `create/destroy`） | ✅ 全部静态化；编码器改 `xxx_get_handle(type)`，无 `used` 池 |
+| 判空 / 判实例不一致 | ✅ 统一：中断判实例（`htim != s_xxx.htim` 等）、回调判空 |
+| 宏名/函数名不一致导致编译错误 | ✅ 统一（`ENCODER_HSPI`、`RGB_PWM_CHANNEL`、`SAMPLE_PWM_HTIM`、`__disable_irq` 等）；并修好 `usbd_cdc_if.c` 把 typedef 名当函数调用的错误（原阻塞 `stm32_usb`） |
+| 命名留痕（注释仍是旧文件名） | ✅ 全部文件头注释重写 |
+| （新）W25 轮询状态寄存器过密 | ✅ `w25_wait_idle` 改"读状态 → `HAL_Delay(1)`"，每轮只取一次 tick |
 
-4. **状态机跑在 20kHz PWM 中断里**：`foc_main.c` 的 `loop_main_update_task` 在 ISR 中跑 switch，`bsp_pwm_enable/disable` 也在 ISR 里执行。常规做法是**中断只跑控制律、状态机放主循环**，现状是实时性与可维护性双输。
+## 高层 `app/{ctl,srv,app}`（本轮按要求**未动**）
 
-5. **`__DEBUG__` 测量本身污染被测量**：中断里 4 次 `bsp_get_tick_us()`、主循环每轮 2 次；`IF_time.c:26` 的 `time_get_us()` 每次都做 `DWT->CYCCNT / (SystemCoreClock/1000000)`，热路径上应预计算倒数。
+| 原问题 | 状态 |
+|---|---|
+| ctl 与 abs 是两套 API（`encoder_get_angle_inc()` vs `encoder_get_position()` 等） | ⏳ **最大待办** |
+| 组装层 `device_cfg`：头文件定义变量、硬编码板级型号、与旧 `dev_board.c` 拼贴 | ⏳ |
+| 主循环全速空转（无 `__WFI__`） | ⏳ |
+| 状态机跑在 20kHz PWM 中断里 | ⏳ |
+| `bsp_*` / `platform_*` / `plat_*` 三套平台接口并存 | ⏳ |
+| `slot_con_update` 遍历式调度 | ⏳ |
 
-6. **重复 / 并存**：
-   - `normalize_angle_360`（ctl）与 `normalize_angle_2pi/pi`（utils）并存；
-   - `sqrtf` 与 `arm_sqrt_f32` 混用；
-   - `bsp_*` 与 `platform_*` 两套平台接口并存（还有 `plat_disable_irq` 第三种写法）；
-   - CAN/UART/USB 三个回调签名各不相同（`can_rx_data_callback(u8*, u8)` 连 id 都没有），且与 `bus_com.h` / `uart_com.h` 中定义的均不一致。
+## 跨层
 
-7. **`uart_process_frame` 按值返回 128+ 字节结构体**（`uart_com.h:51`）→ 每次调用一次大拷贝。
+| 原问题 | 处置 |
+|---|---|
+| `u8/u16/u32` 无统一定义 | ✅ abs / drv / utils 已统一为 `uintN_t`（高层待重构时收口） |
+| `device.h` 与 `types.h` 双头 | ✅ 合并为 `abs/device.h` |
+| （新）`queue.c` 缺 `<stddef.h>`/`<string.h>` | ✅ 补齐 |
+| （新）`memory_pool.c` 无条件 `__enable_irq()`（ISR 中会误开中断） | ✅ 改 PRIMASK 保存/恢复（`__ARM_ARCH` 条件编译，保持 host 可编） |
 
-## 五、跨层共性问题
+## 效率清单（原 10 项）
 
-1. **`u8/u16/u32` 没有任何一处统一定义**——`math_fast.h`、`port_mapping.h`、`svpwm.h`、`log.h`、`fla_mcu.c` 到处在用；`math_fast.h:108` 的 `crc8(const u8*, u8)` 让该错误**扩散到 17 个包含者**。应在一个 `types.h` / `device.h` 中定义一次。
-2. **常量重复 tentative 定义**（`fla_mcu.c` 中 `const uint32_t SECTOR_BOUNDS[13];` 先声明后又初始化）。
-3. **文件改名留痕**：注释、include guard、宏名仍是旧名字。
+| # | 项 | 状态 |
+|---|---|---|
+| 1 | 堆分配 → 静态实例 | ✅ |
+| 2 | ISR 接内存池 + 队列 | ✅（结构已通） |
+| 3 | 编码器 SPI 预分频/超时 | ⏳ |
+| 4 | `fmodf` → 倒数乘 | ✅ |
+| 5 | `mf_read` 字读 | ✅ |
+| 6 | 主循环 `__WFI()` | ⏳（高层） |
+| 7 | PWM 直写 CCR | ✅ |
+| 8 | `slot_con` 直接索引 | ⏳（高层） |
+| 9 | `device_cfg.h` 变量 → `extern` | ⏳（高层） |
+| 10 | `time_get_us` 预计算倒数 | ✅ |
 
-## 六、效率优化清单（按 ROI 排序，均不涉及架构改动）
+---
 
-| # | 项 | 位置 | 收益 |
-|---|---|---|---|
-| 1 | 堆分配 → 静态实例，去掉 `create/destroy` | `enc_*` / `led_ws28xx` / `fla_w25qxx` | 去碎片 / 去不确定性，省 API |
-| 2 | ISR 里接上已建好的内存池 + 队列 | `bus_can.c` / `uart_mcu.c` / `uart_usb_cdc.c` | 回调移出 ISR，防丢帧（设计已存在，只差接线） |
-| 3 | 编码器 SPI 预分频 32 → 8/16，超时 100ms → 1ms | `encoder_drivers.c` | 读角 30µs → <8µs |
-| 4 | `fmodf` 归一 → 倒数乘 / 定点 | `math_fast.h` | 每次省几十~上百周期 |
-| 5 | `mf_read` 逐字节 → 字读 / `memcpy`；修 `uint16_t i` | `fla_mcu.c` | IAP 校验快数倍，修 >64KB 崩溃 |
-| 6 | 主循环加 `__WFI()` | `app_main.c` | 降功耗 / 发热 |
-| 7 | PWM 比较值直写 CCR（绕过 `__HAL_TIM_SetCompare` 三层调用 + 宏分支） | `gate_fd6288q.c` | 每周期省几十周期 |
-| 8 | `slot_con_update` 遍历 → 直接索引 | `slot_con.c` | 每中断省 2+10+10 次比较 |
-| 9 | `device_cfg.h` 里变量定义 → `extern` + 单一定义 | `device_cfg.h` | 消除重复定义 |
-| 10 | `time_get_us` 预计算倒数 | `IF_time.c` | 热路径去除法 |
+# 验证与遗留项
 
-## 七、结论与建议动作
+## 编译验证（本轮）
 
-- **分层思路（abs 业务对象 / drv 直连 HAL / slot 分频调度）是站得住的**，尤其 slot 分频与 flash 日志式单元是有质量的设计。
-- **但"高效"目前还谈不上**，三个层面各有硬伤：
-  1. **抽象层**：ops 契约不统一（4/9 无上下文）、头文件定义函数、abs 用堆；
-  2. **驱动层**：ISR 直接回调（队列白建）、`fla_mcu` 扇区表越界 + 中断漏恢复 + `uint16_t` 长度溢出、编码器 SPI 占周期 60%；
-  3. **高层**：**ctl 与 abs 的 API 完全没对齐**，组装层退化且硬编码板级型号，主循环空转。
-- **最关键的结构性动作只有一个**：把 ctl 从旧的 `encoder_*` 全局 API 切到 `tEncoder` 对象；其余问题大多是局部可修的。
+```
+board_drv（含 stm32_hal / stm32_core / stm32_usb / board_hw）
+  → 退出码 0，错误 0，警告 0
+app/abs + app/utils（target 语法检查）  → 15/15 通过
+utils/crc.c · queue.c · memory_pool.c（host gcc）  → 通过（纯逻辑层无 CMSIS 依赖）
+```
+
+## 遗留项
+
+1. **高层接入（唯一的结构性阻塞）**：`ctl` 仍调用一套未实现的旧 `encoder_*` 全局 API；组装层需按上面的约定改为
+   - 用 `xxx_get_handle()` 取实例 → `abs` 对象 init；
+   - bus/uart 需自备 `tBusBuffer` / `tUartBuffer`；
+   - IAP 用 `mcu_iap_config(type)` + `iap_verify_crc(expect_crc)`。
+2. **编码器 SPI**（`encoder_drivers.c`）：预分频仍 32（≈1.3MHz）、超时仍 100ms、内外 CS 仍同引脚 —— 均待硬件确认后完善。
+3. **采样 DMA 撕裂保护**（`sen_mcu.c` TODO）：循环 DMA 与 FOC 下溢读取之间缺同步，建议改 DMA 半满/全满双缓冲。
+4. **中断分发扩展性**（`gate_fd6288q.c` TODO）：现依赖"单文件唯一持有某 HAL 回调"的约定；将来多路 TIM 冲突时需集中分发。
+5. **IAP 校验需上位机配合**：`iap_verify_crc` 要求上位机给出分区 CRC32（`zlib.crc32` 同款），协议需带该字段。

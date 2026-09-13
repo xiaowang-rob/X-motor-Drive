@@ -9,9 +9,9 @@
 // ============================================================
 
 #include "flash_drivers.h"
-
+#include "IF_irq.h"
 // 显式引入 FLASH 编程接口（HAL 总头按 conf 决定是否展开）
-#include "stm32f4xx_hal_flash.h"
+#include "stm32f4xx_hal.h"
 
 #define FLASH_START_ADDR 0x08000000U   // Flash 起始地址
 #define FLASH_CAPACITY (1024U * 1024U) // Flash 容量 (bytes)
@@ -54,8 +54,8 @@ const uint32_t SECTOR_BOUNDS[MCU_FLASH_NUM_SECTORS + 1] = {
 
 const uint8_t BL_SECTOR_ID[MCU_NUM_SECTOR_BL] = {0U, 1U};
 
-const uint8_t APP_SECTOR_ID[MCU_NUM_SECTOR_APP] = {2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U};
-const uint8_t USR_SECTOR_ID[MCU_NUM_SECTOR_USR] = {10U, 11U, 12U};
+const uint8_t APP_SECTOR_ID[MCU_NUM_SECTOR_APP] = {2U, 3U, 4U, 5U, 6U, 7U, 8U};
+const uint8_t USR_SECTOR_ID[MCU_NUM_SECTOR_USR] = {9U, 10U, 11U};
 
 const uint32_t BL_START_ADDR = SECTOR_BOUNDS[BL_SECTOR_ID[0]];
 const uint32_t APP_START_ADDR = SECTOR_BOUNDS[APP_SECTOR_ID[0]];
@@ -92,8 +92,8 @@ static bool mf_read(FlashChipHandle h, uint32_t addr, uint8_t *data, uint32_t le
     (void)h;
     if (addr < FLASH_START_ADDR || (addr + len) > FLASH_END_ADDR)
         return false;
-    for (uint32_t i = 0U; i < len; i++)
-        data[i] = *(volatile uint8_t *)(addr + i);
+    // 内部 Flash 是存储器映射：直接 memcpy（按字拷贝，远快于逐字节 volatile 读）
+    memcpy(data, (const void *)addr, len);
     return true;
 }
 
@@ -104,7 +104,7 @@ static bool mf_write(FlashChipHandle h, uint32_t addr, const uint8_t *data, uint
     if (addr < FLASH_START_ADDR || (addr + len) > FLASH_END_ADDR)
         return false;
     HAL_FLASH_Unlock();
-    uint16_t i = 0;
+    uint32_t i = 0;
 
     // 先按字（4字节）写入
     for (; i + 3 < len; i += 4)
@@ -134,14 +134,14 @@ static bool mf_write(FlashChipHandle h, uint32_t addr, const uint8_t *data, uint
 static bool mf_erase_usr_sector(FlashChipHandle h, uint8_t sec_id)
 {
     (void)h;
-    if (sec_id < 0 || sec_id >= MCU_NUM_SECTOR_USR)
+    if (sec_id >= MCU_NUM_SECTOR_USR)
         return false;
 
     if (HAL_FLASH_Unlock() != HAL_OK)
         return false;
 
     uint32_t s = USR_SECTOR_ID[sec_id];
-    platform_disable_irq();
+    __disable_irq();
     FLASH_EraseInitTypeDef erase = {0};
     uint32_t sector_err = 0U;
     erase.TypeErase = FLASH_TYPEERASE_SECTORS;
@@ -150,9 +150,11 @@ static bool mf_erase_usr_sector(FlashChipHandle h, uint8_t sec_id)
     erase.VoltageRange = FLASH_VOLTAGE_RANGE_3;
     if (HAL_FLASHEx_Erase(&erase, &sector_err) != HAL_OK)
     {
+        __enable_irq(); // 失败也必须恢复中断，否则中断被永久关闭
+        HAL_FLASH_Lock();
         return false;
     }
-    platform_enable_irq();
+    __enable_irq();
 
     HAL_FLASH_Lock();
 
@@ -173,7 +175,7 @@ static bool mf_erase_addr(FlashChipHandle h, uint32_t addr, uint32_t len)
     if (HAL_FLASH_Unlock() != HAL_OK)
         return false;
 
-    platform_disable_irq();
+    __disable_irq();
 
     FLASH_EraseInitTypeDef erase = {0};
     uint32_t sector_err = 0U;
@@ -185,13 +187,13 @@ static bool mf_erase_addr(FlashChipHandle h, uint32_t addr, uint32_t len)
         erase.VoltageRange = FLASH_VOLTAGE_RANGE_3;
         if (HAL_FLASHEx_Erase(&erase, &sector_err) != HAL_OK)
         {
-            platform_enable_irq();
+            __enable_irq();
 
             HAL_FLASH_Lock();
             return false;
         }
     }
-    platform_enable_irq();
+    __enable_irq();
 
     HAL_FLASH_Lock();
 
@@ -214,12 +216,6 @@ static uint32_t mf_get_usr_sec_size(FlashChipHandle h, uint8_t sec_id)
     return SECTOR_BOUNDS[USR_SECTOR_ID[sec_id] + 1U] - SECTOR_BOUNDS[USR_SECTOR_ID[sec_id]];
 }
 
-static uint8_t mf_get_state(FlashChipHandle h)
-{
-    (void)h;
-    return DEV_ONLINE;
-}
-
 const tFlashDriverOps mcu_flash_driver_ops = {
     .init = NULL, // MCU Flash 无初始化
     .read = mf_read,
@@ -229,72 +225,80 @@ const tFlashDriverOps mcu_flash_driver_ops = {
     .get_sector_count = mf_get_usr_sector_count,
     .get_sector_addr = mf_get_usr_sec_addr,
     .get_sector_size = mf_get_usr_sec_size,
-
-    .get_state = mf_get_state,
 };
 
-// ---------- IAP 驱动 ----------
+// ---------- 静态实例类型 ----------
 
-static void mf_app_init(void)
+// MCU Flash 实例：ops + 配置（起始地址 / 容量）
+typedef struct
 {
-    SCB->VTOR = VECT_TABLE_OFFSET;
+    const tFlashDriverOps *ops; // 该实例的操作表
+    uint32_t start_addr;        // 配置：内部 Flash 起始地址
+    uint32_t capacity;          // 配置：容量（字节）
+} tMcuFlash;
+
+// ---------- IAP：分区表 + 平台跳转 ----------
+
+// 分区表（[IAP_BL] / [IAP_APP]），几何来自上面的扇区计算
+static tIAPPartition s_iap_parts[IAP_PART_COUNT];
+
+static void iap_parts_init(void)
+{
+    s_iap_parts[IAP_BL].base = BL_START_ADDR;
+    s_iap_parts[IAP_BL].size = BL_SIZE;
+    s_iap_parts[IAP_APP].base = APP_START_ADDR;
+    s_iap_parts[IAP_APP].size = APP_SIZE;
 }
-static bool mf_erase_app(void)
+
+// 平台跳转：BL → 软复位；APP → 切向量表后跳转
+static bool mcu_iap_jump(eIAPtype type)
 {
-    return mf_erase_addr(void, APP_START_ADDR, APP_SIZE);
-}
-static bool mf_write_app(uint32_t offset, const uint8_t *data, uint32_t len)
-{
-    uint32_t addr = offset + APP_START_ADDR;
-    return mf_write(void, addr, data, len);
-}
-static bool mf_read_app(uint32_t offset, uint8_t *data, uint32_t len)
-{
-    uint32_t addr = offset + APP_START_ADDR;
-    return mf_read(void, addr, data, len);
-}
-static bool mf_erase_bl(void)
-{
-    return mf_erase_addr(void, BL_START_ADDR, BL_SIZE);
-}
-static bool mf_write_bl(uint32_t offset, const uint8_t *data, uint32_t len)
-{
-    uint32_t addr = offset + BL_START_ADDR;
-    return mf_write(void, addr, data, len);
-}
-static bool mf_read_bl(uint32_t offset, uint8_t *data, uint32_t len)
-{
-    uint32_t addr = offset + BL_START_ADDR;
-    return mf_read(void, addr, data, len);
-}
-static bool mf_jump_to_app(void)
-{
-    // 校验向量表位于内部 flash 区（粗略防护），随后关中断并跳转
+    if (type == IAP_BL)
+    {
+        NVIC_SystemReset();
+        return true;
+    }
+
+    // 校验目标向量表位于内部 flash 区（粗略防护）
     if ((APP_START_ADDR & 0xFFF00000U) != 0x08000000U)
-        return;
+        return false;
 
-    plat_disable_irq();
+    __disable_irq();
     SCB->VTOR = APP_START_ADDR;
-    __set_MSP(*(volatile uint32_t *)APP_START_ADDR); // 目标固件的栈顶
-    typedef void (*p_fn)(void);
-    p_fn jump = (p_fn)(*(volatile uint32_t *)(APP_START_ADDR + 4U)); // 复位向量
+    __set_MSP(*(volatile uint32_t *)APP_START_ADDR);                  // 目标固件栈顶
+    uint32_t reset_vec = *(volatile uint32_t *)(APP_START_ADDR + 4U); // 复位向量
+    void (*jump)(void) = (void (*)(void))reset_vec;
     jump();
-    return true;
-}
-static bool mf_jump_to_bl(void)
-{
-    NVIC_SystemReset();
-    return true;
+    return true; // 不可达
 }
 
-const tIAPDriverOps mcu_iap_driver_ops = {
-    .app_init = mf_app_init,
-    .app_erase = mf_erase_app,
-    .app_write = mf_write_app,
-    .app_read = mf_read_app,
-    .bl_erase = mf_erase_bl,
-    .bl_write = mf_write_bl,
-    .bl_read = mf_read_bl,
-    .jump_app = mf_jump_to_app,
-    .jump_bl = mf_jump_to_bl,
+// ---------- 静态实例 ----------
+
+// MCU Flash 实例（内部介质无外设句柄，配置为起始地址与容量）
+static tMcuFlash s_mcu = {
+    .ops = &mcu_flash_driver_ops,
+    .start_addr = FLASH_START_ADDR,
+    .capacity = FLASH_CAPACITY,
 };
+
+FlashChipHandle mcu_flash_get_handle(void)
+{
+    return (FlashChipHandle)&s_mcu;
+}
+
+// 取 IAP 配置（组装层据此初始化 tIAP）：介质复用 mcu_flash_driver_ops，
+// 分区表与平台跳转由本文件提供；整区校验由 abs 的 iap_verify_crc 完成。
+tIAPConfig mcu_iap_config(eIAPtype type)
+{
+    iap_parts_init();
+
+    tIAPConfig cfg = {
+        .flash_ops = &mcu_flash_driver_ops,
+        .flash_handle = mcu_flash_get_handle(),
+        .parts = s_iap_parts,
+        .part_count = IAP_PART_COUNT,
+        .jump = mcu_iap_jump,
+        .type = type,
+    };
+    return cfg;
+}

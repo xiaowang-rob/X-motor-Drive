@@ -1,13 +1,25 @@
 #ifndef __MATH_FAST_H
 #define __MATH_FAST_H
 
+#include <stdint.h>
+
 // 加载目标芯片要使用的数学库头文件
 #include "arm_math.h"
 #include "math.h"
 
+// ============================================================
+// math_fast.h — 数学工具集中入口
+//
+// 约定：应用侧（abs / drv / utils）统一从这里取数学函数，
+//       不直接调用 fabsf / sqrtf / fmodf 等裸库函数，
+//       以便集中替换实现、控制精度与开销。
+//       （校验类工具见 crc.h）
+// ============================================================
+
 //  数学常量定义
 #define MATH_PI 3.1415926535f
 #define MATH_2PI 6.2831853f
+#define MATH_INV_2PI 0.1591549431f // 1 / (2π)
 #define MATH_SQRT3 1.732050807f
 #define MATH_SQRT3_2 0.8660254035f
 #define MATH_INSQRT3 0.5773502693f
@@ -27,6 +39,13 @@ static inline float FABSF(float x)
 {
     return __builtin_fabsf(x);
 }
+// 快速开方（CMSIS-DSP 单精度）
+static inline float SQRTF(float x)
+{
+    float r = 0.0f;
+    arm_sqrt_f32(x, &r);
+    return r;
+}
 // 快速符号函数
 static inline float FSIGN(float x)
 {
@@ -39,23 +58,24 @@ static inline uint32_t FROUNDF(float x)
 }
 
 // 将角度标准化到 [0, 2π) 范围
+//
+// 性能：不用 fmodf —— 后者在 Cortex-M4 上是库调用（几十~上百周期），
+// 而本函数常出现在 PLL / 电角度归一这类高频路径上。
+// 改用"常量倒数 + 取整"：1 次乘法 + 1 次浮点转整数 + 1~2 次加法。
+// 适用前提：|angle| < 2π·2^31（远超任何实际角度）。
 static inline float normalize_angle_2pi(float angle)
 {
-    angle = fmodf(angle, MATH_2PI);
-    if (angle < 0.0f)
-    {
-        angle += MATH_2PI;
-    }
-    return angle;
+    float turns = angle * MATH_INV_2PI; // 换算成"圈"
+    turns -= (float)(int32_t)turns;     // 取小数部分（int32_t 转换向零取整）
+    if (turns < 0.0f)
+        turns += 1.0f;
+    return turns * MATH_2PI;
 }
-// 将角度标准化到[-π, π]范围
+
+// 将角度标准化到 [-π, π] 范围
 static inline float normalize_angle_pi(float angle)
 {
-    //  利用 fmodf 将角度映射到 [-2π, 2π]，再调整到 [-π, π]
-    angle = fmodf(angle + MATH_PI, MATH_2PI);
-    if (angle < 0.0f)
-        angle += MATH_2PI;
-    return angle - MATH_PI;
+    return normalize_angle_2pi(angle + MATH_PI) - MATH_PI;
 }
 
 // arm_sin_cos 弧度版：输入角度为 rad，内部转 deg 后调用 arm_sin_cos_f32
@@ -94,23 +114,6 @@ static inline void inv_park_transform(float d, float q, float sin_angle, float c
 {
     *alpha = d * cos_angle - q * sin_angle;
     *beta = d * sin_angle + q * cos_angle;
-}
-
-// CRC8 校验 — 替代简单的 sum&0xff，能检测字节顺序错误
-static inline uint8_t crc8_update(uint8_t crc, uint8_t data)
-{
-    crc ^= data;
-    for (int i = 0; i < 8; i++)
-        crc = (crc & 0x80) ? (crc << 1) ^ 0x07 : (crc << 1);
-    return crc;
-}
-
-static inline u8 crc8(const u8 *data, u8 len)
-{
-    u8 crc = 0;
-    for (u8 i = 0; i < len; i++)
-        crc = crc8_update(crc, data[i]);
-    return crc;
 }
 
 // 普通函数--大型函数 调用少，不需要牺牲体积

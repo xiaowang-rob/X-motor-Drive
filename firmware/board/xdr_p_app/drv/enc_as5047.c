@@ -1,49 +1,81 @@
 // ============================================================
-// as5047.c — AS5047 编码器驱动（usr/drv，v2 直连版，同步读角）
+// enc_as5047.c — AS5047 编码器驱动（板级，SPI 同步读角）
 //
 // 芯片协议：SPI Mode1(CPOL=0,CPHA=1)/16bit/14bit，分辨率 16384
 // 读角序列：段1 发 0x7FFF（弃响应）→ 段2 发 0x0000 收角度帧
 // 角度帧：bit14 错误标志；bit13..0 角度
-// 底层经 enc_spi_engine 直连本板编码器 SPI（platform.h）。
+// 实例形态：按内/外编码器固定的静态实例（无堆分配、无 create/destroy），
+//           每实例含 ops / 引擎 / 配置 / 运行时缓冲。
 // ============================================================
-
 #include "encoder_drivers.h"
 
+// ---------- 本板配置 ----------
 #define AS5047_RESOLUTION 16384U
 #define AS5047_CMD_READ 0x7FFFU
 #define AS5047_CMD_NOP 0x0000U
 #define AS5047_ERR_FLAG 0x4000U
 #define AS5047_ANGLE_MASK 0x3FFFU
 
+// ---------- 实例 handle ----------
 typedef struct
 {
-    eEncoderType type;
-    uint16_t cmd_read; // 段1 tx（16bit 值的内存视图）
-    uint16_t cmd_nop;  // 段2 tx
-    uint8_t rx1[2];    // 段1 rx（弃用）
-    uint8_t rx2[2];    // 段2 rx（角度帧）
+    const tEncoderDriverOps *ops; // 该实例的操作表
+    EncEngineHandle engine;       // SPI 引擎（内/外共用）
+    eEncoderType type;            // 配置：内/外编码器
+    uint16_t cmd_read;            // 配置：段1 tx
+    uint16_t cmd_nop;             // 配置：段2 tx
+    uint16_t resolution;          // 配置：单圈分辨率
+    uint8_t rx1[2];               // 运行时：段1 rx（弃用）
+    uint8_t rx2[2];               // 运行时：段2 rx（角度帧）
     uint16_t raw;
-} tAS5047_ctx;
+} tAS5047;
+
+static bool AS5047_init(EncoderChipHandle h, eEncoderType type);
+static bool AS5047_read_angle(EncoderChipHandle h, uint16_t *raw, uint32_t *ts_ms);
+static bool AS5047_get_resolution(EncoderChipHandle h, uint16_t *res);
+static void AS5047_reset(EncoderChipHandle h);
+
+const tEncoderDriverOps AS5047_driver_ops = {
+    .init = AS5047_init,
+    .read_angle = AS5047_read_angle,
+    .get_resolution = AS5047_get_resolution,
+    .reset = AS5047_reset,
+};
+
+// 静态实例：[INT_ENCODER] / [EXT_ENCODER]
+static tAS5047 s_inst[2] = {
+    {.ops = &AS5047_driver_ops, .cmd_read = AS5047_CMD_READ, .cmd_nop = AS5047_CMD_NOP, .resolution = AS5047_RESOLUTION},
+    {.ops = &AS5047_driver_ops, .cmd_read = AS5047_CMD_READ, .cmd_nop = AS5047_CMD_NOP, .resolution = AS5047_RESOLUTION},
+};
+
+EncoderChipHandle AS5047_get_handle(eEncoderType type)
+{
+    if (type != INT_ENCODER && type != EXT_ENCODER)
+        return NULL;
+    s_inst[type].type = type;
+    s_inst[type].engine = enc_engine_get_handle();
+    return (EncoderChipHandle)&s_inst[type];
+}
+
+// ---- ops 实现 ----
 
 static bool AS5047_init(EncoderChipHandle h, eEncoderType type)
 {
-    tAS5047_ctx *ctx = (tAS5047_ctx *)h;
+    tAS5047 *ctx = (tAS5047 *)h;
     if (!ctx)
         return false;
 
-    if (!enc_spi_set_mode(0U, 1U, 16U)) // 芯片协议：Mode1/16bit
+    if (!enc_spi_set_mode(ctx->engine, 0U, 1U, 16U)) // 芯片协议：Mode1/16bit
         return false;
 
-    ctx->type = type; // 编码器类型
-    ctx->cmd_read = AS5047_CMD_READ;
-    ctx->cmd_nop = AS5047_CMD_NOP;
+    ctx->type = type;
     ctx->raw = 0U;
     return true;
 }
 
 static bool AS5047_read_angle(EncoderChipHandle h, uint16_t *raw, uint32_t *ts_ms)
 {
-    tAS5047_ctx *ctx = (tAS5047_ctx *)h;
+    tAS5047 *ctx = (tAS5047 *)h;
     if (!ctx || !raw || !ts_ms)
         return false;
 
@@ -55,53 +87,32 @@ static bool AS5047_read_angle(EncoderChipHandle h, uint16_t *raw, uint32_t *ts_m
     segs[1].rx = ctx->rx2;
     segs[1].len = 2U;
 
-    if (!enc_engine_read(segs, ctx->type, 2U, ts_ms))
+    if (!enc_engine_read(ctx->engine, segs, ctx->type, 2U, ts_ms))
         return false;
 
     uint16_t frame = (uint16_t)(ctx->rx2[0] | ((uint16_t)ctx->rx2[1] << 8));
     if (frame & AS5047_ERR_FLAG)
         return false;
 
-    ctx->raw = frame & AS5047_ANGLE_MASK;
+    ctx->raw = (uint16_t)(frame & AS5047_ANGLE_MASK);
     *raw = ctx->raw;
     return true;
 }
 
 static bool AS5047_get_resolution(EncoderChipHandle h, uint16_t *res)
 {
-    tAS5047_ctx *ctx = (tAS5047_ctx *)h;
+    tAS5047 *ctx = (tAS5047 *)h;
     if (!ctx || !res)
         return false;
-    *res = AS5047_RESOLUTION;
+    *res = ctx->resolution;
     return true;
 }
 
 static void AS5047_reset(EncoderChipHandle h)
 {
-    tAS5047_ctx *ctx = (tAS5047_ctx *)h;
+    tAS5047 *ctx = (tAS5047 *)h;
     if (!ctx)
         return;
-    enc_engine_abort(ctx->type);
+    enc_engine_abort(ctx->engine, ctx->type);
     ctx->raw = 0U;
-}
-
-const tEncoderDriverOps AS5047_driver_ops = {
-    .init = AS5047_init,
-    .read_angle = AS5047_read_angle,
-    .get_resolution = AS5047_get_resolution,
-    .reset = AS5047_reset,
-};
-
-EncoderChipHandle AS5047_create(void)
-{
-    tAS5047_ctx *ctx = (tAS5047_ctx *)calloc(1U, sizeof(tAS5047_ctx));
-    if (!ctx)
-        return NULL;
-    return (EncoderChipHandle)ctx;
-}
-
-void AS5047_destroy(EncoderChipHandle h)
-{
-    free(h);
-    h = NULL;
 }

@@ -2,26 +2,26 @@
 #define __MOTOR_DRV_H
 
 #include "gate_drv.h"
+
 // ============================================================
-// gate_drv.h — 电机驱动接口
+// gate_drivers.h — 本板栅极驱动出口
 //
 // TIM8 中心对齐 6 路 PWM（CH1-3 + 互补）+ 12V 电源 + FOC 节拍中断。
-// HAL 回调（PeriodElapsed 上/下溢）由本文件唯一持有并转发到注册回调。
+// 驱动以"文件内静态 handle 实例"存在，本头只暴露 ops、取实例函数，
+// 以及 FOC 节拍回调的注册入口。
+//
+// 注：HAL_TIM_PeriodElapsedCallback 由 gate_fd6288q.c 唯一持有
+//     （TIM8 是该文件的资源），上溢/下溢分别转发到注册的回调。
 // ============================================================
 
+extern const tGateDrvOps gate_fd6288q_ops;
+
+// 取栅极驱动实例句柄（静态实例，见 gate_fd6288q.c）
+GateHandle gate_get_handle(void);
+
 // FOC 节拍回调注册：
-//   sample_cb —— TIM8 上溢（2-shunt 电流采样点，直接pwm比较触发，电机空闲/运行都执行）
-//   ctrl_cb   —— TIM8 下溢（FOC 控制主循环）
-void motor_drv_register_isrs(void (*sample_cb)(void), void (*ctrl_cb)(void));
-
-// 12V 电源控制（高电平使能）
-void gate_power_12v(bool on);
-
-// 三相占空比（比较值）：ticA→CH3、ticB→CH2、ticC→CH1（与硬件相序一致）
-void gate_drv_set_compare(uint16_t ticA, uint16_t ticB, uint16_t ticC);
-
-// PWM 输出使能/关断（含互补通道）
-void gate_drv_enable(void);
-void gate_drv_disable(void);
+//   sample_cb —— 上溢（2-shunt 电流采样点）
+//   ctrl_cb   —— 下溢（FOC 控制主循环）
+void gate_register_isrs(void (*sample_cb)(void), void (*ctrl_cb)(void));
 
 #endif // __MOTOR_DRV_H
