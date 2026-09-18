@@ -36,8 +36,7 @@ typedef struct
 
 bool gate_drv_init(tGateDrv *drv, const tGateDrvOps *ops, GateHandle handle);
 void gate_drv_power_on(tGateDrv *drv, bool on);
-void gate_drv_start(tGateDrv *drv);
-void gate_drv_stop(tGateDrv *drv);
+void gate_drv_enable(tGateDrv *drv, bool en);
 void gate_drv_set_compare(tGateDrv *drv, uint16_t ticA, uint16_t ticB, uint16_t ticC);
 
 static inline uint32_t gate_drv_get_pwm_period(const tGateDrv *drv) { return drv->pwm_period; }

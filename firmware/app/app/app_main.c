@@ -1,26 +1,23 @@
+#include "app_main.h"
 
-#include "bsp_adc.h"
-#include "bsp_base.h"
-#include "usr_config.h"
-#include "main.h"
+#include "slot_con.h"
+#include "pll.h"
+#include "foc.h"
+#include "device_cfg.h"
+#include "data_manager.h"
+#include "svpwm.h"
 
-#include "foc_main.h"
-#include "status_feedback.h"
-#include "log.h"
-#include "protection_manager.h"
-#include "port_mapping.h"
-#include "device.h"
+tTraj traj;
+tPLL enc_pll;
+tFOC foc;
+tSvpwm svpwm;
 
-#ifdef __DEBUG__ //***********调试************
-
-u32 time_while_zero = 0;
-u32 time_while_T = 0;
-#endif
+tXdr xdr;
 
 void bsp_init_front(void)
 {
-    bsp_set_vector_table_offset(VECT_TABLE_OFFSET);
-    bsp_enable_irq(); // 使能全局中断,bl中关断了
+    bsp_set_vector_table_offset(VECT_TABLE_OFFSET); // iap下 需要设置偏移量
+    bsp_enable_irq();                               // 使能全局中断,bl中关断了
 }
 void bsp_init_back(void)
 {
@@ -29,8 +26,25 @@ void bsp_init_back(void)
     // 正确的顺序应该是：
     // flash和参数一起-通讯-保护-日志-adc -foc初始化
 
+    // 1、初始化驱动层 （存储-iap-状态-传感-gate-通讯）
+
+    // 2、初始化参数服务 读参数
+
+    // 3、初始化状态服务
+
+    // 4、初始化保护服务
+
+    // 5、初始化日志服务 读日志
+
+    // 6、初始化时间槽服务
+
+    // 7、初始化core、启动时间槽服务
+
+    // 电流采样初始化  get 电压温度电流
+    // 编码器初始化
+    // svpwm 初始化
     flash_init();
-    if (!param_init())
+    if (!dm_param_init())
         bsp_error_handler();
     comm_init();
     pro_manager_init(&g_Param);
@@ -64,4 +78,22 @@ void bsp_error_handler()
     {
         system_fault_feedback();
     }
+}
+
+void main_init(void)
+{
+}
+void core_reset(void)
+{
+}
+// 轨迹规划初始化
+void foc_traj_init(tTraj *traj, tParameter *param)
+{
+    tTraj_Config traj_cfg;
+    traj_cfg.limit_d1 = param->traj_limit_d1;
+    traj_cfg.limit_d2 = param->traj_limit_d2;
+    traj_cfg.limit_d3 = param->traj_limit_d3;
+    traj_cfg.tolerance = param->tolerance;
+    traj_cfg.type = param->traj_type;
+    traj_init(traj, traj_cfg);
 }

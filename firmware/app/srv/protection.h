@@ -1,10 +1,10 @@
-#ifndef __PROTECTION_MANAGER_H
-#define __PROTECTION_MANAGER_H
+#ifndef __PROTECTION_H
+#define __PROTECTION_H
 
 #include "device.h"
 #include "port_mapping.h"
 #include "protocol.h"
-#include "parameter_manager.h"
+#include "data_manager.h"
 #include "foc_core.h"
 
 typedef struct
@@ -35,4 +35,4 @@ void pro_manager_main_loop();
 
 void pro_set_limit_position(float min_position, float max_position);
 
-#endif // __PROTECTION_MANAGER_H
+#endif // __PROTECTION_H

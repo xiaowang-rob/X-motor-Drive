@@ -1,9 +1,7 @@
 #ifndef __TUNE_H
 #define __TUNE_H
 
-#include "bsp_base.h"
 #include "foc_core.h"
-#include "usr_config.h"
 #include "protocol.h"
 
 // ================================= 整定参数配置 =================================
@@ -20,31 +18,31 @@
 // tune_cur_limit == 0 时直接返回 TUNE_FAULT
 
 // ================== 电阻整定系数 ==================
-#define RS_FREQ_F 10                      // 电阻整定分频系数
-#define RS_I_TARGET_1_COEF 0.2f           // 第一点目标电流 = tune_cur_limit × 0.2
-#define RS_I_TARGET_2_COEF 0.6f           // 第二点目标电流 = tune_cur_limit × 0.6
-#define RS_HYST_BAND_COEF 0.12f           // 滞环带宽 = tune_cur_limit × 0.12
-#define RS_V_LIMIT_COEF 0.1f              // 电压限幅 = bus_voltage × 0.1 (最高10%母线)
-#define RS_V_HOLD_MAX_TICKS 5             // 误差带内保持最大周期数 (防静差)
-#define RS_V_STEP_MIN 0.01f               // 保持超时后微调步长 (V)
-#define RS_STEADY_ERR_THR_COEF 0.02f      // 稳态电流误差阈值 = tune_cur_limit × 0.02
-#define RS_STEADY_TICKS MS_TO_TICK(7)     // 稳态持续周期数 (7ms@20kHz)
-#define RS_MIN_DELTA_I_COEF 0.25f         // 最小电流变化量 = tune_cur_limit × 0.25
-#define RS_RANGE_MIN 0.02f                // 电阻合理下限 (Ω)
-#define RS_RANGE_MAX 0.5f                 // 电阻合理上限 (Ω)
-#define RS_DEADTIME_VCOMP 0.04f           // 死区补偿电压 (V)
+#define RS_FREQ_F 10                  // 电阻整定分频系数
+#define RS_I_TARGET_1_COEF 0.2f       // 第一点目标电流 = tune_cur_limit × 0.2
+#define RS_I_TARGET_2_COEF 0.6f       // 第二点目标电流 = tune_cur_limit × 0.6
+#define RS_HYST_BAND_COEF 0.12f       // 滞环带宽 = tune_cur_limit × 0.12
+#define RS_V_LIMIT_COEF 0.1f          // 电压限幅 = bus_voltage × 0.1 (最高10%母线)
+#define RS_V_HOLD_MAX_TICKS 5         // 误差带内保持最大周期数 (防静差)
+#define RS_V_STEP_MIN 0.01f           // 保持超时后微调步长 (V)
+#define RS_STEADY_ERR_THR_COEF 0.02f  // 稳态电流误差阈值 = tune_cur_limit × 0.02
+#define RS_STEADY_TICKS MS_TO_TICK(7) // 稳态持续周期数 (7ms@20kHz)
+#define RS_MIN_DELTA_I_COEF 0.25f     // 最小电流变化量 = tune_cur_limit × 0.25
+#define RS_RANGE_MIN 0.02f            // 电阻合理下限 (Ω)
+#define RS_RANGE_MAX 0.5f             // 电阻合理上限 (Ω)
+#define RS_DEADTIME_VCOMP 0.04f       // 死区补偿电压 (V)
 
 // ================== 电感整定系数 ==================
 #define LS_INJECT_FREQ_TICK 20                          // 注入分频
 #define LS_INJECT_FREQ_HZ (F_PWM / LS_INJECT_FREQ_TICK) // 注入频率 (Hz)
 
-#define LS_V_START_MIN 0.2f       // 注入电压最小值 (V)
-#define LS_V_START_COEF 0.4f      // 起始电压 = Rs × tune_cur_limit × 0.15
-#define LS_V_MAX_COEF 0.8f        // 最大电压 = Rs × tune_cur_limit × 0.6
-#define LS_V_LIMIT_BUS_COEF 0.1f  // 电压上限不超过母线 × 0.1
-#define LS_I_TARGET_COEF 0.2f     // 目标电流 = tune_cur_limit × 0.2
-#define LS_I_TARGET_HYST 0.05f    // 目标电流滞环 ±10%
-#define LS_V_ADJ_STEP 0.01f       // 电压自适应调整步长 (V)
+#define LS_V_START_MIN 0.2f      // 注入电压最小值 (V)
+#define LS_V_START_COEF 0.4f     // 起始电压 = Rs × tune_cur_limit × 0.15
+#define LS_V_MAX_COEF 0.8f       // 最大电压 = Rs × tune_cur_limit × 0.6
+#define LS_V_LIMIT_BUS_COEF 0.1f // 电压上限不超过母线 × 0.1
+#define LS_I_TARGET_COEF 0.2f    // 目标电流 = tune_cur_limit × 0.2
+#define LS_I_TARGET_HYST 0.05f   // 目标电流滞环 ±10%
+#define LS_V_ADJ_STEP 0.01f      // 电压自适应调整步长 (V)
 
 // ================== 转子预定位 ==================
 #define ALIGN_TIME_MS_BASE 200  // 定位基础持续时间(ms)
@@ -54,14 +52,13 @@
 // ================== DFT测量 ==================
 #define DFT_AVG_CYCLES 20 // 取20个注入周期的平均
 
-#define LS_RANGE_MIN 20e-6f   // 电感合理下限(H)
-#define LS_RANGE_MAX 300e-6f  // 电感合理上限 (H)
+#define LS_RANGE_MIN 20e-6f  // 电感合理下限(H)
+#define LS_RANGE_MAX 300e-6f // 电感合理上限 (H)
 
 // ================== 编码器校准系数 ==================
 #define EC_FREQ_F 10                // 编码器校准分频系数
 #define EC_ALIGN_ms MS_TO_TICK(300) // 编码器校准等待时间
 #define EC_OPEN_LOOP_OMEGA 17.4533f // 开环角速度 (rad/s), 原 1000°/s
-
 
 #define EC_FIT_MAX_ERROR 100.0f // 最大拟合误差
 #define EC_MIN_POLE_PAIRS 1     // 最小极对数
@@ -183,7 +180,7 @@ typedef struct
     struct
     {
         float theta_elec;
-        float cur_test;    // 当前试探电流 (A)
+        float cur_test;       // 当前试探电流 (A)
         float theta_e_acc;    // 连续电角度
         float theta_e_raw;    // 上一次电角度
         float theta_m_unwrap; // 解包后的连续机械角度

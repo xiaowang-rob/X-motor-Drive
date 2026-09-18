@@ -1,66 +1,63 @@
-#ifndef __DEV_BOARD_H
-#define __DEV_BOARD_H
+#ifndef __DEVICE_CFG_H
+#define __DEVICE_CFG_H
 
-#include "bus_drivers.h"
-#include "encoder_drivers.h"
-#include "flash_drivers.h"
-#include "gate_drivers.h"
-#include "led_drivers.h"
-#include "sense_drivers.h"
-#include "uart_drivers.h"
+#include "device.h"
 
-tFlash flash_mcu;
-tIAP iap_app;
-tLed led0;
-tLed led1;
-tRgb rgb;
-tSense sen;
+// ============================================================
+// device_cfg.h — 组装层：全板设备的装配结果与唯一入口
+//
+// 分层职责：
+//   - 本层是**唯一**允许 include 板级驱动头（*_drivers.h）的地方；
+//   - 业务层只通过 g_dev 访问设备，不直接触碰驱动；
+//   - ctl 层按 abs 类型接收指针（见 foc_init 的 tFocRefs），不依赖本头。
+// ============================================================
 
-tGateDrv motor_drv;
-tEncoder int_encoder;
-tEncoder ext_encoder;
+#include "encoder.h"  // tEncoder
+#include "sense.h"    // tSense
+#include "gate_drv.h" // tGateDrv
+#include "flash.h"    // tFlash / tFlashUnit
+#include "iap.h"      // tIAP
+#include "led.h"      // tLed / tRgb
+#include "bus_com.h"  // tBusDriver
+#include "uart_com.h" // tUartDriver
 
-tBusDriver can;
-tUartDriver usart;
-tUartDriver usb;
-
-// 全板设备集合（由 dev_board_init 一次性装配）
+// 全板设备集合（由 device_cfg_init 一次性装配）
 typedef struct
 {
-    const tTimeIf *time; // 板级时间基准
+    // ---- 存储 ----
+    tFlash flash; // 参数区（内部 MCU Flash 上的日志式单元）
+    tIAP iap;     // 固件升级（BL/APP 分区 + 跳转）
 
-    // 编码器（电机位置/速度，FOC 使用）
-    tEncoder enc;
+    // ---- 功率级 ----
+    tGateDrv gate; // 功率级（PWM + 12V + 节拍中断）
 
-    // 电流/电压/温度采样（FOC 电流环输入）
-    tCurrentSense sense;
+    // ---- 状态反馈 ----
+    tLed led_0; // 板载 LED0
+    tLed led_1; // 板载 LED1
+    tRgb rgb;   // WS2812 灯珠串
 
-    // 灯效
-    tLed led_can; // 板载 LED0（CAN 状态灯）
-    tLed led_enc; // 板载 LED1（编码器状态灯）
-    tRgb rgb;     // 板上 WS2812 灯珠串
+    // ---- 通讯 ----
+    tBusDriver can;   // 总线式（CAN）
+    tUartDriver uart; // MCU 串口
+    tUartDriver usb;  // USB CDC 虚拟串口
 
-    // 外部 SPI NOR Flash（日志/参数存储介质；芯片缺失时不可用）
-    tFlashStore ext_flash;
+    // ---- 传感器 ----
+    tEncoder enc_int; // 内置编码器
+    tEncoder enc_ext; // 外部编码器
+    tSense sense;     // 电流 / 母线 / 温度采样
 
-    // 内部 MCU Flash：参数区日志单元 + IAP 分区表
-    tFlashStore param_flash; // 参数区（board.h PARAMETER_LOAD_ADDR）
-    tFlashIAP iap;           // BL/APP 分区 + jump/reset 回调
-
-    // 各设备装配结果
-    bool enc_ok;
-    bool rgb_ok;
-    bool sense_ok;
-    bool flash_ok;
-    bool iap_ok;
-    bool param_flash_ok;
+    // ---- 装配结果 ----
+    bool dev_ok;
 } tDevBoard;
 
 // 全局设备对象（装配完成后业务层直接使用）
 extern tDevBoard g_dev;
 
-// 装配并初始化全板设备：platform_init → 无参工厂 create → abs init。
-// 返回 g_dev.enc_ok（编码器为本板关键设备）。
-bool dev_board_init(void);
+// 装配并初始化全板设备（取驱动实例 → abs 对象 init）。
+// 返回 true 表示关键设备（功率级 + 采样 + 编码器）装配成功。
+bool device_cfg_init(void);
 
-#endif // __DEV_BOARD_H
+// FOC 节拍回调注册（转发给功率级驱动；TIM8 的中断由驱动持有）
+void device_cfg_register_foc_isr(void (*sample_cb)(void), void (*ctrl_cb)(void));
+
+#endif // __DEVICE_CFG_H

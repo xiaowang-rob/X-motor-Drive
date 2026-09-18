@@ -2,9 +2,9 @@
 #include "port_mapping.h"
 #include "usr_config.h"
 
-#include "DataMonitoring.h"
+#include "data_manager.h"
 #include "foc_main.h"
-#include "parameter_manager.h"
+#include "data_manager.h"
 #include "log.h"
 #include "protection_manager.h"
 #include "can_port.h"
@@ -83,7 +83,7 @@ static bool param_send_flag = false;
 static u8 param_index = 0;
 static inline void _all_params_send()
 {
-    param_get((eParameter)param_index, &com_frame.txdata[1], &com_frame.txdatalen);
+    dm_param_get((eParameter)param_index, &com_frame.txdata[1], &com_frame.txdatalen);
     com_frame.txdata[0] = param_index;
     com_frame.txdatalen += 1;
     comm_host_send();
@@ -178,7 +178,7 @@ static void _frame_data_deal()
             break;
         case CMD_STREAM_GET:
             data_id = com_frame.rxdata[0];
-            stream_data_get((eData_stream)data_id, (float *)com_frame.txdata);
+            dm_data_get((eDataList)data_id, (float *)com_frame.txdata);
             can_send_data(com_frame.txdata, 4);
             break;
         case CMD_SYSTEM_RESET:
@@ -240,7 +240,7 @@ static void _frame_data_deal()
                 comm_host_send();
                 break;
             case PARAM_ERASE:
-                if (param_erase())
+                if (dm_param_erase())
                     com_frame.txdata[0] = EXECUTE;
                 else
                     com_frame.txdata[0] = FAILURE;
@@ -248,7 +248,7 @@ static void _frame_data_deal()
                 comm_host_send();
                 break;
             case PARAM_SAVE: // 一键保存
-                if (param_save())
+                if (dm_param_save())
                     com_frame.txdata[0] = EXECUTE;
                 else
                     com_frame.txdata[0] = FAILURE;
@@ -287,7 +287,7 @@ static void _frame_data_deal()
             switch (com_frame.cmd_id)
             {
             case PARAM_WRITE: // 指定写入
-                param_set(com_frame.rxdata[0], &com_frame.rxdata[1]);
+                dm_param_set(com_frame.rxdata[0], &com_frame.rxdata[1]);
                 break;
             case PARAM_READ:
                 if (com_frame.rxdata[0] == 0xff)
@@ -295,7 +295,7 @@ static void _frame_data_deal()
                     param_send_flag = true;
                     break;
                 } // 指定读取
-                param_get(com_frame.rxdata[0], com_frame.txdata, &com_frame.txdatalen);
+                dm_param_get(com_frame.rxdata[0], com_frame.txdata, &com_frame.txdatalen);
                 comm_host_send();
                 break;
             case CMD_REFVALUE_SET: // 目标值设置 4byte||8byte
@@ -307,7 +307,7 @@ static void _frame_data_deal()
                 foc_set_run_mode(com_frame.rxdata[0]);
                 break;
             case CMD_STREAM_GET: // 监测值获取 单个值直接获取 1byte
-                stream_data_get(com_frame.rxdata[1], (float *)com_frame.txdata);
+                dm_data_get(com_frame.rxdata[1], (float *)com_frame.txdata);
                 com_frame.txdatalen = 4;
                 comm_host_send();
                 break;
@@ -408,7 +408,7 @@ void _stream_data_trans()
             if (com_frame.stream_num == 0)
                 return;
             bool txflag = _datanum >= 12 / com_frame.stream_num * com_frame.stream_num - 1;
-            stream_data_prepare(com_frame.data_id_index[_datanum % com_frame.stream_num], _datanum, com_frame.txdata, txflag);
+            dm_data_prepare(com_frame.data_id_index[_datanum % com_frame.stream_num], _datanum, com_frame.txdata, txflag);
             _datanum++;
             if (txflag)
             {
@@ -429,7 +429,7 @@ void _stream_data_trans()
         _time_prev_ms = _time_ms;
         for (u8 i = 0; i < com_frame.stream_num; i++)
         {
-            stream_data_get(com_frame.data_id_index[i], (float *)&com_frame.txdata[i * 4]);
+            dm_data_get(com_frame.data_id_index[i], (float *)&com_frame.txdata[i * 4]);
         }
         vofa_float_data_send((float *)com_frame.txdata, com_frame.stream_num);
     }

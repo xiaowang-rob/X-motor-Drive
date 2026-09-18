@@ -3,7 +3,7 @@
 #include "bsp_adc.h"
 
 #include "device.h"
-#include "parameter_manager.h"
+#include "data_manager.h"
 #include "filter.h"
 // ================================= 全局变量定义 =================================
 static tTuneParams temp_params = {0};
@@ -620,6 +620,7 @@ static bool _TuneLs(float v_alpha, float v_beta, float i_alpha, float i_beta)
 }
 
 // 编码器校准 — 使用 OPEN_CUR 模式
+// TODO:把180反转直接计算进offset
 bool _tune_encoder(float theta_m)
 {
     tTuneContext *ctx = &tune_ctx;

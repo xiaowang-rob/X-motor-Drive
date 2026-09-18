@@ -1,71 +1,73 @@
 #include "svpwm.h"
-#include "usr_config.h"
 #include "math_fast.h"
-#include "string.h"
-#include "device.h"
 
-tSvpwm g_svpwm = {0};
-
-void svpwm_init(float Vbus)
+void svpwm_init(tSvpwm *sv, uint16_t tic_pwm, float Vbus,
+                float tpwm, float ts_us, float tn_us, float td_us)
 {
-    memset(&g_svpwm, 0, sizeof(tSvpwm));
-    g_svpwm.k = MATH_SQRT3 * (float)TIC_PWM / Vbus;
+    memset(sv, 0, sizeof(tSvpwm));
+    sv->tic_pwm = tic_pwm;
+    sv->vbus = Vbus;
+    sv->k = MATH_SQRT3 * (float)sv->tic_pwm / Vbus;
+
+    sv->ticTs = ts_us * sv->tic_pwm / (tpwm * 1000000); // 采样时间提前量（计数值）
+    sv->ticTn = tn_us * sv->tic_pwm / (tpwm * 1000000); // 噪声时间（计数值）
+    sv->ticTd = td_us * sv->tic_pwm / (tpwm * 1000000); // 死区时间（计数值）
 }
 
-void svpwm_run(float ualpha, float ubeta)
+void svpwm_update(tSvpwm *sv, float ua, float ub)
 {
     // 反clark变换，不是标准的，只是为了方便判断扇区
-    float U1 = ubeta;
-    float U2 = MATH_SQRT3_2 * ualpha - 0.5f * ubeta;
-    float U3 = -U2 - ubeta;
+    float U1 = ub;
+    float U2 = MATH_SQRT3_2 * ua - 0.5f * ub;
+    float U3 = -U2 - ub;
 
-    u8 A = U1 > 0;
-    u8 B = U2 > 0;
-    u8 C = U3 > 0;
-    u8 vN = 4 * C + 2 * B + A;
+    uint8_t A = U1 > 0;
+    uint8_t B = U2 > 0;
+    uint8_t C = U3 > 0;
+    uint8_t vN = 4 * C + 2 * B + A;
 
     // 计算三相电压时间分量，超前当前转子三轴90°，定子的三轴需要输出的电压，转化为计数值
-    float X = g_svpwm.k * U1;
-    float Y = g_svpwm.k * U3;
-    float Z = g_svpwm.k * U2;
+    float X = sv->k * U1;
+    float Y = sv->k * U3;
+    float Z = sv->k * U2;
 
     float T1, T2, T0; // T1:第一相作用时间 T2:第二相作用时间 T0:零向量作用时间
     // 分配时间和扇区（扇区是转子的扇区）
     switch (vN)
     {
-    case 0:                 // Zero vector (all negative)
-    case 7:                 // Zero vector (all positive)
-        g_svpwm.sector = 0; // Use special sector 0
+    case 0:             // Zero vector (all negative)
+    case 7:             // Zero vector (all positive)
+        sv->sector = 0; // Use special sector 0
         T1 = 0;
         T2 = 0;
         break;
     case 1:
-        g_svpwm.sector = 2; //+--
+        sv->sector = 2; //+--
         T1 = -Y;
         T2 = -Z;
         break;
     case 2:
-        g_svpwm.sector = 6; //--+
+        sv->sector = 6; //--+
         T1 = -X;
         T2 = -Y;
         break;
     case 3:
-        g_svpwm.sector = 1; //+-+
+        sv->sector = 1; //+-+
         T1 = X;
         T2 = Z;
         break;
     case 4:
-        g_svpwm.sector = 4; //-+-
+        sv->sector = 4; //-+-
         T1 = -Z;
         T2 = -X;
         break;
     case 5:
-        g_svpwm.sector = 3; //++-
+        sv->sector = 3; //++-
         T1 = Y;
         T2 = X;
         break;
     case 6:
-        g_svpwm.sector = 5; //-++
+        sv->sector = 5; //-++
         T1 = Z;
         T2 = Y;
         break;
@@ -73,16 +75,16 @@ void svpwm_run(float ualpha, float ubeta)
         break;
     }
 
-    if (T1 + T2 > TIC_PWM)
+    if (T1 + T2 > sv->tic_pwm)
     {
-        float ratio = TIC_PWM / (T1 + T2);
+        float ratio = sv->tic_pwm / (T1 + T2);
         T1 *= ratio;
         T2 *= ratio;
         T0 = 0;
     }
     else
     {
-        T0 = TIC_PWM - T1 - T2;
+        T0 = sv->tic_pwm - T1 - T2;
     }
     // 以七段式开关序列方式输出--更小的电流纹波和中心对称性（5段 可以减小开关次数）
 
@@ -90,134 +92,111 @@ void svpwm_run(float ualpha, float ubeta)
     float t1 = t0 + T1;   // V1作用
     float t2 = t1 + T2;   // V2作用
 
-    switch (g_svpwm.sector)
+    switch (sv->sector)
     {
     case 1: // V1(100), V2(110)
-        g_svpwm.ticu = (u16)t2;
-        g_svpwm.ticv = (u16)t1;
-        g_svpwm.ticw = (u16)t0;
+        sv->ticA = (uint16_t)t2;
+        sv->ticB = (uint16_t)t1;
+        sv->ticC = (uint16_t)t0;
         break;
     case 2: // V2(110), V3(010)
-        g_svpwm.ticu = (u16)t1;
-        g_svpwm.ticv = (u16)t2;
-        g_svpwm.ticw = (u16)t0;
+        sv->ticA = (uint16_t)t1;
+        sv->ticB = (uint16_t)t2;
+        sv->ticC = (uint16_t)t0;
         break;
     case 3: // V3(010), V4(011)
-        g_svpwm.ticu = (u16)t0;
-        g_svpwm.ticv = (u16)t2;
-        g_svpwm.ticw = (u16)t1;
+        sv->ticA = (uint16_t)t0;
+        sv->ticB = (uint16_t)t2;
+        sv->ticC = (uint16_t)t1;
         break;
     case 4: // V4(011), V5(001)
-        g_svpwm.ticu = (u16)t0;
-        g_svpwm.ticv = (u16)t1;
-        g_svpwm.ticw = (u16)t2;
+        sv->ticA = (uint16_t)t0;
+        sv->ticB = (uint16_t)t1;
+        sv->ticC = (uint16_t)t2;
         break;
     case 5: // V5(001), V6(101)
-        g_svpwm.ticu = (u16)t1;
-        g_svpwm.ticv = (u16)t0;
-        g_svpwm.ticw = (u16)t2;
+        sv->ticA = (uint16_t)t1;
+        sv->ticB = (uint16_t)t0;
+        sv->ticC = (uint16_t)t2;
         break;
     case 6: // V6(101), V1(100)
-        g_svpwm.ticu = (u16)t2;
-        g_svpwm.ticv = (u16)t0;
-        g_svpwm.ticw = (u16)t1;
+        sv->ticA = (uint16_t)t2;
+        sv->ticB = (uint16_t)t0;
+        sv->ticC = (uint16_t)t1;
         break;
     default: // (1,1,1)
-        g_svpwm.ticu = (u16)t0;
-        g_svpwm.ticv = (u16)t0;
-        g_svpwm.ticw = (u16)t0;
+        sv->ticA = (uint16_t)t0;
+        sv->ticB = (uint16_t)t0;
+        sv->ticC = (uint16_t)t0;
         break;
     }
-
-    // 更新比较值
-    bsp_pwm_set_compare(g_svpwm.ticu, g_svpwm.ticv, g_svpwm.ticw);
 }
-// 电流采样点改变
-u8 change_Index = 0;
-const u16 ticTs = T_SAMPLE_us * TIC_PWM / (T_PWM * 1000000);   // 采样时间提前量（计数值）
-const u16 ticTn = T_NOISE_us * TIC_PWM / (T_PWM * 1000000);    // 噪声时间（计数值）
-const u16 ticTd = T_DEADTIME_us * TIC_PWM / (T_PWM * 1000000); // 死区时间（计数值）
-const u16 ticAll = ticTs + ticTn + ticTd;                      // 总时间（计数值
 
-void svpwm_sample_point_calibration()
+// 电压参数校准
+void svpwm_vbus_calibration(tSvpwm *sv, float Vbus)
 {
-    u16 tic_ref; // 当前扇区的参考相计数
+    sv->vbus = Vbus;
+    sv->k = MATH_SQRT3 * (float)sv->tic_pwm / Vbus;
+}
 
+// 电流采样点校准 返回采样时机ccr
+uint16_t svpwm_sp_calibration(tSvpwm *sv)
+{
+    uint16_t tic_ref; // 当前扇区的参考相计数
+    uint16_t tic_out; // 目标点ccr
+    const ticall = sv->ticTd + sv->ticTn + sv->ticTs;
+    const tic_td_tn = sv->ticTd + sv->ticTn;
     // 根据扇区确定参考相，并保存tic值
-    switch (g_svpwm.sector)
+    switch (sv->sector)
     {
     case 0:
     case 7:
-        tic_ref = TIC_PWM / 2;
+        tic_ref = sv->tic_pwm / 2;
         break;
     case 1:
     case 6:
-        tic_ref = g_svpwm.ticu;
+        tic_ref = sv->ticA;
         break;
     case 2:
     case 3:
-        tic_ref = g_svpwm.ticv;
+        tic_ref = sv->ticB;
         break;
     default: // 45
-        tic_ref = g_svpwm.ticw;
+        tic_ref = sv->ticC;
         break;
     }
 
     // 根据参考相占空比判断调制深度
-    if (tic_ref > ticTd + ticTn)
+    if (tic_ref > sv->ticTd + sv->ticTn)
     {
-         change_Index = 1; // 低调制
+        sv->index = 1; // 低调制
     }
-    else if (ticAll > 2 * tic_ref)
+    else if (ticall > 2 * tic_ref)
     {
-         change_Index = 3; // 高调制
+        sv->index = 3; // 高调制
     }
     else
     {
-         change_Index = 2; // 中调制
+        sv->index = 2; // 中调制
     }
 
     // 设置ADC采样触发点
-    switch (change_Index)
+    switch (sv->index)
     {
     case 1:
-        //        fAdcSampleChange(ticpwm - 1);
-        bsp_adc_sample_change(tic_ref - ticTs);
+        tic_out = tic_ref - sv->ticTs;
         break;
     case 2:
-        //        fAdcSampleChange(tic_ref + ticTs);
-        bsp_adc_sample_change(tic_ref - ticTs);
+        tic_out = tic_ref + sv->ticTs;
         break;
     case 3:
         // 确保减后不溢出（可根据实际需求加限幅）
-        if (tic_ref >= ticTd + ticTn)
-            bsp_adc_sample_change(tic_ref - ticTd - ticTn);
+        if (tic_ref >= tic_td_tn)
+            tic_out = tic_ref - tic_td_tn;
         else
-            bsp_adc_sample_change(0);
+            tic_out = sv->tic_pwm - 1; // 默认采样点
         break;
     default:
         break;
     }
-}
-float get_voltage_u()
-{
-    return g_svpwm.ticu * MATH_SQRT3 / g_svpwm.k;
-}
-float get_voltage_v()
-{
-    return g_svpwm.ticv * MATH_SQRT3 / g_svpwm.k;
-}
-float get_voltage_w()
-{
-    return g_svpwm.ticw * MATH_SQRT3 / g_svpwm.k;
-}
-
-void svpwm_set_vbus(float Vbus)
-{
-    g_svpwm.k = MATH_SQRT3 * TIC_PWM / Vbus;
-}
-
-u8 svpwm_get_sector()
-{
-    return g_svpwm.sector;
 }

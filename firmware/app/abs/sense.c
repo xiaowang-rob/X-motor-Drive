@@ -37,6 +37,11 @@ bool sense_init(tSense *s, const tSampleMcuOps *ops, SampleHandle handle)
 
     s->ops = ops;
     s->handle = handle;
+
+    // 启动采样前端（DMA + 首轮 Vbus/温度转换），与其他设备的 init 语义一致
+    if (!ops->init(handle))
+        return false;
+
     ops->get_gain(handle, &s->cur_scale, &s->vbus_scale);
 
     for (uint8_t i = 0U; i < 3U; i++)

@@ -1,183 +1,145 @@
-
-// 在这里对板上的所有驱动进行组装 然后给高层提供设备接口
+// ============================================================
+// device_cfg.c — 组装层实现：装配全板设备并对外提供 g_dev
+//
+// 本文件是唯一 include 板级驱动出口（*_drivers.h）的地方。
+// 装配顺序：功率级 → 采样（要绑采样点）→ 编码器 → 存储 → 灯 → 通讯。
+// 所有驱动实例都是静态实例（xxx_get_handle()），本层只做"绑定 + 注入缓冲"。
+// ============================================================
 
 #include "device_cfg.h"
 
-void dv_init(void)
-{
+// ---- 板级驱动出口 ----
+#include "bus_drivers.h"
+#include "encoder_drivers.h"
+#include "flash_drivers.h"
+#include "gate_drivers.h"
+#include "led_drivers.h"
+#include "sense_drivers.h"
+#include "uart_drivers.h"
 
-    flash_init(&flash_mcu, &mcu_flash_driver_ops, void); // mcu flash没有句柄
-    iap_init(&iap_app, &mcu_iap_driver_ops, IAP_APP);
+// ---------- 产品配置----------
+#define DEV_ENC_INT_HDL MT6816_get_handle(INT_ENCODER) // 板载编码器句柄
+#define DEV_ENC_INT_OPS MT6816_driver_ops              // 板载编码器ops
 
-    led_init(&led0, &g_led_drv_ops)
-        bus_init(&can, &can_drv_ops);
+#define DEV_CAN_ID 0x100U   // 本机 CAN 标准帧 ID
+#define UART_PKT_HEAD 0xAAU // 串口帧头
+#define UART_PKT_TAIL 0x55U // 串口帧尾
 
-    // TODO:读取参数添加上位机设置好的编码器
-    EncoderChipHandle mt6816_int = MT6816_create();
-    encoder_init(&int_encoder, &MT6816_driver_ops, mt6816_int, INT_ENCODER);
+// ---------- 通讯缓冲（调用方提供，多路各自独立） ----------
+#define CAN_MP_BLOCKS 16U
+CREATE_MEM_POOL_BUF(s_can_mp_buf, sizeof(tBus_Frame), CAN_MP_BLOCKS)
+#define CAN_QUEUE_BYTES (CAN_MP_BLOCKS * sizeof(tBus_Frame *))
+static uint8_t s_can_queue_buf[CAN_QUEUE_BYTES];
 
-    gate_drv_init(&motor_drv, &gate_fd6288q_ops);
-}
-// ============================================================
-// dev_board.c — 组装层：板级设备装配（usr/app，v2）
-/
-// v2：驱动已直连厂商库（usr/drv + platform.h），装配简化为
-// "无参工厂 + ops → abs 对象 init"，不再注入接口表。
-// 本文件仍作为业务层唯一入口（include dev_board.h 拿 g_dev）。
-// ============================================================
-
-#include "dev_board.h"
-
-#include <stddef.h> // NULL
-
-#include "board.h"    // BL/APP/PARAM 分区（产品配置单点）
-#include "platform.h" // platform_init / platform_get_ms/us / jump/reset
-
-#include "usr/drv/encoder_drivers.h"
-#include "usr/drv/flash_drivers.h"
-#include "usr/drv/led_drivers.h"
-#include "usr/drv/mcu_flash_drv.h"
-#include "usr/drv/rgb_drivers.h"
-#include "usr/drv/sense_drivers.h"
-
-    // ============================================================
-    // 产品配置区（换电机/芯片只改这里）
-    // ============================================================
-    // 编码器芯片：默认 MT6816；换芯片在编译定义启用其一：
-    //   -DDEV_ENC_CHIP_AS5047 / -DDEV_ENC_CHIP_MT6835
-
-    // ============================================================
-
-    // 板级时间 → abs 注入适配（platform 裸函数包成 tTimeIf）
-    static uint32_t dv_get_ms(void *ctx)
-{
-    (void)ctx;
-    return platform_get_ms();
-}
-
-static uint32_t dv_get_us(void *ctx)
-{
-    (void)ctx;
-    return platform_get_us();
-}
-
-static const tTimeIf g_time = {
-    .ctx = NULL,
-    .get_ms = dv_get_ms,
-    .get_us = dv_get_us,
+static const tBusBuffer s_can_buf = {
+    .mp_buf = s_can_mp_buf,
+    .mp_block_num = CAN_MP_BLOCKS,
+    .queue_buf = s_can_queue_buf,
+    .queue_bytes = CAN_QUEUE_BYTES,
 };
 
+#define UART_RXQ_BYTES 256U // 接收字节队列容量（须为 2 的幂）
+
+static uint8_t s_uart1_rxq[UART_RXQ_BYTES];
+static uint8_t s_uart1_frame[UART_MAX_PKT_SIZE + 4];
+static uint8_t s_uart1_tx[UART_MAX_PKT_SIZE + 5];
+static const tUartBuffer s_uart1_buf = {
+    .rx_queue_buf = s_uart1_rxq,
+    .rx_queue_size = UART_RXQ_BYTES,
+    .frame_buf = s_uart1_frame,
+    .tx_buf = s_uart1_tx,
+};
+
+static uint8_t s_usb_rxq[UART_RXQ_BYTES];
+static uint8_t s_usb_frame[UART_MAX_PKT_SIZE + 4];
+static uint8_t s_usb_tx[UART_MAX_PKT_SIZE + 5];
+static const tUartBuffer s_usb_buf = {
+    .rx_queue_buf = s_usb_rxq,
+    .rx_queue_size = UART_RXQ_BYTES,
+    .frame_buf = s_usb_frame,
+    .tx_buf = s_usb_tx,
+};
+
+// 全局设备对象
 tDevBoard g_dev;
 
-// ---- 编码器 ----
-static bool dev_assemble_encoder(void)
+// ---------- 各设备装配 ----------
+// 不可配置设备初始化
+bool dev_base_init(void)
 {
-    EncoderChipHandle chip = NULL;
-    const tEncoderDriverOps *ops = NULL;
-
-#if defined(DEV_ENC_CHIP_AS5047)
-    chip = AS5047_create();
-    ops = &AS5047_driver_ops;
-#elif defined(DEV_ENC_CHIP_MT6835)
-    chip = MT6835_create();
-    ops = &MT6835_driver_ops;
-#else // 默认 MT6816
-    chip = MT6816_create();
-    ops = &MT6816_driver_ops;
-#endif
-
-    if (!chip || !ops)
+    // 注册mcu flash驱动
+    if (!flash_init(&g_dev.flash, &mcu_flash_driver_ops,
+                    mcu_flash_get_handle()))
         return false;
-    return encoder_init(&g_dev.enc, ops, chip);
+    // 注册mcu app iap驱动
+    tIAPConfig iap_cfg = mcu_iap_config(IAP_APP);
+    if (!iap_init(&g_dev.iap, &iap_cfg))
+        return false;
+
+    // 注册栅极驱动
+    if (!gate_drv_init(&g_dev.gate, &gate_fd6288q_ops, gate_get_handle()))
+        return false;
+
+    // 注册adc驱动
+    if (!sense_init(&g_dev.sense, &mcu_adc_ops, sense_get_handle()))
+        return false;
+
+    // 电流采样点：跟随功率级 PWM 周期（提前一个计数）
+    sense_set_sample_point(&g_dev.sense, g_dev.gate.pwm_period - 1U);
+
+    // 板载编码器驱动
+    if (!encoder_init(&g_dev.enc_int, &DEV_ENC_INT_OPS, DEV_ENC_INT_HDL, INT_ENCODER))
+        return false;
+
+    // 注册led驱动
+    bool led0 = led_init(&g_dev.led_0, &led_drv_ops, led_get_handle(0U));
+    bool led1 = led_init(&g_dev.led_1, &led_drv_ops, led_get_handle(1U));
+    bool rgb = rgb_init(&g_dev.rgb, &rgb_ws28xx_ops, rgb_get_handle());
 }
 
-// ---- RGB ----
-static bool dev_assemble_rgb(void)
+// 外接编码器驱动（可配置）
+bool dev_enc_init()
 {
-    RgbHandle chip = ws28xx_create();
-    if (!chip)
+    // 外部编码器驱动（可配置）
+    if (!encoder_init(&g_dev.enc_ext, &DEV_ENC_INT_OPS, DEV_ENC_INT_HDL, EXT_ENCODER))
         return false;
-    return rgb_init(&g_dev.rgb, &ws28xx_driver_ops, chip, &g_time);
 }
 
-// ---- 采样 ----
-static bool dev_assemble_sense(void)
+// 灯（失败不影响关键设备）
+static void dev_led_init(void)
 {
-    return sense_init(&g_dev.sense, sense_drv_get(), &g_time);
 }
 
-// ---- 外部 Flash（存储单元挂介质首个扇区；芯片缺失则不可用） ----
-static bool dev_assemble_flash(void)
+// 通讯（缓冲由本层提供）
+static void dev_comm_init(void)
 {
-    FlashChipHandle chip = w25qxx_create();
-    if (!chip)
-        return false;
+    if (bus_init(&g_dev.can, &can_drv_ops, can_get_handle(), &s_can_buf))
+        g_dev.can_ok = bus_start(&g_dev.can, DEV_CAN_ID);
 
-    if (!w25qxx_driver_ops.init(chip))
-    {
-        w25qxx_destroy(chip);
-        return false;
-    }
-    bool ok = flash_unit_init(&g_dev.ext_flash, &w25qxx_driver_ops, chip, 0U);
-    if (!ok)
-        w25qxx_destroy(chip);
-    return ok;
+    g_dev.uart_ok = uart_init(&g_dev.uart1, &uart_mcu_ops, uart_mcu_get_handle(),
+                              &s_uart1_buf, UART_PKT_HEAD, UART_PKT_TAIL);
+
+    g_dev.usb_ok = uart_init(&g_dev.usb, &uart_usb_ops, uart_usb_get_handle(),
+                             &s_usb_buf, UART_PKT_HEAD, UART_PKT_TAIL);
 }
 
-// ---- 内部 MCU Flash：参数区单元 + IAP 分区表（board.h 规划） ----
-static bool dev_assemble_internal_flash(void)
+// ---------- 装配入口 ----------
+
+bool device_cfg_init(void)
 {
-    FlashChipHandle chip = mcu_flash_create();
-    if (!chip)
-        return false;
-    if (!mcu_flash_driver_ops.init(chip))
-    {
-        mcu_flash_destroy(chip);
-        return false;
-    }
+    g_dev.gate_ok = dev_gate_init();
+    g_dev.sense_ok = g_dev.gate_ok && dev_sense_init(); // 采样点依赖功率级周期
+    g_dev.enc_ok = dev_enc_init();
 
-    // 参数区日志单元（PARAMETER_LOAD_ADDR 为 128K 扇区边界）
-    g_dev.param_flash_ok =
-        flash_unit_init(&g_dev.param_flash, &mcu_flash_driver_ops, chip, PARAMETER_LOAD_ADDR);
+    dev_storage_init();
+    dev_led_init();
+    dev_comm_init();
 
-    // IAP 分区：App 区上界 = LOG 区起始（擦除/写/校验 + 跳转复位回调）
-    g_dev.iap = (tFlashIAP){
-        .bl_addr = BL_START_ADDR,
-        .bl_size = BL_SIZE_KB * 1024U,
-        .app_addr = APP_START_ADDR,
-        .app_size = LOG_START_ADDR - APP_START_ADDR,
-        .jump = platform_jump_to_addr,
-        .reset = platform_system_reset,
-    };
-    g_dev.iap_ok = (g_dev.iap.jump != NULL) && (g_dev.iap.reset != NULL);
-    return g_dev.param_flash_ok;
+    return g_dev.gate_ok && g_dev.sense_ok && g_dev.enc_ok;
 }
 
-bool dev_board_init(void)
+void device_cfg_register_foc_isr(void (*sample_cb)(void), void (*ctrl_cb)(void))
 {
-    // 1) 板级基础：DWT 周期计数（时间基准）
-    platform_init();
-
-    // 2) 时间（abs 注入）
-    g_dev.time = &g_time;
-
-    // 3) 逐设备装配（灯效失败不阻塞关键设备）
-    g_dev.led_can = (tLed){0};
-    g_dev.led_enc = (tLed){0};
-    g_dev.rgb = (tRgb){0};
-    g_dev.sense = (tCurrentSense){0};
-
-    bool led_ok = led_init(&g_dev.led_can, led_drv_ops(), led_drv_handle(0), &g_time) &&
-                  led_init(&g_dev.led_enc, led_drv_ops(), led_drv_handle(1), &g_time);
-    (void)led_ok;
-
-    g_dev.rgb_ok = dev_assemble_rgb();
-    g_dev.sense_ok = dev_assemble_sense();
-    g_dev.flash_ok = dev_assemble_flash();
-    dev_assemble_internal_flash(); // 内部 flash/IAP（非关键，独立置 ok 标志）
-
-    // 4) 编码器（关键设备）
-    g_dev.enc_ok = dev_assemble_encoder();
-
-    return g_dev.enc_ok;
+    gate_register_isrs(sample_cb, ctrl_cb);
+    INC_ENC_MODEINC_ENC_MODE
 }

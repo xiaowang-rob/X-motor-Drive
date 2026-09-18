@@ -7,7 +7,7 @@
 // 多级时间槽控制服务
 
 // ---------- 控制分频 ----------
-#define FREQ_HIGH_LOOP 2    // 高环分频 (每个pwm周期执行两次 0 pwm下溢中断 1 pwm上溢中断)
+#define FREQ_HIGH_LOOP 1    // 高环分频 (每个pwm周期执行一次)
 #define FREQ_MEDIUM_LOOP 10 // 中环分频 (每FREQ_HIGH_LOOP*FREQ_MEDIUM_LOOP = 10个控制周期)
 #define FREQ_LOW_LOOP 10    // 低环分频 (每FREQ_MEDIUM_LOOP*FREQ_LOW_LOOP = 100个控制周期)
 
@@ -15,7 +15,7 @@
 typedef struct
 {
     uint8_t slot;
-    void (*task)(void);
+    void (*task)(float ts);
 } tSlotTask;
 
 // 每个分频的最后一个时间槽加计数并且处理低一级的任务 故最后一个时间槽一般不分配任务
@@ -34,7 +34,9 @@ typedef struct
     float t_low;  // 低环周期
 } tSlotCon;
 
-void slot_con_init(tSlotCon *sc, uint32_t pwm_period);
-void slot_con_update(tSlotCon *sc, uint8_t tic);
+extern tSlotCon g_slotcon;
+
+void slot_con_init(float f_con);
+void slot_con_update(void);
 
 #endif
