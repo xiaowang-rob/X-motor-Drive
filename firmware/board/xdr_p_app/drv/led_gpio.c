@@ -21,10 +21,9 @@
 // ---------- 实例 handle ----------
 typedef struct
 {
-    const tLedDriverOps *ops; // 该实例的操作表
-    GPIO_TypeDef *port;       // 配置：端口
-    uint16_t pin;             // 配置：引脚
-    bool active_level;        // 配置：触发电平（true 高电平点亮）
+    GPIO_TypeDef *port; // 配置：端口
+    uint16_t pin;       // 配置：引脚
+    bool active_level;  // 配置：触发电平（true 高电平点亮）
 } tLedGpio;
 
 static bool led_drv_init(LedHandle h);
@@ -39,8 +38,8 @@ const tLedDriverOps led_drv_ops = {
 
 // 静态实例（低电平点亮）
 static tLedGpio s_leds[LED_DRV_NUM] = {
-    {.ops = &led_drv_ops, .port = LED_0_GPIO_PORT, .pin = LED_0_GPIO_PIN, .active_level = false},
-    {.ops = &led_drv_ops, .port = LED_1_GPIO_PORT, .pin = LED_1_GPIO_PIN, .active_level = false},
+    {.port = LED_0_GPIO_PORT, .pin = LED_0_GPIO_PIN, .active_level = false},
+    {.port = LED_1_GPIO_PORT, .pin = LED_1_GPIO_PIN, .active_level = false},
 };
 
 LedHandle led_get_handle(uint8_t idx)

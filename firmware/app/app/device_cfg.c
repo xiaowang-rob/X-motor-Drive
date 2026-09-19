@@ -8,6 +8,7 @@
 
 #include "device_cfg.h"
 
+#include "protocol.h"
 // ---- 板级驱动出口 ----
 #include "bus_drivers.h"
 #include "encoder_drivers.h"
@@ -16,14 +17,6 @@
 #include "led_drivers.h"
 #include "sense_drivers.h"
 #include "uart_drivers.h"
-
-// ---------- 产品配置----------
-#define DEV_ENC_INT_HDL MT6816_get_handle(INT_ENCODER) // 板载编码器句柄
-#define DEV_ENC_INT_OPS MT6816_driver_ops              // 板载编码器ops
-
-#define DEV_CAN_ID 0x100U   // 本机 CAN 标准帧 ID
-#define UART_PKT_HEAD 0xAAU // 串口帧头
-#define UART_PKT_TAIL 0x55U // 串口帧尾
 
 // ---------- 通讯缓冲（调用方提供，多路各自独立） ----------
 #define CAN_MP_BLOCKS 16U
@@ -63,8 +56,12 @@ static const tUartBuffer s_usb_buf = {
 // 全局设备对象
 tDevBoard g_dev;
 
-// ---------- 各设备装配 ----------
-// 不可配置设备初始化
+// app固件先初始化这个 中断向量表偏移 并开启中断 不然程序无法运行
+void app_init(void)
+{
+    mcu_app_init();
+}
+// 板载设备初始化
 bool dev_base_init(void)
 {
     // 注册mcu flash驱动
@@ -87,59 +84,67 @@ bool dev_base_init(void)
     // 电流采样点：跟随功率级 PWM 周期（提前一个计数）
     sense_set_sample_point(&g_dev.sense, g_dev.gate.pwm_period - 1U);
 
-    // 板载编码器驱动
-    if (!encoder_init(&g_dev.enc_int, &DEV_ENC_INT_OPS, DEV_ENC_INT_HDL, INT_ENCODER))
-        return false;
-
     // 注册led驱动
     bool led0 = led_init(&g_dev.led_0, &led_drv_ops, led_get_handle(0U));
     bool led1 = led_init(&g_dev.led_1, &led_drv_ops, led_get_handle(1U));
     bool rgb = rgb_init(&g_dev.rgb, &rgb_ws28xx_ops, rgb_get_handle());
-}
 
-// 外接编码器驱动（可配置）
-bool dev_enc_init()
-{
-    // 外部编码器驱动（可配置）
-    if (!encoder_init(&g_dev.enc_ext, &DEV_ENC_INT_OPS, DEV_ENC_INT_HDL, EXT_ENCODER))
+    if (!led0 || !led1 || !rgb)
+        return false;
+
+    // 注册can驱动
+    if (bus_init(&g_dev.can, &can_drv_ops, can_get_handle(), &s_can_buf))
+        return false;
+
+    // 注册uart驱动
+    if (!uart_init(&g_dev.uart, &uart_mcu_ops, uart_mcu_get_handle(),
+                   &s_uart1_buf))
+        return false;
+    // 注册usb驱动
+    if (!uart_init(&g_dev.usb, &uart_usb_ops, uart_usb_get_handle(),
+                   &s_usb_buf))
         return false;
 }
 
-// 灯（失败不影响关键设备）
-static void dev_led_init(void)
+// 板载编码器初始化 可配置是否启用
+bool dev_int_enc_init(eEncoderChip chip)
 {
+    // 板载编码器驱动 mt6816
+    EncoderChipHandle mt6816_int = MT6816_register_handle();
+
+    if (!encoder_init(&g_dev.enc_int, &MT6816_driver_ops, mt6816_int, INT_ENCODER))
+        return false;
 }
-
-// 通讯（缓冲由本层提供）
-static void dev_comm_init(void)
+// 外接设备驱动（可配置）
+bool dev_ext_enc_init(eEncoderChip chip)
 {
-    if (bus_init(&g_dev.can, &can_drv_ops, can_get_handle(), &s_can_buf))
-        g_dev.can_ok = bus_start(&g_dev.can, DEV_CAN_ID);
 
-    g_dev.uart_ok = uart_init(&g_dev.uart1, &uart_mcu_ops, uart_mcu_get_handle(),
-                              &s_uart1_buf, UART_PKT_HEAD, UART_PKT_TAIL);
-
-    g_dev.usb_ok = uart_init(&g_dev.usb, &uart_usb_ops, uart_usb_get_handle(),
-                             &s_usb_buf, UART_PKT_HEAD, UART_PKT_TAIL);
-}
-
-// ---------- 装配入口 ----------
-
-bool device_cfg_init(void)
-{
-    g_dev.gate_ok = dev_gate_init();
-    g_dev.sense_ok = g_dev.gate_ok && dev_sense_init(); // 采样点依赖功率级周期
-    g_dev.enc_ok = dev_enc_init();
-
-    dev_storage_init();
-    dev_led_init();
-    dev_comm_init();
-
-    return g_dev.gate_ok && g_dev.sense_ok && g_dev.enc_ok;
+    bool enc_ok = false;
+    switch (chip)
+    {
+    case ENC_NONE:
+        enc_ok = true;
+        break;
+    case MT6816:
+        EncoderChipHandle mt6816_ext = MT6816_register_handle();
+        enc_ok = encoder_init(&g_dev.enc_ext, &MT6816_driver_ops, mt6816_ext, EXT_ENCODER);
+        break;
+    case MT6835:
+        EncoderChipHandle mt6835_ext = MT6835_register_handle();
+        enc_ok = encoder_init(&g_dev.enc_ext, &MT6835_driver_ops, mt6835_ext, EXT_ENCODER);
+        break;
+    case AS5047:
+        EncoderChipHandle AS5047_ext = AS5047_register_handle();
+        enc_ok = encoder_init(&g_dev.enc_ext, &AS5047_driver_ops, AS5047_ext, EXT_ENCODER);
+        break;
+    default:
+        enc_ok = false;
+        break;
+    }
+    return enc_ok;
 }
 
 void device_cfg_register_foc_isr(void (*sample_cb)(void), void (*ctrl_cb)(void))
 {
     gate_register_isrs(sample_cb, ctrl_cb);
-    INC_ENC_MODEINC_ENC_MODE
 }

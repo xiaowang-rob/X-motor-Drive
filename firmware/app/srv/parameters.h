@@ -10,8 +10,7 @@
 typedef struct
 {
     // 配置参数
-    uint8_t ienc_mode;
-    uint8_t eenc_mode;
+    uint8_t ienc_chip;
     uint8_t eenc_chip;
 
     uint8_t obs_mode;

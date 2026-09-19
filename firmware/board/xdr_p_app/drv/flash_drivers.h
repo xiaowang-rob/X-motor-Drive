@@ -22,4 +22,6 @@ FlashChipHandle mcu_flash_get_handle(void);
 
 // 取 MCU Flash 的 IAP 配置（复用上面的介质 ops + 分区表 + 平台跳转）
 tIAPConfig mcu_iap_config(eIAPtype type);
+void mcu_app_init(void);
+
 #endif // __FLASH_DRIVERS_H

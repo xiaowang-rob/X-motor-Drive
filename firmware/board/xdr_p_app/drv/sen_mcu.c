@@ -20,8 +20,8 @@
 #include "tim.h"
 
 // ---------- 本板配置 ----------
-#define SENSE_CUR_CH 3U  // 三相电流通道数
-#define SENSE_VT_CH 2U   // Vbus + 温度通道数
+#define SENSE_CUR_CH 3U // 三相电流通道数
+#define SENSE_VT_CH 2U  // Vbus + 温度通道数
 #define SENSE_INIT_TIMEOUT_MS 100U
 
 #define SENSE_TIC_PWM 2099U   // PWM 周期计数值（须与栅极驱动的 PWM 周期一致）
@@ -31,7 +31,6 @@
 // ---------- 实例 handle ----------
 typedef struct
 {
-    const tSampleMcuOps *ops;       // 该实例的操作表
     ADC_HandleTypeDef *hadc_cur;    // 外设：三相电流 ADC
     ADC_HandleTypeDef *hadc_vt;     // 外设：Vbus/温度 ADC
     TIM_HandleTypeDef *htim_sample; // 外设：采样点定时器（与功率级同一 TIM8）
@@ -63,7 +62,6 @@ const tSampleMcuOps mcu_adc_ops = {
 
 // 静态实例
 static tSenseAdc s_adc = {
-    .ops = &mcu_adc_ops,
     .hadc_cur = &hadc1,
     .hadc_vt = &hadc2,
     .htim_sample = &htim8,

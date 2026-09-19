@@ -19,12 +19,11 @@
 // ---------- 实例 handle ----------
 typedef struct
 {
-    const tBusDriverOps *ops; // 该实例的操作表
-    CAN_HandleTypeDef *hcan;  // 外设
-    uint32_t filter_bank;     // 配置：过滤组
-    uint32_t std_id;          // 配置：标准帧 ID
-    bus_rx_frame_cb rx_cb;    // 收帧回调（由 abs 层注册）
-    void *rx_ctx;             // 回调上下文（abs 层实例）
+    CAN_HandleTypeDef *hcan; // 外设
+    uint32_t filter_bank;    // 配置：过滤组
+    uint32_t std_id;         // 配置：标准帧 ID
+    bus_rx_frame_cb rx_cb;   // 收帧回调（由 abs 层注册）
+    void *rx_ctx;            // 回调上下文（abs 层实例）
 } tCanBus;
 
 static bool can_init(BusHandle h, uint32_t std_id);
@@ -39,7 +38,6 @@ const tBusDriverOps can_drv_ops = {
 
 // 静态实例
 static tCanBus s_can2 = {
-    .ops = &can_drv_ops,
     .hcan = &hcan2,
     .filter_bank = CAN2_FILTER_BANK,
     .std_id = 0U,

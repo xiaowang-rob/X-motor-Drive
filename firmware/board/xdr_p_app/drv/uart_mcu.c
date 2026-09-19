@@ -19,7 +19,6 @@
 // ---------- 实例 handle ----------
 typedef struct
 {
-    const tUartDriverOps *ops;                  // 该实例的操作表
     UART_HandleTypeDef *huart;                  // 外设
     uint8_t rx_buffer[UART_MCU_RX_BUFFER_SIZE]; // 配置：DMA 接收缓冲
     uint16_t rx_buffer_size;                    // 配置：缓冲长度
@@ -39,7 +38,6 @@ const tUartDriverOps uart_mcu_ops = {
 
 // 静态实例
 static tUartMcu s_uart1 = {
-    .ops = &uart_mcu_ops,
     .huart = &huart1,
     .rx_buffer_size = UART_MCU_RX_BUFFER_SIZE,
     .rx_cb = NULL,

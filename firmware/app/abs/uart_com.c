@@ -27,8 +27,9 @@ static void uart_on_rx_data(void *ctx, const uint8_t *data, uint16_t len)
     uart->rstate = DEV_RUNNING;
 }
 
+// uart初始化 绑定ops handle buf
 bool uart_init(tUartDriver *uart, const tUartDriverOps *ops, UartHandle handle,
-               const tUartBuffer *buf, uint8_t head, uint8_t tail)
+               const tUartBuffer *buf)
 {
     if (!uart || !ops || !handle || !buf)
         return false;
@@ -38,8 +39,7 @@ bool uart_init(tUartDriver *uart, const tUartDriverOps *ops, UartHandle handle,
     memset(uart, 0, sizeof(*uart));
     uart->ops = ops;
     uart->handle = handle;
-    uart->pkt_head = head;
-    uart->pkt_tail = tail;
+
     uart->in_frame = false;
     uart->rx_index = 0U;
     uart->frame_buf = buf->frame_buf;
@@ -50,16 +50,22 @@ bool uart_init(tUartDriver *uart, const tUartDriverOps *ops, UartHandle handle,
     if (QUEUE_STATUS_OK != queue_static_init(&uart->rx_queue, buf->rx_queue_buf, buf->rx_queue_size))
         return false;
 
-    if (!ops->init(handle))
+    return true;
+}
+// uart启动
+bool uart_start(tUartDriver *uart, uint8_t head, uint8_t tail)
+{
+    uart->pkt_head = head;
+    uart->pkt_tail = tail;
+
+    if (!uart->ops->init(uart->handle))
         return false;
 
-    ops->register_callback(handle, uart_on_rx_data, uart);
+    uart->ops->register_callback(uart->handle, uart_on_rx_data, uart);
 
     uart->tstate = DEV_ONLINE;
     uart->rstate = DEV_ONLINE;
-    return true;
 }
-
 bool uart_send(tUartDriver *uart, const tUart_Frame *frame)
 {
     if (!uart || !uart->ops || !uart->handle || !frame)

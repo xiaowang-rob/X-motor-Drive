@@ -14,9 +14,8 @@
 // ---------- 实例 handle ----------
 typedef struct
 {
-    const tUartDriverOps *ops; // 该实例的操作表
-    uart_rx_done_cb rx_cb;     // 收字节回调（由 abs 层注册）
-    void *rx_ctx;              // 回调上下文（abs 层实例）
+    uart_rx_done_cb rx_cb; // 收字节回调（由 abs 层注册）
+    void *rx_ctx;          // 回调上下文（abs 层实例）
 } tUartUsb;
 
 // USB CDC 为单实例
@@ -52,7 +51,6 @@ static bool uart_usb_init(UartHandle h)
     if (!inst)
         return false;
 
-    inst->ops = &uart_usb_ops;
     mcu_usb_register_rx_callback(usb_on_rx);
     return true;
 }

@@ -20,9 +20,8 @@ static const uint8_t MT6835_CMD[MT6835_FRAME_LEN] = {0xA0U, 0x03U, 0x00U, 0x00U,
 // ---------- 实例 handle ----------
 typedef struct
 {
-    const tEncoderDriverOps *ops; // 该实例的操作表
     EncEngineHandle engine;       // SPI 引擎（内/外共用）
-    eEncoderType type;            // 配置：内/外编码器
+    eEncoderType type;            // 编码器类型：内/外
     uint16_t resolution;          // 配置：单圈分辨率
     uint8_t rx[MT6835_FRAME_LEN]; // 运行时：接收缓冲
     uint16_t raw;
@@ -40,19 +39,22 @@ const tEncoderDriverOps MT6835_driver_ops = {
     .reset = MT6835_reset,
 };
 
-// 静态实例：[INT_ENCODER] / [EXT_ENCODER]
-static tMT6835 s_inst[2] = {
-    {.ops = &MT6835_driver_ops, .resolution = MT6835_RESOLUTION},
-    {.ops = &MT6835_driver_ops, .resolution = MT6835_RESOLUTION},
-};
-
-EncoderChipHandle MT6835_get_handle(eEncoderType type)
+// 编码器芯片可配置 动态分配
+EncoderChipHandle MT6835_register_handle(void)
 {
-    if (type != INT_ENCODER && type != EXT_ENCODER)
+    tMT6835 *h = (tMT6835 *)calloc(1, sizeof(tMT6835));
+    if (!h)
         return NULL;
-    s_inst[type].type = type;
-    s_inst[type].engine = enc_engine_get_handle();
-    return (EncoderChipHandle)&s_inst[type];
+    return (EncoderChipHandle)h;
+}
+// 注销 handle
+void MT6835_unregister_handle(EncoderChipHandle h)
+{
+    tMT6835 *ctx = (tMT6835 *)h;
+    if (!ctx)
+        return;
+    free(ctx);
+    ctx = NULL;
 }
 
 // ---- ops 实现 ----
@@ -62,11 +64,11 @@ static bool MT6835_init(EncoderChipHandle h, eEncoderType type)
     tMT6835 *ctx = (tMT6835 *)h;
     if (!ctx)
         return false;
-
+    ctx->type = type;
+    ctx->engine = enc_engine_get_handle();
     if (!enc_spi_set_mode(ctx->engine, 1U, 1U, 8U)) // 芯片协议：Mode3/8bit
         return false;
 
-    ctx->type = type;
     ctx->raw = 0U;
     return true;
 }

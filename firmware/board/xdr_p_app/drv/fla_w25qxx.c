@@ -55,10 +55,9 @@ static const uint32_t W25_SECTOR_BOUNDS[BLOCK_SECTOR_NUM + 1] = {
 
 typedef struct
 {
-    const tFlashDriverOps *ops; // 该实例的操作表
-    SPI_HandleTypeDef *hspi;    // 外设：SPI
-    GPIO_TypeDef *cs_port;      // 配置：片选端口
-    uint16_t cs_pin;            // 配置：片选引脚
+    SPI_HandleTypeDef *hspi; // 外设：SPI
+    GPIO_TypeDef *cs_port;   // 配置：片选端口
+    uint16_t cs_pin;         // 配置：片选引脚
     uint8_t tx_buf[4U + W25_PAGE_SIZE];
     uint8_t rx_buf[4U + W25_PAGE_SIZE];
     uint8_t rd_ff[READ_CHUNK];
@@ -330,7 +329,6 @@ const tFlashDriverOps w25qxx_driver_ops = {
 
 // 静态实例（外部 SPI NOR：W25Q128）
 static tW25Qxx s_w25 = {
-    .ops = &w25qxx_driver_ops,
     .hspi = &hspi2,
     .cs_port = GPIOB,
     .cs_pin = GPIO_PIN_12,

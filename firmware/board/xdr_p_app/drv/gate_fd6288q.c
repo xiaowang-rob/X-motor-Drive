@@ -29,7 +29,6 @@
 // ---------- 实例 handle ----------
 typedef struct
 {
-    const tGateDrvOps *ops;  // 该实例的操作表
     TIM_HandleTypeDef *htim; // 外设：功率级定时器
     uint32_t ch_a;           // 配置：A 相通道
     uint32_t ch_b;           // 配置：B 相通道
@@ -55,7 +54,6 @@ const tGateDrvOps gate_fd6288q_ops = {
 
 // 静态实例
 static tGateHw s_gate = {
-    .ops = &gate_fd6288q_ops,
     .htim = &htim8,
     .ch_a = GATE_PWM_CH_A,
     .ch_b = GATE_PWM_CH_B,

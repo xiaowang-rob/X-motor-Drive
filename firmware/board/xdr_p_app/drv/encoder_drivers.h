@@ -37,13 +37,18 @@ bool enc_engine_read(EncEngineHandle e, const tEncXferSeg *segs, eEncoderType ty
 // 中止并复位总线（抬 CS）
 void enc_engine_abort(EncEngineHandle e, eEncoderType type);
 
-// ---- 芯片驱动（内/外各一个静态实例；type 越界返回 NULL） ----
+// ---- 芯片驱动 ops ----
 extern const tEncoderDriverOps AS5047_driver_ops;
 extern const tEncoderDriverOps MT6816_driver_ops;
 extern const tEncoderDriverOps MT6835_driver_ops;
 
-EncoderChipHandle AS5047_get_handle(eEncoderType type);
-EncoderChipHandle MT6816_get_handle(eEncoderType type);
-EncoderChipHandle MT6835_get_handle(eEncoderType type);
+EncoderChipHandle AS5047_register_handle(void);
+void AS5047_unregister_handle(EncoderChipHandle h);
+
+EncoderChipHandle MT6816_register_handle(void);
+void MT6816_unregister_handle(EncoderChipHandle h);
+
+EncoderChipHandle MT6835_register_handle(void);
+void MT6835_unregister_handle(EncoderChipHandle h);
 
 #endif // __ENCODER_DRIVERS_H

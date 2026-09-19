@@ -82,9 +82,10 @@ typedef enum
 /*编码器型号*/
 typedef enum
 {
-    MT6816, /* MT6816 */
-    MT6835, /* MT6835 */
-    AS5047, /* AS5047 */
+    ENC_NONE, /* 无 */
+    MT6816,   /* MT6816 */
+    MT6835,   /* MT6835 */
+    AS5047,   /* AS5047 */
 } eEncoderChip;
 /*观测模式*/
 typedef enum

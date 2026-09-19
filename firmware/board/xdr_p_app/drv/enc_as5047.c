@@ -19,14 +19,13 @@
 // ---------- 实例 handle ----------
 typedef struct
 {
-    const tEncoderDriverOps *ops; // 该实例的操作表
-    EncEngineHandle engine;       // SPI 引擎（内/外共用）
-    eEncoderType type;            // 配置：内/外编码器
-    uint16_t cmd_read;            // 配置：段1 tx
-    uint16_t cmd_nop;             // 配置：段2 tx
-    uint16_t resolution;          // 配置：单圈分辨率
-    uint8_t rx1[2];               // 运行时：段1 rx（弃用）
-    uint8_t rx2[2];               // 运行时：段2 rx（角度帧）
+    EncEngineHandle engine; // SPI 引擎（内/外共用）
+    eEncoderType type;      // 配置：内/外编码器
+    uint16_t cmd_read;      // 配置：段1 tx
+    uint16_t cmd_nop;       // 配置：段2 tx
+    uint16_t resolution;    // 配置：单圈分辨率
+    uint8_t rx1[2];         // 运行时：段1 rx（弃用）
+    uint8_t rx2[2];         // 运行时：段2 rx（角度帧）
     uint16_t raw;
 } tAS5047;
 
@@ -42,19 +41,23 @@ const tEncoderDriverOps AS5047_driver_ops = {
     .reset = AS5047_reset,
 };
 
-// 静态实例：[INT_ENCODER] / [EXT_ENCODER]
-static tAS5047 s_inst[2] = {
-    {.ops = &AS5047_driver_ops, .cmd_read = AS5047_CMD_READ, .cmd_nop = AS5047_CMD_NOP, .resolution = AS5047_RESOLUTION},
-    {.ops = &AS5047_driver_ops, .cmd_read = AS5047_CMD_READ, .cmd_nop = AS5047_CMD_NOP, .resolution = AS5047_RESOLUTION},
-};
-
-EncoderChipHandle AS5047_get_handle(eEncoderType type)
+// 注册实例
+EncoderChipHandle AS5047_register_handle(void)
 {
-    if (type != INT_ENCODER && type != EXT_ENCODER)
+    tAS5047 *h = (tAS5047 *)enc_chip_get_handle();
+    if (!h)
         return NULL;
-    s_inst[type].type = type;
-    s_inst[type].engine = enc_engine_get_handle();
-    return (EncoderChipHandle)&s_inst[type];
+
+    return (EncoderChipHandle)h;
+}
+// 注销实例
+void AS5047_unregister_handle(EncoderChipHandle h)
+{
+    tAS5047 *ctx = (tAS5047 *)h;
+    if (!ctx)
+        return;
+    free(ctx);
+    ctx = NULL;
 }
 
 // ---- ops 实现 ----
@@ -64,11 +67,11 @@ static bool AS5047_init(EncoderChipHandle h, eEncoderType type)
     tAS5047 *ctx = (tAS5047 *)h;
     if (!ctx)
         return false;
-
+    ctx->type = type;
+    ctx->engine = enc_engine_get_handle();
     if (!enc_spi_set_mode(ctx->engine, 0U, 1U, 16U)) // 芯片协议：Mode1/16bit
         return false;
 
-    ctx->type = type;
     ctx->raw = 0U;
     return true;
 }

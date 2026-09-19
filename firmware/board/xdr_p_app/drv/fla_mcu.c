@@ -232,9 +232,8 @@ const tFlashDriverOps mcu_flash_driver_ops = {
 // MCU Flash 实例：ops + 配置（起始地址 / 容量）
 typedef struct
 {
-    const tFlashDriverOps *ops; // 该实例的操作表
-    uint32_t start_addr;        // 配置：内部 Flash 起始地址
-    uint32_t capacity;          // 配置：容量（字节）
+    uint32_t start_addr; // 配置：内部 Flash 起始地址
+    uint32_t capacity;   // 配置：容量（字节）
 } tMcuFlash;
 
 // ---------- IAP：分区表 + 平台跳转 ----------
@@ -249,7 +248,12 @@ static void iap_parts_init(void)
     s_iap_parts[IAP_APP].base = APP_START_ADDR;
     s_iap_parts[IAP_APP].size = APP_SIZE;
 }
-
+// MCU App 初始化：复位向量表偏移至 BL 部分，中断必须恢复（重启后）
+void mcu_app_init(void)
+{
+    SCB->VTOR = FLASH_START_ADDR | BL_SIZE;
+    __enable_irq(); // 重启后中断必须恢复
+}
 // 平台跳转：BL → 软复位；APP → 切向量表后跳转
 static bool mcu_iap_jump(eIAPtype type)
 {
@@ -276,7 +280,6 @@ static bool mcu_iap_jump(eIAPtype type)
 
 // MCU Flash 实例（内部介质无外设句柄，配置为起始地址与容量）
 static tMcuFlash s_mcu = {
-    .ops = &mcu_flash_driver_ops,
     .start_addr = FLASH_START_ADDR,
     .capacity = FLASH_CAPACITY,
 };

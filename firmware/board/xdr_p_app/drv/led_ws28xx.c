@@ -24,13 +24,12 @@
 // ---------- 实例 handle ----------
 typedef struct
 {
-    const tRgbDriverOps *ops; // 该实例的操作表
-    TIM_HandleTypeDef *htim;  // 外设：PWM 定时器
-    uint32_t channel;         // 配置：PWM 通道
-    uint8_t num_pixels;       // 配置：灯珠数量
-    uint32_t buf_len;         // 配置：CCR 序列长度（含帧尾复位位）
-    uint16_t code_1;          // 配置：逻辑 1 占空比
-    uint16_t code_0;          // 配置：逻辑 0 占空比
+    TIM_HandleTypeDef *htim; // 外设：PWM 定时器
+    uint32_t channel;        // 配置：PWM 通道
+    uint8_t num_pixels;      // 配置：灯珠数量
+    uint32_t buf_len;        // 配置：CCR 序列长度（含帧尾复位位）
+    uint16_t code_1;         // 配置：逻辑 1 占空比
+    uint16_t code_0;         // 配置：逻辑 0 占空比
 
     tRGBColor color;               // 运行时：颜色
     uint8_t brightness;            // 运行时：亮度
@@ -53,7 +52,6 @@ const tRgbDriverOps rgb_ws28xx_ops = {
 
 // 静态实例
 static tWs28xx s_rgb = {
-    .ops = &rgb_ws28xx_ops,
     .htim = &htim4,
     .channel = RGB_PWM_CHANNEL,
     .num_pixels = RGB_PIXEL_NUM,

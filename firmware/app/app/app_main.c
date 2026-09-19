@@ -1,18 +1,4 @@
-#include "app_main.h"
-
-#include "slot_con.h"
-#include "pll.h"
-#include "foc.h"
 #include "device_cfg.h"
-#include "data_manager.h"
-#include "svpwm.h"
-
-tTraj traj;
-tPLL enc_pll;
-tFOC foc;
-tSvpwm svpwm;
-
-tXdr xdr;
 
 void bsp_init_front(void)
 {
@@ -27,14 +13,20 @@ void bsp_init_back(void)
     // flash和参数一起-通讯-保护-日志-adc -foc初始化
 
     // 1、初始化驱动层 （存储-iap-状态-传感-gate-通讯）
-
+    dev_base_init(); // 初始化板载驱动层
     // 2、初始化参数服务 读参数
 
-    // 3、初始化状态服务
+    // 3、初始化日志服务 读日志
 
-    // 4、初始化保护服务
+    // TODO:重写参数从这里开始重新初始化
 
-    // 5、初始化日志服务 读日志
+    // 4、初始化状态服务
+
+    // 5、初始化保护服务
+
+    // 6、配置编码器设备驱动
+
+    // 7、启动通信
 
     // 6、初始化时间槽服务
 

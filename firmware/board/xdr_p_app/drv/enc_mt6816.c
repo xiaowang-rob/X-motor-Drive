@@ -19,14 +19,13 @@
 // ---------- 实例 handle ----------
 typedef struct
 {
-    const tEncoderDriverOps *ops; // 该实例的操作表
-    EncEngineHandle engine;       // SPI 引擎（内/外共用）
-    eEncoderType type;            // 配置：内/外编码器
-    uint16_t cmd_high;            // 配置：段1 tx
-    uint16_t cmd_low;             // 配置：段2 tx
-    uint16_t resolution;          // 配置：单圈分辨率
-    uint8_t rx1[2];               // 运行时：段1 rx
-    uint8_t rx2[2];               // 运行时：段2 rx
+    EncEngineHandle engine; // SPI 引擎（内/外共用）
+    eEncoderType type;      // 配置：内/外编码器
+    uint16_t cmd_high;      // 配置：段1 tx
+    uint16_t cmd_low;       // 配置：段2 tx
+    uint16_t resolution;    // 配置：单圈分辨率
+    uint8_t rx1[2];         // 运行时：段1 rx
+    uint8_t rx2[2];         // 运行时：段2 rx
     uint16_t raw;
 } tMT6816;
 
@@ -51,19 +50,22 @@ const tEncoderDriverOps MT6816_driver_ops = {
     .reset = MT6816_reset,
 };
 
-// 静态实例：[INT_ENCODER] / [EXT_ENCODER]
-static tMT6816 s_inst[2] = {
-    {.ops = &MT6816_driver_ops, .cmd_high = MT6816_CMD_HIGH, .cmd_low = MT6816_CMD_LOW, .resolution = MT6816_RESOLUTION},
-    {.ops = &MT6816_driver_ops, .cmd_high = MT6816_CMD_HIGH, .cmd_low = MT6816_CMD_LOW, .resolution = MT6816_RESOLUTION},
-};
-
-EncoderChipHandle MT6816_get_handle(eEncoderType type)
+// 注册实例
+EncoderChipHandle MT6816_register_handle(void)
 {
-    if (type != INT_ENCODER && type != EXT_ENCODER)
+    tMT6816 *h = calloc(1, sizeof(tMT6816));
+    if (!h)
         return NULL;
-    s_inst[type].type = type;
-    s_inst[type].engine = enc_engine_get_handle();
-    return (EncoderChipHandle)&s_inst[type];
+    return (EncoderChipHandle)h;
+}
+// 注销实例
+void MT6816_unregister_handle(EncoderChipHandle h)
+{
+    tMT6816 *ctx = (tMT6816 *)h;
+    if (!ctx)
+        return;
+    free(ctx);
+    ctx = NULL;
 }
 
 // ---- ops 实现 ----
@@ -73,11 +75,11 @@ static bool MT6816_init(EncoderChipHandle h, eEncoderType type)
     tMT6816 *ctx = (tMT6816 *)h;
     if (!ctx)
         return false;
-
+    ctx->type = type;
+    ctx->engine = enc_engine_get_handle();
     if (!enc_spi_set_mode(ctx->engine, 1U, 1U, 16U)) // 芯片协议：Mode3/16bit
         return false;
 
-    ctx->type = type;
     ctx->raw = 0U;
     return true;
 }

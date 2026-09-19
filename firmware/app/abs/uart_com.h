@@ -54,19 +54,22 @@ typedef struct
     uint8_t pkt_tail; // 帧尾字节
 
     // ---- 帧解析状态 ----
-    bool in_frame;        // 已收到帧头，正在收集
-    uint16_t rx_index;    // 收集进度
-    uint8_t *frame_buf;   // 帧解析缓冲（调用方提供）
-    uint8_t *tx_buf;      // 发送组帧缓冲（调用方提供，DMA 发送期间须持久）
+    bool in_frame;      // 已收到帧头，正在收集
+    uint16_t rx_index;  // 收集进度
+    uint8_t *frame_buf; // 帧解析缓冲（调用方提供）
+    uint8_t *tx_buf;    // 发送组帧缓冲（调用方提供，DMA 发送期间须持久）
 
     eDeviceStatus tstate; // 发送状态
     eDeviceStatus rstate; // 接收状态
     tStaticQueue rx_queue;
 } tUartDriver;
 
-// 绑定驱动实例、挂接调用方缓冲、注册收帧回调
+// 绑定驱动实例、挂接调用方缓冲
 bool uart_init(tUartDriver *uart, const tUartDriverOps *ops, UartHandle handle,
-               const tUartBuffer *buf, uint8_t head, uint8_t tail);
+               const tUartBuffer *buf);
+
+// uart 启动接收 注册回调
+bool uart_start(tUartDriver *uart, uint8_t head, uint8_t tail);
 
 // 发送一帧（自动补帧头/长度/CRC/帧尾）
 bool uart_send(tUartDriver *uart, const tUart_Frame *frame);
