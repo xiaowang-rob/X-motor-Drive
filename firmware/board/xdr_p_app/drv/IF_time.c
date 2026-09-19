@@ -1,38 +1,30 @@
 // ============================================================
-// IF_time.c — 时间基准服务（板级）
+// IF_time.c — 时间基准服务（板级，应用侧契约的板级实现）
 //
-// DWT 周期计数器提供微秒级时间戳（便于性能测量）；
-// 毫秒时间戳与延时走 HAL SysTick。
+// 应用侧只认 IF_time.h 的 time_* 接口；具体时基统一由 bsp_time
+// 提供（DWT 微秒 / SysTick 毫秒），本文件只做转发，不再各自实现
+// 一套 DWT 逻辑 —— 避免"时间从哪来"出现第二份定义。
 // ============================================================
 #include "IF_time.h"
 
-#include "main.h"
+#include "bsp_time.h"
 
-// 初始化 DWT（Data Watchpoint and Trace）周期计数器：用于微秒级时间戳
 void time_init(void)
 {
-    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-    DWT->CYCCNT = 0U;
-    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    bsp_time_init();
 }
 
 uint32_t time_get_ms(void)
 {
-    return HAL_GetTick();
+    return bsp_time_ms();
 }
 
 uint32_t time_get_us(void)
 {
-    // 预计算每微秒周期数，避免热路径上每次做除法
-    static uint32_t s_cycles_per_us = 0U;
-    if (s_cycles_per_us == 0U)
-        s_cycles_per_us = SystemCoreClock / 1000000U;
-
-    uint32_t cyccnt = DWT->CYCCNT; // 先快照再除，避免多读不一致
-    return cyccnt / s_cycles_per_us;
+    return bsp_time_us();
 }
 
 void time_delay_ms(uint32_t ms)
 {
-    HAL_Delay(ms);
+    bsp_time_delay_ms(ms);
 }

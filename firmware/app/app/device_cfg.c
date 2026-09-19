@@ -2,21 +2,26 @@
 // device_cfg.c — 组装层实现：装配全板设备并对外提供 g_dev
 //
 // 本文件是唯一 include 板级驱动出口（*_drivers.h）的地方。
-// 装配顺序：功率级 → 采样（要绑采样点）→ 编码器 → 存储 → 灯 → 通讯。
-// 所有驱动实例都是静态实例（xxx_get_handle()），本层只做"绑定 + 注入缓冲"。
+// 装配顺序：存储 → 功率级 → 采样（要绑采样点）→ 灯 → 通讯。
+//
+// 编译期绑定：栅极/采样/编码器/灯 已改为"板级钩子 + 静态实例"，
+// 本层不再传 ops/handle，只做装配与参数注入（见各 *_board.h）。
 // ============================================================
 
 #include "device_cfg.h"
 
 #include "protocol.h"
-// ---- 板级驱动出口 ----
+// ---- 板级驱动出口（尚未迁移到钩子式的驱动） ----
 #include "bus_drivers.h"
-#include "encoder_drivers.h"
 #include "flash_drivers.h"
-#include "gate_drivers.h"
-#include "led_drivers.h"
-#include "sense_drivers.h"
 #include "uart_drivers.h"
+
+// 协议层 eEncoderChip 与 abs 层 eEncoderChipId 枚举值必须一一对齐
+// （两侧先转 int：两个匿名 enum 直接比较会触发 -Wenum-compare）
+_Static_assert((int)ENC_NONE == (int)ENC_CHIP_NONE, "eEncoderChip vs eEncoderChipId: NONE");
+_Static_assert((int)MT6816 == (int)ENC_CHIP_MT6816, "eEncoderChip vs eEncoderChipId: MT6816");
+_Static_assert((int)MT6835 == (int)ENC_CHIP_MT6835, "eEncoderChip vs eEncoderChipId: MT6835");
+_Static_assert((int)AS5047 == (int)ENC_CHIP_AS5047, "eEncoderChip vs eEncoderChipId: AS5047");
 
 // ---------- 通讯缓冲（调用方提供，多路各自独立） ----------
 #define CAN_MP_BLOCKS 16U
@@ -56,95 +61,92 @@ static const tUartBuffer s_usb_buf = {
 // 全局设备对象
 tDevBoard g_dev;
 
-// app固件先初始化这个 中断向量表偏移 并开启中断 不然程序无法运行
+// app 固件先初始化这个（中断向量表偏移）并开启中断，不然程序无法运行
 void app_init(void)
 {
     mcu_app_init();
 }
+
 // 板载设备初始化
 bool dev_base_init(void)
 {
-    // 注册mcu flash驱动
+    // 注册 mcu flash 驱动
     if (!flash_init(&g_dev.flash, &mcu_flash_driver_ops,
                     mcu_flash_get_handle()))
         return false;
-    // 注册mcu app iap驱动
+    // 注册 mcu app iap 驱动
     tIAPConfig iap_cfg = mcu_iap_config(IAP_APP);
     if (!iap_init(&g_dev.iap, &iap_cfg))
         return false;
 
-    // 注册栅极驱动
-    if (!gate_drv_init(&g_dev.gate, &gate_fd6288q_ops, gate_get_handle()))
+    // 注册栅极驱动（板级钩子 + const 实例，见 gate_fd6288q.c）
+    if (!gate_drv_init(&g_dev.gate))
         return false;
 
-    // 注册adc驱动
-    if (!sense_init(&g_dev.sense, &mcu_adc_ops, sense_get_handle()))
+    // 注册采样前端（板级钩子，见 sen_mcu.c）
+    if (!sense_init(&g_dev.sense))
         return false;
 
     // 电流采样点：跟随功率级 PWM 周期（提前一个计数）
     sense_set_sample_point(&g_dev.sense, g_dev.gate.pwm_period - 1U);
 
-    // 注册led驱动
-    bool led0 = led_init(&g_dev.led_0, &led_drv_ops, led_get_handle(0U));
-    bool led1 = led_init(&g_dev.led_1, &led_drv_ops, led_get_handle(1U));
-    bool rgb = rgb_init(&g_dev.rgb, &rgb_ws28xx_ops, rgb_get_handle());
+    // 注册 LED（板级钩子，见 led_gpio.c / led_ws28xx.c）
+    bool led0 = led_init(&g_dev.led_0, 0U);
+    bool led1 = led_init(&g_dev.led_1, 1U);
+    bool rgb = rgb_init(&g_dev.rgb);
 
     if (!led0 || !led1 || !rgb)
         return false;
 
-    // 注册can驱动
-    if (bus_init(&g_dev.can, &can_drv_ops, can_get_handle(), &s_can_buf))
+    // 注册 can 驱动
+    if (!bus_init(&g_dev.can, &can_drv_ops, can_get_handle(), &s_can_buf))
         return false;
 
-    // 注册uart驱动
+    // 注册 uart 驱动
     if (!uart_init(&g_dev.uart, &uart_mcu_ops, uart_mcu_get_handle(),
                    &s_uart1_buf))
         return false;
-    // 注册usb驱动
+    // 注册 usb 驱动
     if (!uart_init(&g_dev.usb, &uart_usb_ops, uart_usb_get_handle(),
                    &s_usb_buf))
         return false;
+
+    return true;
 }
 
-// 板载编码器初始化 可配置是否启用
-bool dev_int_enc_init(eEncoderChip chip)
+// 协议层型号 → abs 芯片标识
+static eEncoderChipId enc_chip_id(eEncoderChip chip)
 {
-    // 板载编码器驱动 mt6816
-    EncoderChipHandle mt6816_int = MT6816_register_handle();
-
-    if (!encoder_init(&g_dev.enc_int, &MT6816_driver_ops, mt6816_int, INT_ENCODER))
-        return false;
-}
-// 外接设备驱动（可配置）
-bool dev_ext_enc_init(eEncoderChip chip)
-{
-
-    bool enc_ok = false;
     switch (chip)
     {
-    case ENC_NONE:
-        enc_ok = true;
-        break;
     case MT6816:
-        EncoderChipHandle mt6816_ext = MT6816_register_handle();
-        enc_ok = encoder_init(&g_dev.enc_ext, &MT6816_driver_ops, mt6816_ext, EXT_ENCODER);
-        break;
+        return ENC_CHIP_MT6816;
     case MT6835:
-        EncoderChipHandle mt6835_ext = MT6835_register_handle();
-        enc_ok = encoder_init(&g_dev.enc_ext, &MT6835_driver_ops, mt6835_ext, EXT_ENCODER);
-        break;
+        return ENC_CHIP_MT6835;
     case AS5047:
-        EncoderChipHandle AS5047_ext = AS5047_register_handle();
-        enc_ok = encoder_init(&g_dev.enc_ext, &AS5047_driver_ops, AS5047_ext, EXT_ENCODER);
-        break;
+        return ENC_CHIP_AS5047;
+    case ENC_NONE:
     default:
-        enc_ok = false;
-        break;
+        return ENC_CHIP_NONE;
     }
-    return enc_ok;
+}
+
+// 板载编码器初始化（板载型号固定，见板级 board_encoder.c）
+bool dev_int_enc_init(void)
+{
+    return encoder_init(&g_dev.enc_int, INT_ENCODER, ENC_CHIP_MT6816);
+}
+
+// 外接编码器初始化（型号来自参数；未装配不算失败）
+bool dev_ext_enc_init(eEncoderChip chip)
+{
+    eEncoderChipId id = enc_chip_id(chip);
+    if (id == ENC_CHIP_NONE)
+        return true;
+    return encoder_init(&g_dev.enc_ext, EXT_ENCODER, id);
 }
 
 void device_cfg_register_foc_isr(void (*sample_cb)(void), void (*ctrl_cb)(void))
 {
-    gate_register_isrs(sample_cb, ctrl_cb);
+    gate_drv_register_isrs(sample_cb, ctrl_cb);
 }

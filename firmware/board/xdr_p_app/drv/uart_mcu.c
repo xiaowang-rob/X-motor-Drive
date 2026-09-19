@@ -7,9 +7,12 @@
 //   - 收字节回调 + ctx（回调把实例送回 abs 层）
 // 接收：HAL_UARTEx_ReceiveToIdle_DMA（空闲/完成事件判定一帧结束）
 // 发送：DMA（缓冲由 abs 层实例持有，见 uart_com.c 的 tx_buf）
-// HAL_UARTEx_RxEventCallback / HAL_UART_ErrorCallback 由本文件唯一持有。
+// 中断：HAL_UARTEx_RxEventCallback / HAL_UART_ErrorCallback 本体在 bsp_irq，
+//       本驱动只注册处理函数。
 // ============================================================
 #include "uart_drivers.h"
+
+#include "bsp_irq.h"
 
 #include "usart.h"
 
@@ -49,28 +52,26 @@ UartHandle uart_mcu_get_handle(void)
     return (UartHandle)&s_uart1;
 }
 
-// ---- 中断（只在本文件定义） ----
-void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+// ---- 中断 ----
+// HAL 回调本体在 bsp_irq；本驱动只注册处理函数（见 uart_mcu_init）。
+// bsp_irq 已过滤半传输(HT)，此处只会收到 IDLE / TC。
+static void uart_mcu_on_rx_event(void *ctx, uint16_t rx_len, bool is_idle)
 {
-    if (huart != s_uart1.huart)
-        return;
+    (void)is_idle; // IDLE 与 TC 都表示"一块数据到齐"，处理一致
+    tUartMcu *inst = (tUartMcu *)ctx;
 
-    HAL_UART_RxEventTypeTypeDef ev = HAL_UARTEx_GetRxEventType(huart);
+    if (inst->rx_cb)
+        inst->rx_cb(inst->rx_ctx, inst->rx_buffer, rx_len);
 
-    // 空闲(IDLE)：不定长帧结束；完成(TC)：缓冲满。
-    // 半传输(HT) 不上报 —— 否则会把半个缓冲当成一帧。
-    if ((ev == HAL_UART_RXEVENT_IDLE || ev == HAL_UART_RXEVENT_TC) && s_uart1.rx_cb)
-        s_uart1.rx_cb(s_uart1.rx_ctx, s_uart1.rx_buffer, Size);
-
-    HAL_UARTEx_ReceiveToIdle_DMA(huart, s_uart1.rx_buffer, s_uart1.rx_buffer_size);
+    // 重新挂起接收，继续收下一块
+    HAL_UARTEx_ReceiveToIdle_DMA(inst->huart, inst->rx_buffer, inst->rx_buffer_size);
 }
 
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+static void uart_mcu_on_error(void *ctx)
 {
-    if (huart != s_uart1.huart)
-        return;
+    tUartMcu *inst = (tUartMcu *)ctx;
     // 出错后重新挂起接收，保证链路可用（错误后 RxState 未必是 READY）
-    HAL_UARTEx_ReceiveToIdle_DMA(huart, s_uart1.rx_buffer, s_uart1.rx_buffer_size);
+    HAL_UARTEx_ReceiveToIdle_DMA(inst->huart, inst->rx_buffer, inst->rx_buffer_size);
 }
 
 // ---- ops 实现 ----
@@ -80,6 +81,15 @@ static bool uart_mcu_init(UartHandle h)
     tUartMcu *inst = (tUartMcu *)h;
     if (!inst || !inst->huart || inst->rx_buffer_size == 0U)
         return false;
+
+    static const tUartIrq s_uart_irq = {
+        .on_rx_event = uart_mcu_on_rx_event,
+        .on_error = uart_mcu_on_error,
+        .ctx = &s_uart1,
+    };
+    if (!bsp_irq_bind_uart(inst->huart->Instance, &s_uart_irq))
+        return false;
+
     return HAL_UARTEx_ReceiveToIdle_DMA(inst->huart, inst->rx_buffer,
                                         inst->rx_buffer_size) == HAL_OK;
 }

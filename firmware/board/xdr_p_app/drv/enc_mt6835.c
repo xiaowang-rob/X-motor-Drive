@@ -5,114 +5,82 @@
 // 读角序列：单段 5 字节 {0xA0,0x03,0,0,0} 边发边收
 //   21bit 角度 = rx[2]<<13 | rx[3]<<5 | rx[4]>>3，输出取高 14 位
 //   status（rx[4] bit0..2）bit1 = 磁场太弱 → 数据不可信
-// 实例形态：按内/外编码器固定的静态实例（无堆分配、无 create/destroy），
-//           每实例含 ops / 引擎 / 配置 / 运行时缓冲。
+//
+// 实例形态：内/外各一份文件内静态实例（无堆分配、无 create/destroy）。
 // ============================================================
-#include "encoder_drivers.h"
+#include "enc_mt6835.h"
 
-// ---------- 本板配置 ----------
-#define MT6835_RESOLUTION 16384U
+#include "enc_spi.h"
+
+// ---------- 芯片协议常量 ----------
 #define MT6835_FRAME_LEN 5U
-#define MT6835_MAG_WEAK_BIT 0x02U
+#define MT6835_MAG_WEAK_BIT 0x02U // status.bit1：磁场太弱
 
 static const uint8_t MT6835_CMD[MT6835_FRAME_LEN] = {0xA0U, 0x03U, 0x00U, 0x00U, 0x00U};
 
-// ---------- 实例 handle ----------
+// ---------- 实例 ----------
 typedef struct
 {
-    EncEngineHandle engine;       // SPI 引擎（内/外共用）
-    eEncoderType type;            // 编码器类型：内/外
-    uint16_t resolution;          // 配置：单圈分辨率
-    uint8_t rx[MT6835_FRAME_LEN]; // 运行时：接收缓冲
-    uint16_t raw;
-} tMT6835;
+    bool inited;                  // open 后置位
+    uint8_t rx[MT6835_FRAME_LEN]; // 接收缓冲
+} tMT6835Dev;
 
-static bool MT6835_init(EncoderChipHandle h, eEncoderType type);
-static bool MT6835_read_angle(EncoderChipHandle h, uint16_t *raw, uint32_t *ts_ms);
-static bool MT6835_get_resolution(EncoderChipHandle h, uint16_t *res);
-static void MT6835_reset(EncoderChipHandle h);
+static tMT6835Dev s_dev[2]; // [EXT_ENCODER] / [INT_ENCODER]
 
-const tEncoderDriverOps MT6835_driver_ops = {
-    .init = MT6835_init,
-    .read_angle = MT6835_read_angle,
-    .get_resolution = MT6835_get_resolution,
-    .reset = MT6835_reset,
-};
-
-// 编码器芯片可配置 动态分配
-EncoderChipHandle MT6835_register_handle(void)
+static bool mt6835_type_ok(eEncoderType type)
 {
-    tMT6835 *h = (tMT6835 *)calloc(1, sizeof(tMT6835));
-    if (!h)
-        return NULL;
-    return (EncoderChipHandle)h;
-}
-// 注销 handle
-void MT6835_unregister_handle(EncoderChipHandle h)
-{
-    tMT6835 *ctx = (tMT6835 *)h;
-    if (!ctx)
-        return;
-    free(ctx);
-    ctx = NULL;
+    return (unsigned)type <= (unsigned)INT_ENCODER;
 }
 
-// ---- ops 实现 ----
+// ---- 芯片接口 ----
 
-static bool MT6835_init(EncoderChipHandle h, eEncoderType type)
+bool mt6835_open(eEncoderType type, uint16_t *resolution)
 {
-    tMT6835 *ctx = (tMT6835 *)h;
-    if (!ctx)
-        return false;
-    ctx->type = type;
-    ctx->engine = enc_engine_get_handle();
-    if (!enc_spi_set_mode(ctx->engine, 1U, 1U, 8U)) // 芯片协议：Mode3/8bit
+    if (!resolution || !mt6835_type_ok(type))
         return false;
 
-    ctx->raw = 0U;
+    if (!enc_spi_ensure_mode(1U, 1U, 8U)) // 芯片协议：Mode3/8bit
+        return false;
+
+    s_dev[type].inited = true;
+    *resolution = MT6835_RESOLUTION;
     return true;
 }
 
-static bool MT6835_read_angle(EncoderChipHandle h, uint16_t *raw, uint32_t *ts_ms)
+bool mt6835_read(eEncoderType type, uint16_t *raw, uint32_t *ts_ms)
 {
-    tMT6835 *ctx = (tMT6835 *)h;
-    if (!ctx || !raw || !ts_ms)
+    if (!raw || !ts_ms || !mt6835_type_ok(type))
+        return false;
+
+    tMT6835Dev *d = &s_dev[type];
+    if (!d->inited)
+        return false;
+
+    if (!enc_spi_ensure_mode(1U, 1U, 8U))
         return false;
 
     tEncXferSeg seg;
     seg.tx = MT6835_CMD;
-    seg.rx = ctx->rx;
+    seg.rx = d->rx;
     seg.len = MT6835_FRAME_LEN;
 
-    if (!enc_engine_read(ctx->engine, &seg, ctx->type, 1U, ts_ms))
+    if (!enc_spi_transfer(&seg, type, 1U, ts_ms))
         return false;
 
-    if (ctx->rx[4] & MT6835_MAG_WEAK_BIT) // 磁场太弱 → 数据不可信
+    if (d->rx[4] & MT6835_MAG_WEAK_BIT) // 磁场太弱 → 数据不可信
         return false;
 
-    uint32_t angle_21 = ((uint32_t)ctx->rx[2] << 13) |
-                        ((uint32_t)ctx->rx[3] << 5) |
-                        ((uint32_t)ctx->rx[4] >> 3);
+    uint32_t angle_21 = ((uint32_t)d->rx[2] << 13) |
+                        ((uint32_t)d->rx[3] << 5) |
+                        ((uint32_t)d->rx[4] >> 3);
 
-    ctx->raw = (uint16_t)(angle_21 >> 7);
-    *raw = ctx->raw;
+    *raw = (uint16_t)(angle_21 >> 7); // 取高 14 位
     return true;
 }
 
-static bool MT6835_get_resolution(EncoderChipHandle h, uint16_t *res)
+void mt6835_abort(eEncoderType type)
 {
-    tMT6835 *ctx = (tMT6835 *)h;
-    if (!ctx || !res)
-        return false;
-    *res = ctx->resolution;
-    return true;
-}
-
-static void MT6835_reset(EncoderChipHandle h)
-{
-    tMT6835 *ctx = (tMT6835 *)h;
-    if (!ctx)
+    if (!mt6835_type_ok(type))
         return;
-    enc_engine_abort(ctx->engine, ctx->type);
-    ctx->raw = 0U;
+    enc_spi_abort(type);
 }

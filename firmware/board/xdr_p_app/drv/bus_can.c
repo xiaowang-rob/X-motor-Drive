@@ -6,9 +6,11 @@
 //   - 外设句柄（hcan）
 //   - 配置（过滤组 / 标准帧 ID）
 //   - 收帧回调 + ctx（回调把实例送回 abs 层）
-// 中断 HAL_CAN_RxFifo0MsgPendingCallback 由本文件唯一持有。
+// 中断：HAL_CAN_RxFifo0MsgPendingCallback 本体在 bsp_irq，本驱动只注册处理函数。
 // ============================================================
 #include "bus_drivers.h"
+
+#include "bsp_irq.h"
 
 #include "can.h"
 
@@ -50,18 +52,18 @@ BusHandle can_get_handle(void)
     return (BusHandle)&s_can2;
 }
 
-// ---- 收帧中断（只在本文件定义） ----
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+// ---- 收帧中断 ----
+// HAL 回调本体在 bsp_irq；本驱动只注册处理函数（见 can_init）。
+static void can_on_rx_pending(void *ctx)
 {
-    if (hcan != s_can2.hcan)
-        return;
+    tCanBus *inst = (tCanBus *)ctx;
 
     uint8_t data[8];
     CAN_RxHeaderTypeDef hdr;
-    if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &hdr, data) == HAL_OK)
+    if (HAL_CAN_GetRxMessage(inst->hcan, CAN_RX_FIFO0, &hdr, data) == HAL_OK)
     {
-        if (s_can2.rx_cb)
-            s_can2.rx_cb(s_can2.rx_ctx, hdr.StdId, data, (uint8_t)hdr.DLC);
+        if (inst->rx_cb)
+            inst->rx_cb(inst->rx_ctx, hdr.StdId, data, (uint8_t)hdr.DLC);
     }
 }
 
@@ -93,6 +95,19 @@ static bool can_init(BusHandle h, uint32_t std_id)
     tCanBus *inst = (tCanBus *)h;
     if (!inst || !inst->hcan)
         return false;
+
+    // 注册收帧处理函数（绑一次；bus_start 可能被重入调用）
+    static bool s_irq_bound = false;
+    if (!s_irq_bound)
+    {
+        static const tCanIrq s_can_irq = {
+            .on_rx_pending = can_on_rx_pending,
+            .ctx = &s_can2,
+        };
+        s_irq_bound = bsp_irq_bind_can(inst->hcan->Instance, &s_can_irq);
+        if (!s_irq_bound)
+            return false;
+    }
 
     inst->std_id = std_id;
     if (!can_config_filter(inst, std_id))

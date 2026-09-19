@@ -1,46 +1,14 @@
-#ifndef __ABS_SENSE_H
-#define __ABS_SENSE_H
+#ifndef XDR_APP_ABS_SENSE_H
+#define XDR_APP_ABS_SENSE_H
 
 #include "device.h"
 
 // ============================================================
-// sense.h — 采样契约与业务对象（abs）
+// sense.h — 电流/电压/温度采样业务对象（abs）
 //
-// 本头同时定义 abs↔drv 的采样接口契约 tSampleMcuOps：
-// 描述"由定时器触发、DMA 落缓冲的 ADC 采样前端"最小能力，
-// 实现 = 板级采样驱动（直连 HAL）。业务对象吃原始码输出物理量。
+// 编译期绑定：原始码经板级钩子（sense_board.h）取回，无 ops 表。
 //
-// 约定：ops 表内不存 ctx / 外设；每个函数首参为该实例的 SampleHandle。
-// ============================================================
-
-typedef void *SampleHandle; // 采样前端实例句柄（实体由驱动定义）
-
-// ---- abs↔drv 采样接口契约 ----
-typedef struct
-{
-    // 初始化采样前端（启动 DMA 与首轮 Vbus/温度转换）；返回前资源应可用
-    bool (*init)(SampleHandle h);
-
-    // 设置电流采样点在 PWM 周期内的位置（定时器比较值，计数单位）
-    void (*set_sample_cmp)(SampleHandle h, uint32_t tic);
-
-    // 取最新一帧三相电流原始码（12bit，0~4095）
-    bool (*get_cur_raw)(SampleHandle h, uint16_t raw[3]);
-
-    // 触发一轮 Vbus/温度转换（软件触发；结果经 get_vt_raw 取回）
-    void (*vt_trigger)(SampleHandle h);
-
-    // 取最新 Vbus/温度原始码；返回 false 表示自上次读取后无新帧
-    bool (*get_vt_raw)(SampleHandle h, uint16_t *vbus_raw, uint16_t *temp_raw);
-
-    // 线性换算系数：码 → 物理量（cur_scale=A/码12bit、vbus_scale=V/码8bit）
-    void (*get_gain)(SampleHandle h, float *cur_scale, float *vbus_scale);
-} tSampleMcuOps;
-
-// ============================================================
-// sense.h — 电流/电压/温度采样业务对象（abs，纯逻辑）
-//
-// 吃 tSampleMcuOps（原始码）→ 输出物理量：
+// 吃原始码 → 输出物理量：
 //   - 三相电流：原始码 - 零点（EMA 跟踪）× 换算系数
 //   - Vbus：原始码 × 换算系数
 //   - 温度：NTC 采样码经 Vbus 归一后查表
@@ -54,10 +22,7 @@ typedef struct
 
 typedef struct
 {
-    const tSampleMcuOps *ops; // 注入：板采样驱动 ops
-    SampleHandle handle;      // 采样前端实例句柄
-
-    // 换算系数（init 时由 ops->get_gain 取）
+    // 换算系数（init 时由板级给出，之后不变）
     float cur_scale;  // A/码（12bit 电流）
     float vbus_scale; // V/码（8bit Vbus）
 
@@ -73,9 +38,10 @@ typedef struct
     uint32_t last_vt_ms; // 上次 Vbus/温度刷新时刻
 } tSense;
 
-bool sense_init(tSense *s, const tSampleMcuOps *ops, SampleHandle handle);
+// 绑定并初始化（内部调用板级钩子 sense_board_open，含启动采样与取回换算系数）
+bool sense_init(tSense *s);
 
-// 设置电流采样点在 PWM 周期内的位置（转发给采样前端）
+// 设置电流采样点在 PWM 周期内的位置（转发给板级）
 void sense_set_sample_point(tSense *s, uint32_t tic);
 
 // PWM 周期内调用一次：
@@ -90,4 +56,4 @@ float sense_get_vbus(const tSense *s);
 float sense_get_temperature(const tSense *s);
 bool sense_is_zero_ready(const tSense *s);
 
-#endif // __ABS_SENSE_H
+#endif // XDR_APP_ABS_SENSE_H

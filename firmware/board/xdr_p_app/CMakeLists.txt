@@ -89,14 +89,18 @@ target_link_libraries(board_hw PUBLIC stm32_hal stm32_core stm32_usb)
 # 板级启动文件：交给顶层可执行目标（放进静态库会因归档未被引用而丢失向量表）
 set(BOARD_STARTUP ${CMAKE_CURRENT_SOURCE_DIR}/startup_stm32f405xx.s PARENT_SCOPE)
 
-# ── 本板芯片驱动层（drv/） ──
+# ── 本板芯片驱动层（drv/）+ 板级支撑层（bsp/） ──
+# bsp：时间/临界区/集中中断分发等"驱动之下的地基"，唯一接触 HAL 回调符号。
+# drv：芯片驱动，只用 bsp 与 HAL 外设类型，不定义 HAL 回调。
 file(GLOB DRV_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/drv/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/*.c
 )
 add_library(board_drv STATIC ${DRV_SOURCES})
 target_include_directories(board_drv PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/drv
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Inc
     ${APP_INCLUDE_DIRS}                  # 驱动 include app/abs 的语义化契约头
 )

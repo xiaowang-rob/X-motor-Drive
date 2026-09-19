@@ -1,34 +1,32 @@
 // ============================================================
-// encoder.c — 编码器业务对象
+// encoder.c — 编码器业务对象（abs，纯逻辑）
 //
-// 输入：tEncoderDriverOps（同步 read_angle）+ 芯片句柄
-// 输出：多圈位置 pos、绝对角 angle_abs、M-T 速度 vel、PLL 平滑角度/速度、
-//       数据有效性 valid_counter（连续读数失败的滑动指示）
+// 输入：板级钩子 encoder_board_read（同步读原始角 + 时间戳）
+// 输出：angle_abs、数据有效性 valid_counter、设备状态 dstate
+//
+// 无 ops 表、无 void* 句柄：直接调用板级钩子，链接期解析。
 // ============================================================
 
 #include "encoder.h"
 
+#include "encoder_board.h"
 #include "math_fast.h"
 
-bool encoder_init(tEncoder *enc, const tEncoderDriverOps *ops,
-                  EncoderChipHandle handle, eEncoderType type)
+bool encoder_init(tEncoder *enc, eEncoderType type, eEncoderChipId chip)
 {
-    if (!enc || !ops || !handle)
+    if (!enc)
         return false;
 
     memset(enc, 0, sizeof(tEncoder));
-    enc->drv_ops = ops;
-    enc->drv_handle = handle;
     enc->type = type;
     enc->dstate = DEV_OFFLINE;
 
-    if (!ops->init(handle, type))
+    uint16_t resolution = 0U;
+    if (!encoder_board_open(type, chip, &resolution) || resolution == 0U)
         return false;
 
-    if (!ops->get_resolution(handle, &enc->resolution) || enc->resolution == 0U)
-        return false;
-    enc->rad_per_lsb = MATH_2PI / (float)enc->resolution;
-
+    enc->resolution = resolution;
+    enc->rad_per_lsb = MATH_2PI / (float)resolution;
     enc->valid_counter = 0U;
     enc->dstate = DEV_ONLINE;
     return true;
@@ -36,15 +34,17 @@ bool encoder_init(tEncoder *enc, const tEncoderDriverOps *ops,
 
 void encoder_task(tEncoder *enc)
 {
-    if (!enc || !enc->drv_ops)
+    if (!enc)
         return;
 
-    uint16_t raw;
-    uint32_t ts;
-    if (!enc->drv_ops->read_angle(enc->drv_handle, &raw, &ts))
+    uint16_t raw = 0U;
+    uint32_t ts_ms = 0U;
+    if (!encoder_board_read(enc->type, &raw, &ts_ms))
     {
         // 读取失败：滑动计数向失效方向走
-        enc->valid_counter = (enc->valid_counter < 110U) ? (uint16_t)(enc->valid_counter + 10U) : 110U;
+        enc->valid_counter = (enc->valid_counter < ENCODER_VALID_COUNT_MAX)
+                                 ? (uint16_t)(enc->valid_counter + 10U)
+                                 : ENCODER_VALID_COUNT_MAX;
         if (enc->valid_counter > ENCODER_ERR_VALID_LIMIT)
             enc->dstate = DEV_RUN_ERROR;
         return;

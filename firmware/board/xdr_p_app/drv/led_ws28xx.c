@@ -3,12 +3,14 @@
 //
 // 芯片协议：单线串行、每灯 24bit（GRB），每位由高低占空比定时脉冲表达，
 // 整体由 PWM+DMA 推 CCR 值序列产生。
-// 实例形态：文件内静态 handle，内含
-//   - ops 指针、外设句柄（htim）、配置（通道 / 灯珠数 / 占空比编码 / 缓冲长度）
-//   - 静态 CCR 缓冲（不再堆分配）
-// HAL_TIM_PWM_PulseFinishedCallback 由本文件唯一持有（复位忙标志）。
+//
+// 实现 app/abs/led_board.h 的 RGB 部分。
+// 实例形态：文件内静态实例（外设 / 配置 / 静态 CCR 缓冲），无 ops、无堆。
+// 中断：HAL_TIM_PWM_PulseFinishedCallback 本体在 bsp_irq，本驱动只注册处理函数。
 // ============================================================
-#include "led_drivers.h"
+#include "led_board.h"
+
+#include "bsp_irq.h"
 
 #include "tim.h"
 
@@ -21,7 +23,7 @@
 
 #define RGB_BUF_LEN (RGB_PIXEL_NUM * 24U + RGB_RESET_BITS)
 
-// ---------- 实例 handle ----------
+// ---------- 实例 ----------
 typedef struct
 {
     TIM_HandleTypeDef *htim; // 外设：PWM 定时器
@@ -38,19 +40,6 @@ typedef struct
     uint32_t ccr_buf[RGB_BUF_LEN]; // 静态 DMA 缓冲
 } tWs28xx;
 
-static bool ws28xx_init(RgbHandle h);
-static void ws28xx_set_rgb(RgbHandle h, tRGBColor color);
-static void ws28xx_set_brightness(RgbHandle h, uint8_t brightness);
-static void ws28xx_refresh(RgbHandle h);
-
-const tRgbDriverOps rgb_ws28xx_ops = {
-    .init = ws28xx_init,
-    .set_rgb = ws28xx_set_rgb,
-    .set_brightness = ws28xx_set_brightness,
-    .refresh = ws28xx_refresh,
-};
-
-// 静态实例
 static tWs28xx s_rgb = {
     .htim = &htim4,
     .channel = RGB_PWM_CHANNEL,
@@ -63,16 +52,11 @@ static tWs28xx s_rgb = {
     .busy = false,
 };
 
-RgbHandle rgb_get_handle(void)
+// ---- 传输完成中断 ----
+// HAL 回调本体在 bsp_irq；本驱动只注册处理函数（见 rgb_board_open）。
+static void ws28xx_on_pulse_done(void *ctx)
 {
-    return (RgbHandle)&s_rgb;
-}
-
-// ---- 传输完成中断（只在本文件定义） ----
-void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
-{
-    if (htim != s_rgb.htim)
-        return;
+    (void)ctx;
     s_rgb.busy = false;
 }
 
@@ -101,49 +85,51 @@ static void ws28xx_build_stream(tWs28xx *inst)
         inst->ccr_buf[i] = 0U; // 帧尾复位（低电平）
 }
 
-// ---- ops 实现 ----
+// ---- 板级钩子实现 ----
 
-static bool ws28xx_init(RgbHandle h)
+bool rgb_board_open(void)
 {
-    tWs28xx *inst = (tWs28xx *)h;
-    if (!inst || !inst->htim)
+    if (!s_rgb.htim)
         return false;
 
-    memset(inst->ccr_buf, 0, inst->buf_len * sizeof(uint32_t));
-    inst->brightness = 255U;
-    inst->color.R = inst->color.G = inst->color.B = 0U;
-    inst->busy = false;
-    inst->inited = true;
+    // 注册"推送完成"处理函数，用于复位忙标志
+    static const tTimIrq s_rgb_irq = {
+        .on_overflow = NULL,
+        .on_underflow = NULL,
+        .on_pulse_done = ws28xx_on_pulse_done,
+        .ctx = NULL,
+    };
+    if (!bsp_irq_bind_tim(s_rgb.htim->Instance, &s_rgb_irq))
+        return false;
+
+    memset(s_rgb.ccr_buf, 0, s_rgb.buf_len * sizeof(uint32_t));
+    s_rgb.brightness = 255U;
+    s_rgb.color.R = s_rgb.color.G = s_rgb.color.B = 0U;
+    s_rgb.busy = false;
+    s_rgb.inited = true;
     return true;
 }
 
-static void ws28xx_set_rgb(RgbHandle h, tRGBColor color)
+void rgb_board_set_color(tRGBColor color)
 {
-    tWs28xx *inst = (tWs28xx *)h;
-    if (!inst)
-        return;
-    inst->color = color;
+    s_rgb.color = color;
 }
 
-static void ws28xx_set_brightness(RgbHandle h, uint8_t brightness)
+void rgb_board_set_brightness(uint8_t brightness)
 {
-    tWs28xx *inst = (tWs28xx *)h;
-    if (!inst)
-        return;
-    inst->brightness = brightness;
+    s_rgb.brightness = brightness;
 }
 
-static void ws28xx_refresh(RgbHandle h)
+void rgb_board_refresh(void)
 {
-    tWs28xx *inst = (tWs28xx *)h;
-    if (!inst || !inst->inited)
+    if (!s_rgb.inited)
         return;
-    if (inst->busy)
+    if (s_rgb.busy)
         return; // 上一帧仍在推，丢弃本次
 
-    ws28xx_build_stream(inst);
-    inst->busy = true;
-    if (HAL_TIM_PWM_Start_DMA(inst->htim, inst->channel,
-                              inst->ccr_buf, (uint16_t)inst->buf_len) != HAL_OK)
-        inst->busy = false;
+    ws28xx_build_stream(&s_rgb);
+    s_rgb.busy = true;
+    if (HAL_TIM_PWM_Start_DMA(s_rgb.htim, s_rgb.channel,
+                              s_rgb.ccr_buf, (uint16_t)s_rgb.buf_len) != HAL_OK)
+        s_rgb.busy = false;
 }
