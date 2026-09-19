@@ -1,14 +1,11 @@
 // ============================================================
 // bus_can.c — CAN 通讯底层驱动（板级，直连 HAL）
 //
-// 实例形态：文件内静态 handle，内含
-//   - ops 指针（该实例的操作表）
-//   - 外设句柄（hcan）
-//   - 配置（过滤组 / 标准帧 ID）
-//   - 收帧回调 + ctx（回调把实例送回 abs 层）
+// 实例形态：文件内静态实例（外设 hcan / 过滤组 / 回调），无 ops、无堆。
 // 中断：HAL_CAN_RxFifo0MsgPendingCallback 本体在 bsp_irq，本驱动只注册处理函数。
+// 本文件实现 app/abs/bus_com_board.h 的 CAN 路由（由 board_bus.c 分派）。
 // ============================================================
-#include "bus_drivers.h"
+#include "bus_can.h"
 
 #include "bsp_irq.h"
 
@@ -18,7 +15,7 @@
 #define CAN2_FILTER_BANK 14U   // CAN2 专用过滤组（14 起）
 #define CAN_STD_ID_MASK 0x7FFU // 标准帧 11 位 ID 掩码
 
-// ---------- 实例 handle ----------
+// ---------- 实例 ----------
 typedef struct
 {
     CAN_HandleTypeDef *hcan; // 外设
@@ -28,17 +25,6 @@ typedef struct
     void *rx_ctx;            // 回调上下文（abs 层实例）
 } tCanBus;
 
-static bool can_init(BusHandle h, uint32_t std_id);
-static bool can_send(BusHandle h, uint32_t id, const uint8_t *data, uint16_t len);
-static void can_register_rx(BusHandle h, bus_rx_frame_cb cb, void *ctx);
-
-const tBusDriverOps can_drv_ops = {
-    .init = can_init,
-    .send = can_send,
-    .register_callback = can_register_rx,
-};
-
-// 静态实例
 static tCanBus s_can2 = {
     .hcan = &hcan2,
     .filter_bank = CAN2_FILTER_BANK,
@@ -47,13 +33,8 @@ static tCanBus s_can2 = {
     .rx_ctx = NULL,
 };
 
-BusHandle can_get_handle(void)
-{
-    return (BusHandle)&s_can2;
-}
-
 // ---- 收帧中断 ----
-// HAL 回调本体在 bsp_irq；本驱动只注册处理函数（见 can_init）。
+// HAL 回调本体在 bsp_irq；本驱动只注册处理函数（见 can_bus_open）。
 static void can_on_rx_pending(void *ctx)
 {
     tCanBus *inst = (tCanBus *)ctx;
@@ -88,15 +69,15 @@ static bool can_config_filter(tCanBus *inst, uint32_t std_id)
     return HAL_CAN_ConfigFilter(inst->hcan, &f) == HAL_OK;
 }
 
-// ---- ops 实现 ----
+// ---- 板级钩子实现（CAN 路由） ----
 
-static bool can_init(BusHandle h, uint32_t std_id)
+bool can_bus_open(uint32_t std_id)
 {
-    tCanBus *inst = (tCanBus *)h;
-    if (!inst || !inst->hcan)
+    tCanBus *inst = &s_can2;
+    if (!inst->hcan)
         return false;
 
-    // 注册收帧处理函数（绑一次；bus_start 可能被重入调用）
+    // 注册收帧处理函数（绑一次；可能被重复调用）
     static bool s_irq_bound = false;
     if (!s_irq_bound)
     {
@@ -119,10 +100,9 @@ static bool can_init(BusHandle h, uint32_t std_id)
     return true;
 }
 
-static bool can_send(BusHandle h, uint32_t id, const uint8_t *data, uint16_t len)
+bool can_bus_send(uint32_t id, const uint8_t *data, uint16_t len)
 {
-    tCanBus *inst = (tCanBus *)h;
-    if (!inst || !inst->hcan || !data || len > 8U)
+    if (!s_can2.hcan || !data || len > 8U)
         return false;
 
     CAN_TxHeaderTypeDef hdr;
@@ -134,17 +114,14 @@ static bool can_send(BusHandle h, uint32_t id, const uint8_t *data, uint16_t len
     hdr.TransmitGlobalTime = DISABLE;
 
     uint32_t mailbox;
-    if (HAL_CAN_AddTxMessage(inst->hcan, &hdr, (uint8_t *)data, &mailbox) != HAL_OK)
+    if (HAL_CAN_AddTxMessage(s_can2.hcan, &hdr, (uint8_t *)data, &mailbox) != HAL_OK)
         return false; // 邮箱忙：返回 false 由上层重试
 
     return true;
 }
 
-static void can_register_rx(BusHandle h, bus_rx_frame_cb cb, void *ctx)
+void can_bus_register_cb(bus_rx_frame_cb cb, void *ctx)
 {
-    tCanBus *inst = (tCanBus *)h;
-    if (!inst)
-        return;
-    inst->rx_cb = cb;
-    inst->rx_ctx = ctx;
+    s_can2.rx_cb = cb;
+    s_can2.rx_ctx = ctx;
 }

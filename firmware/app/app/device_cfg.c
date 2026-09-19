@@ -4,7 +4,7 @@
 // 本文件是唯一 include 板级驱动出口（*_drivers.h）的地方。
 // 装配顺序：存储 → 功率级 → 采样（要绑采样点）→ 灯 → 通讯。
 //
-// 编译期绑定：栅极/采样/编码器/灯 已改为"板级钩子 + 静态实例"，
+// 编译期绑定：栅极/采样/编码器/灯/串口/总线 已改为"板级钩子 + 静态实例"，
 // 本层不再传 ops/handle，只做装配与参数注入（见各 *_board.h）。
 // ============================================================
 
@@ -12,9 +12,7 @@
 
 #include "protocol.h"
 // ---- 板级驱动出口（尚未迁移到钩子式的驱动） ----
-#include "bus_drivers.h"
 #include "flash_drivers.h"
-#include "uart_drivers.h"
 
 // 协议层 eEncoderChip 与 abs 层 eEncoderChipId 枚举值必须一一对齐
 // （两侧先转 int：两个匿名 enum 直接比较会触发 -Wenum-compare）
@@ -98,17 +96,15 @@ bool dev_base_init(void)
     if (!led0 || !led1 || !rgb)
         return false;
 
-    // 注册 can 驱动
-    if (!bus_init(&g_dev.can, &can_drv_ops, can_get_handle(), &s_can_buf))
+    // 注册总线（板级钩子，见 board_bus.c / bus_can.c）
+    if (!bus_init(&g_dev.can, BUS_PORT_CAN, &s_can_buf))
         return false;
 
-    // 注册 uart 驱动
-    if (!uart_init(&g_dev.uart, &uart_mcu_ops, uart_mcu_get_handle(),
-                   &s_uart1_buf))
+    // 注册串口（板级钩子，见 board_uart.c）
+    if (!uart_init(&g_dev.uart, UART_PORT_MCU, &s_uart1_buf))
         return false;
-    // 注册 usb 驱动
-    if (!uart_init(&g_dev.usb, &uart_usb_ops, uart_usb_get_handle(),
-                   &s_usb_buf))
+    // 注册 usb 虚拟串口
+    if (!uart_init(&g_dev.usb, UART_PORT_USB, &s_usb_buf))
         return false;
 
     return true;

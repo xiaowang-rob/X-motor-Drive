@@ -1,18 +1,20 @@
 #include "uart_com.h"
+
 #include <string.h>
 
 #include "crc.h"
+#include "uart_com_board.h"
 
 // ============================================================
 // uart_com.c — 串行式通信业务对象（abs，纯逻辑）
 //
-// 驱动只负责"收到字节块就回调"，本层把字节入队并做帧解析：
+// 板级只负责"收到字节块就回调"，本层把字节入队并做帧解析：
 //   帧格式：[head][id][len][payload...][crc][tail]
 //   crc = crc8(id, len, payload...)
 // 帧解析 / 发送缓冲均由调用方提供（见 tUartBuffer）。
 // ============================================================
 
-// 收帧回调（中断上下文）：ctx 为 uart_init 时注册的 tUartDriver 实例
+// 收字节回调（中断上下文）：ctx 为 uart_init 时绑定的 tUartDriver 实例
 static void uart_on_rx_data(void *ctx, const uint8_t *data, uint16_t len)
 {
     tUartDriver *uart = (tUartDriver *)ctx;
@@ -27,18 +29,15 @@ static void uart_on_rx_data(void *ctx, const uint8_t *data, uint16_t len)
     uart->rstate = DEV_RUNNING;
 }
 
-// uart初始化 绑定ops handle buf
-bool uart_init(tUartDriver *uart, const tUartDriverOps *ops, UartHandle handle,
-               const tUartBuffer *buf)
+bool uart_init(tUartDriver *uart, eUartPort port, const tUartBuffer *buf)
 {
-    if (!uart || !ops || !handle || !buf)
+    if (!uart || !buf || (unsigned)port >= (unsigned)UART_PORT_NUM)
         return false;
     if (!buf->rx_queue_buf || buf->rx_queue_size == 0U || !buf->frame_buf || !buf->tx_buf)
         return false;
 
     memset(uart, 0, sizeof(*uart));
-    uart->ops = ops;
-    uart->handle = handle;
+    uart->port = port;
 
     uart->in_frame = false;
     uart->rx_index = 0U;
@@ -52,23 +51,28 @@ bool uart_init(tUartDriver *uart, const tUartDriverOps *ops, UartHandle handle,
 
     return true;
 }
-// uart启动
+
 bool uart_start(tUartDriver *uart, uint8_t head, uint8_t tail)
 {
+    if (!uart)
+        return false;
+
     uart->pkt_head = head;
     uart->pkt_tail = tail;
 
-    if (!uart->ops->init(uart->handle))
+    if (!uart_board_open(uart->port))
         return false;
 
-    uart->ops->register_callback(uart->handle, uart_on_rx_data, uart);
+    uart_board_register_cb(uart->port, uart_on_rx_data, uart);
 
     uart->tstate = DEV_ONLINE;
     uart->rstate = DEV_ONLINE;
+    return true;
 }
+
 bool uart_send(tUartDriver *uart, const tUart_Frame *frame)
 {
-    if (!uart || !uart->ops || !uart->handle || !frame)
+    if (!uart || !frame)
         return false;
     if (frame->data_len > UART_MAX_PKT_SIZE)
         return false;
@@ -86,7 +90,7 @@ bool uart_send(tUartDriver *uart, const tUart_Frame *frame)
     tx_buf[3U + len] = crc8(&tx_buf[1], (uint16_t)(len + 2U)); // id + len + payload
     tx_buf[4U + len] = uart->pkt_tail;
 
-    if (!uart->ops->send(uart->handle, tx_buf, total))
+    if (!uart_board_send(uart->port, tx_buf, total))
     {
         uart->tstate = DEV_BUSY;
         return false;

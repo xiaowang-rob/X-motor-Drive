@@ -1,17 +1,20 @@
-#ifndef __UART_COM_H
-#define __UART_COM_H
+#ifndef XDR_APP_ABS_UART_COM_H
+#define XDR_APP_ABS_UART_COM_H
 
 #include "device.h"
 #include "queue.h"
 
 // ============================================================
-// uart_com.h — 串行式通信契约与业务对象（abs）
+// uart_com.h — 串行式通信业务对象（abs）
 //
-// 串行通信是不定长字节流：驱动把收到的字节块回调进本层队列，
+// 串行通信是不定长字节流：板级把收到的字节块回调进本层队列，
 // 本层按"帧头 / 帧尾"提取并做 CRC8 校验后输出完整帧。
 //
 // 帧格式：[head][id][len][payload...][crc][tail]，crc = crc8(id, len, payload)
-// 缓冲由**调用方提供**（见 tUartBuffer），实例本身不再内嵌大数组。
+// 缓冲由**调用方提供**（见 tUartBuffer），实例本身不内嵌大数组。
+//
+// 编译期绑定：硬件动作经板级钩子（uart_com_board.h）直接调用，
+// 无 ops 表、无 void* 句柄；实例由 eUartPort 区分。
 // ============================================================
 
 #define UART_MAX_PKT_SIZE 128 // 单帧最大载荷字节数
@@ -24,7 +27,13 @@ typedef struct
     uint8_t data[UART_MAX_PKT_SIZE];
 } tUart_Frame;
 
-typedef void *UartHandle; // 驱动实例句柄（实体含 ops / 外设 / 配置，由驱动定义）
+// 板级串口实例标识（编译期绑定；见 board_uart.c 的分派）
+typedef enum
+{
+    UART_PORT_MCU = 0, // MCU 串口（DMA + 空闲中断）
+    UART_PORT_USB = 1, // USB CDC 虚拟串口
+    UART_PORT_NUM
+} eUartPort;
 
 // 缓冲描述（调用方提供）
 typedef struct
@@ -35,20 +44,12 @@ typedef struct
     uint8_t *tx_buf;        // 发送组帧缓冲，需 ≥ UART_MAX_PKT_SIZE + 5
 } tUartBuffer;
 
-// 接收完成回调：驱动在中断上下文调用；ctx 为注册时传入的实例指针
+// 接收完成回调：板级在中断上下文调用；ctx 为注册时传入的实例指针
 typedef void (*uart_rx_done_cb)(void *ctx, const uint8_t *data, uint16_t len);
 
 typedef struct
 {
-    bool (*init)(UartHandle h);
-    bool (*send)(UartHandle h, const uint8_t *data, uint16_t len);
-    void (*register_callback)(UartHandle h, uart_rx_done_cb cb, void *ctx);
-} tUartDriverOps;
-
-typedef struct
-{
-    const tUartDriverOps *ops; // 操作函数指针
-    UartHandle handle;         // 驱动实例
+    eUartPort port; // 板级实例
 
     uint8_t pkt_head; // 帧头字节
     uint8_t pkt_tail; // 帧尾字节
@@ -64,11 +65,10 @@ typedef struct
     tStaticQueue rx_queue;
 } tUartDriver;
 
-// 绑定驱动实例、挂接调用方缓冲
-bool uart_init(tUartDriver *uart, const tUartDriverOps *ops, UartHandle handle,
-               const tUartBuffer *buf);
+// 绑定板级实例、挂接调用方缓冲
+bool uart_init(tUartDriver *uart, eUartPort port, const tUartBuffer *buf);
 
-// uart 启动接收 注册回调
+// 启动接收并注册回调
 bool uart_start(tUartDriver *uart, uint8_t head, uint8_t tail);
 
 // 发送一帧（自动补帧头/长度/CRC/帧尾）
@@ -77,4 +77,4 @@ bool uart_send(tUartDriver *uart, const tUart_Frame *frame);
 // 持续从队列解析并提取完整帧；成功返回 true 并填充 frame
 bool uart_process_frame(tUartDriver *uart, tUart_Frame *frame);
 
-#endif // __UART_COM_H
+#endif // XDR_APP_ABS_UART_COM_H
