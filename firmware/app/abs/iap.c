@@ -1,14 +1,16 @@
 // ============================================================
-// iap.c — 在线升级业务对象（abs）
+// iap.c — 在线升级业务对象（abs，纯逻辑）
 //
-// 只做"分区转发 + 状态维护"：所有 Flash 操作走复用来的 tFlashDriverOps，
-// 跳转走板级注入的回调；整区校验用 CRC32 流式计算。
+// 只做"分区转发 + 状态维护"：所有 Flash 操作走复用的介质
+// （flash_board 钩子），跳转走板级注入的回调；整区校验用 CRC32 流式计算。
 // ============================================================
 
 #include "iap.h"
+
 #include <string.h>
 
 #include "crc.h"
+#include "flash_board.h"
 
 #define IAP_CRC_CHUNK 256U // 流式校验分块大小（栈占用）
 
@@ -26,7 +28,9 @@ static const tIAPPartition *part_of(const tIAP *iap, eIAPtype type)
 
 bool iap_init(tIAP *iap, const tIAPConfig *cfg)
 {
-    if (!iap || !cfg || !cfg->flash_ops || !cfg->flash_handle || !cfg->parts)
+    if (!iap || !cfg || !cfg->parts)
+        return false;
+    if ((unsigned)cfg->flash_dev >= (unsigned)FLASH_DEV_NUM)
         return false;
     if (cfg->part_count == 0U)
         return false;
@@ -49,7 +53,7 @@ bool iap_erase(tIAP *iap)
     if (!p)
         return false;
 
-    if (!iap->cfg.flash_ops->erase_addr(iap->cfg.flash_handle, p->base, p->size))
+    if (!flash_board_erase_addr(iap->cfg.flash_dev, p->base, p->size))
     {
         iap->dstate = DEV_RUN_ERROR;
         return false;
@@ -66,7 +70,7 @@ bool iap_write(tIAP *iap, uint32_t offset, const uint8_t *data, uint32_t len)
     if (!p || (offset + len) > p->size)
         return false;
 
-    if (!iap->cfg.flash_ops->write(iap->cfg.flash_handle, p->base + offset, data, len))
+    if (!flash_board_write(iap->cfg.flash_dev, p->base + offset, data, len))
     {
         iap->dstate = DEV_RUN_ERROR;
         return false;
@@ -83,7 +87,7 @@ bool iap_read(tIAP *iap, uint32_t offset, uint8_t *data, uint32_t len)
     if (!p || (offset + len) > p->size)
         return false;
 
-    return iap->cfg.flash_ops->read(iap->cfg.flash_handle, p->base + offset, data, len);
+    return flash_board_read(iap->cfg.flash_dev, p->base + offset, data, len);
 }
 
 bool iap_verify_crc(tIAP *iap, uint32_t expect_crc)
@@ -104,7 +108,7 @@ bool iap_verify_crc(tIAP *iap, uint32_t expect_crc)
         if (n > IAP_CRC_CHUNK)
             n = IAP_CRC_CHUNK;
 
-        if (!iap->cfg.flash_ops->read(iap->cfg.flash_handle, p->base + done, buf, n))
+        if (!flash_board_read(iap->cfg.flash_dev, p->base + done, buf, n))
         {
             iap->dstate = DEV_RUN_ERROR;
             return false;

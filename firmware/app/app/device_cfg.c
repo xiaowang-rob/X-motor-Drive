@@ -1,18 +1,18 @@
 // ============================================================
 // device_cfg.c — 组装层实现：装配全板设备并对外提供 g_dev
 //
-// 本文件是唯一 include 板级驱动出口（*_drivers.h）的地方。
+// 本文件是唯一 include 板级驱动出口的地方。
 // 装配顺序：存储 → 功率级 → 采样（要绑采样点）→ 灯 → 通讯。
 //
-// 编译期绑定：栅极/采样/编码器/灯/串口/总线 已改为"板级钩子 + 静态实例"，
+// 编译期绑定：全部设备已改为"板级钩子 + 静态实例"，
 // 本层不再传 ops/handle，只做装配与参数注入（见各 *_board.h）。
 // ============================================================
 
 #include "device_cfg.h"
 
 #include "protocol.h"
-// ---- 板级驱动出口（尚未迁移到钩子式的驱动） ----
-#include "flash_drivers.h"
+// ---- 板级 Flash / IAP 出口 ----
+#include "board_flash.h"
 
 // 协议层 eEncoderChip 与 abs 层 eEncoderChipId 枚举值必须一一对齐
 // （两侧先转 int：两个匿名 enum 直接比较会触发 -Wenum-compare）
@@ -68,11 +68,10 @@ void app_init(void)
 // 板载设备初始化
 bool dev_base_init(void)
 {
-    // 注册 mcu flash 驱动
-    if (!flash_init(&g_dev.flash, &mcu_flash_driver_ops,
-                    mcu_flash_get_handle()))
+    // 注册 MCU Flash 介质（板级钩子，见 board_flash.c）
+    if (!flash_init(&g_dev.flash, FLASH_DEV_MCU))
         return false;
-    // 注册 mcu app iap 驱动
+    // 注册 MCU App IAP（分区表 + 平台跳转，见 fla_mcu.c）
     tIAPConfig iap_cfg = mcu_iap_config(IAP_APP);
     if (!iap_init(&g_dev.iap, &iap_cfg))
         return false;

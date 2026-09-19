@@ -1,16 +1,18 @@
 // ============================================================
 // flash.c — 日志式存储单元业务（abs，纯逻辑）
 //
-// 在 tFlashDriverOps 介质之上提供"顺序追加记录"的单元管理：
+// 在板级介质（flash_board）之上提供"顺序追加记录"的单元管理：
 //   - 单元 = 介质的一个擦除单元（扇区）
 //   - 写入：追加到 free 偏移（写满才擦除 → 磨损友好）
 //   - 空闲边界探测：二分读 2 字节，全 0xFF = 未写（重启后恢复续写位置）
 //
 // 注：记录格式/校验由上层定义（参数、日志等），本层不解析内容。
-//     设备状态由本层 dstate 维护，驱动只返回 bool 成败。
+//     设备状态由本层 dstate 维护，板级只返回 bool 成败。
 // ============================================================
 
 #include "flash.h"
+
+#include "flash_board.h"
 
 // 空闲探测读窗口（字节）
 #define FLASH_FREE_SCAN_WIN 2U
@@ -21,14 +23,14 @@ static bool flash_scan_free(tFlash *s, tFlashUnit *unit)
     uint8_t buf[FLASH_FREE_SCAN_WIN];
 
     // 先看单元首字节：全 FF 视为空单元
-    if (!s->ops->read(s->handle, unit->base_addr, buf, FLASH_FREE_SCAN_WIN))
+    if (!flash_board_read(s->dev, unit->base_addr, buf, FLASH_FREE_SCAN_WIN))
         return false;
     bool all_ff = (buf[0] == 0xFFU && buf[1] == 0xFFU);
     if (all_ff)
     {
         // 可能空单元，也可能写满后尾部对齐 FF —— 由尾探测区分
-        if (!s->ops->read(s->handle, unit->base_addr + unit->size - FLASH_FREE_SCAN_WIN,
-                          buf, FLASH_FREE_SCAN_WIN))
+        if (!flash_board_read(s->dev, unit->base_addr + unit->size - FLASH_FREE_SCAN_WIN,
+                              buf, FLASH_FREE_SCAN_WIN))
             return false;
         if (buf[0] == 0xFFU && buf[1] == 0xFFU)
         {
@@ -49,7 +51,7 @@ static bool flash_scan_free(tFlash *s, tFlashUnit *unit)
         if (read_at + FLASH_FREE_SCAN_WIN > unit->size)
             read_at = unit->size - FLASH_FREE_SCAN_WIN;
 
-        if (!s->ops->read(s->handle, unit->base_addr + read_at, buf, FLASH_FREE_SCAN_WIN))
+        if (!flash_board_read(s->dev, unit->base_addr + read_at, buf, FLASH_FREE_SCAN_WIN))
             return false;
 
         bool written = !(buf[0] == 0xFFU && buf[1] == 0xFFU);
@@ -62,21 +64,19 @@ static bool flash_scan_free(tFlash *s, tFlashUnit *unit)
     return true;
 }
 
-bool flash_init(tFlash *s, const tFlashDriverOps *ops, FlashChipHandle h)
+bool flash_init(tFlash *s, eFlashDev dev)
 {
-    if (!s || !ops || !h)
+    if (!s || (unsigned)dev >= (unsigned)FLASH_DEV_NUM)
         return false;
 
-    s->ops = ops;
-    s->handle = h;
+    s->dev = dev;
     s->dstate = DEV_OFFLINE;
 
-    s->usr_sector_count = ops->get_sector_count(h);
+    s->usr_sector_count = flash_board_sector_count(dev);
     s->usr_sector_bit_status = 0U; // 全部未注册
     s->usr_sector_free = (uint8_t)s->usr_sector_count;
 
-    // MCU 内部 Flash 无 init（为 NULL）→ 视为成功
-    if (ops->init && !ops->init(h))
+    if (!flash_board_open(dev))
     {
         s->dstate = DEV_RUN_ERROR;
         return false;
@@ -99,8 +99,8 @@ bool flash_unit_register(tFlash *s, tFlashUnit *unit)
         if (0U == (s->usr_sector_bit_status & (uint16_t)(1U << i)))
         {
             unit->id = (uint8_t)i;
-            unit->base_addr = s->ops->get_sector_addr(s->handle, (uint8_t)i);
-            unit->size = s->ops->get_sector_size(s->handle, (uint8_t)i);
+            unit->base_addr = flash_board_sector_addr(s->dev, (uint8_t)i);
+            unit->size = flash_board_sector_size(s->dev, (uint8_t)i);
             if (!flash_scan_free(s, unit))
                 return false;
 
@@ -133,7 +133,7 @@ bool flash_unit_append(tFlash *s, tFlashUnit *unit, const uint8_t *data, uint32_
     }
 
     uint32_t addr = unit->base_addr + unit->free_addr;
-    if (!s->ops->write(s->handle, addr, data, len))
+    if (!flash_board_write(s->dev, addr, data, len))
     {
         s->dstate = DEV_RUN_ERROR;
         return false;
@@ -153,7 +153,7 @@ bool flash_unit_read(tFlash *s, tFlashUnit *unit, uint8_t *data, uint32_t len)
         return false; // 无记录
 
     uint32_t addr = unit->base_addr + unit->free_addr - len;
-    return s->ops->read(s->handle, addr, data, len);
+    return flash_board_read(s->dev, addr, data, len);
 }
 
 // 擦除整个单元并复位写位置
@@ -162,7 +162,7 @@ bool flash_unit_erase(tFlash *s, tFlashUnit *unit)
     if (!s || !unit)
         return false;
 
-    if (!s->ops->erase_sector(s->handle, unit->id))
+    if (!flash_board_erase_sector(s->dev, unit->id))
     {
         s->dstate = DEV_RUN_ERROR;
         return false;

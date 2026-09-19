@@ -1,17 +1,19 @@
-#ifndef __IAP_H
-#define __IAP_H
+#ifndef XDR_APP_ABS_IAP_H
+#define XDR_APP_ABS_IAP_H
 
 #include "flash.h"
 
 // ============================================================
-// iap.h — 在线升级（IAP）契约与业务对象（abs）
+// iap.h — 在线升级（IAP）业务对象（abs）
 //
 // 设计要点：
-//   1) IAP **不再自建一套读写 ops**，而是复用 tFlashDriverOps 介质契约
-//      + 一份分区表（消除原 app_*/bl_* 六函数重复）；
+//   1) IAP **不自建读写 ops**，而是复用 Flash 介质（flash_board 钩子）
+//      + 一份分区表；
 //   2) 跳转能力是平台行为，由板级以回调注入；
 //   3) 校验采用**整区 CRC32**：上位机只给期望值，设备流式遍历 flash 计算，
 //      无需把固件数据再搬一遍（省 RAM 与传输）。
+//
+// 编译期绑定：介质经 eFlashDev 指定，操作走 flash_board_* 直接调用。
 // ============================================================
 
 typedef enum
@@ -32,12 +34,11 @@ typedef struct
 // IAP 配置：介质 + 分区表 + 平台跳转
 typedef struct
 {
-    const tFlashDriverOps *flash_ops; // 复用的介质 ops
-    FlashChipHandle flash_handle;     // 介质句柄
-    const tIAPPartition *parts;       // 分区表，按 eIAPtype 索引
-    uint8_t part_count;               // 分区表长度
-    bool (*jump)(eIAPtype type);      // 平台跳转（板级注入）
-    eIAPtype type;                    // 默认操作分区
+    eFlashDev flash_dev;        // 复用的介质
+    const tIAPPartition *parts; // 分区表，按 eIAPtype 索引
+    uint8_t part_count;         // 分区表长度
+    bool (*jump)(eIAPtype type); // 平台跳转（板级注入）
+    eIAPtype type;              // 默认操作分区
 } tIAPConfig;
 
 typedef struct
@@ -63,4 +64,4 @@ bool iap_reset(tIAP *iap);
 // 取分区几何（供上层计算偏移/大小）
 const tIAPPartition *iap_get_partition(const tIAP *iap, eIAPtype type);
 
-#endif // __IAP_H
+#endif // XDR_APP_ABS_IAP_H
