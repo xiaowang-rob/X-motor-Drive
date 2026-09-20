@@ -6,7 +6,7 @@
 //   21bit 角度 = rx[2]<<13 | rx[3]<<5 | rx[4]>>3，输出取高 14 位
 //   status（rx[4] bit0..2）bit1 = 磁场太弱 → 数据不可信
 //
-// 实例形态：内/外各一份文件内静态实例（无堆分配、无 create/destroy）。
+// 实现 abs/encoder.h 的 tEncoderOps；实例持本路 CS（见 enc_spi.h）。
 // ============================================================
 #include "enc_mt6835.h"
 
@@ -18,42 +18,37 @@
 
 static const uint8_t MT6835_CMD[MT6835_FRAME_LEN] = {0xA0U, 0x03U, 0x00U, 0x00U, 0x00U};
 
-// ---------- 实例 ----------
-typedef struct
+// ---------- 实例（每路一份，CS 由本路持有） ----------
+struct tMT6835Dev
 {
     bool inited;                  // open 后置位
+    const tEncCs *cs;             // 本路 CS
     uint8_t rx[MT6835_FRAME_LEN]; // 接收缓冲
-} tMT6835Dev;
+};
 
-static tMT6835Dev s_dev[2]; // [EXT_ENCODER] / [INT_ENCODER]
-
-static bool mt6835_type_ok(eEncoderType type)
-{
-    return (unsigned)type <= (unsigned)INT_ENCODER;
-}
+tMT6835Dev g_mt6835_ext = {.cs = &g_enc_cs[ENC_PATH_EXT]};
+tMT6835Dev g_mt6835_int = {.cs = &g_enc_cs[ENC_PATH_INT]};
 
 // ---- 芯片接口 ----
 
-bool mt6835_open(eEncoderType type, uint16_t *resolution)
+static bool mt6835_open(void *handle, uint16_t *resolution)
 {
-    if (!resolution || !mt6835_type_ok(type))
+    tMT6835Dev *d = (tMT6835Dev *)handle;
+    if (!d || !d->cs || !resolution)
         return false;
 
     if (!enc_spi_ensure_mode(1U, 1U, 8U)) // 芯片协议：Mode3/8bit
         return false;
 
-    s_dev[type].inited = true;
+    d->inited = true;
     *resolution = MT6835_RESOLUTION;
     return true;
 }
 
-bool mt6835_read(eEncoderType type, uint16_t *raw, uint32_t *ts_ms)
+static bool mt6835_read(void *handle, uint16_t *raw, uint32_t *ts_ms)
 {
-    if (!raw || !ts_ms || !mt6835_type_ok(type))
-        return false;
-
-    tMT6835Dev *d = &s_dev[type];
-    if (!d->inited)
+    tMT6835Dev *d = (tMT6835Dev *)handle;
+    if (!d || !d->cs || !raw || !ts_ms || !d->inited)
         return false;
 
     if (!enc_spi_ensure_mode(1U, 1U, 8U))
@@ -64,7 +59,7 @@ bool mt6835_read(eEncoderType type, uint16_t *raw, uint32_t *ts_ms)
     seg.rx = d->rx;
     seg.len = MT6835_FRAME_LEN;
 
-    if (!enc_spi_transfer(&seg, type, 1U, ts_ms))
+    if (!enc_spi_transfer(&seg, d->cs, 1U, ts_ms))
         return false;
 
     if (d->rx[4] & MT6835_MAG_WEAK_BIT) // 磁场太弱 → 数据不可信
@@ -78,9 +73,17 @@ bool mt6835_read(eEncoderType type, uint16_t *raw, uint32_t *ts_ms)
     return true;
 }
 
-void mt6835_abort(eEncoderType type)
+static void mt6835_abort(void *handle)
 {
-    if (!mt6835_type_ok(type))
+    tMT6835Dev *d = (tMT6835Dev *)handle;
+    if (!d)
         return;
-    enc_spi_abort(type);
+    enc_spi_abort(d->cs);
 }
+
+// ---- 驱动出口 ----
+const tEncoderOps mt6835_ops = {
+    .open = mt6835_open,
+    .read = mt6835_read,
+    .abort = mt6835_abort,
+};

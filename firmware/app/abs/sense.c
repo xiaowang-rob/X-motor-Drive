@@ -3,13 +3,12 @@
 //
 // 原始码 → 物理量；零点 EMA 在空闲阶段累积；
 // Vbus/温度按周期节流触发并换算（NTC 温度查表）。
-// 原始码来自板级钩子 sense_board（编译期绑定，无 ops 表）。
+// 原始码经 ops + handle（装配时挂）从驱动取回。
 // ============================================================
 
 #include "sense.h"
 
 #include "IF_time.h"
-#include "sense_board.h"
 
 // 温度查表：Vbus 归一化后的 NTC 采样码 → ℃
 // 表项 adc_eq 按旧驱动公式 adc_eq = code*24/(Vbus-0.3)+0.5 截断取整
@@ -35,29 +34,41 @@ static const uint8_t SENSE_TEMP_TABLE[256] = {
 
 bool sense_init(tSense *s)
 {
-    if (!s)
+    if (!s || !s->ops || !s->handle || !s->ops->open ||
+        !s->ops->get_cur_raw || !s->ops->get_vt_raw)
         return false;
 
-    memset(s, 0, sizeof(tSense));
+    // 只重置业务字段；ops / handle 是装配结果，不在本层改动
+    s->cur_scale = 0.0f;
+    s->vbus_scale = 0.0f;
+    for (uint8_t i = 0U; i < 3U; i++)
+    {
+        s->cur_zero[i] = 0.0f;
+        s->cur[i] = 0.0f;
+    }
+    s->zero_ready = false;
+    s->vbus = 0.0f;
+    s->temperature = 0.0f;
+    s->last_vt_ms = 0U;
 
     // 启动采样前端并取回换算系数；返回前资源须可用
-    return sense_board_open(&s->cur_scale, &s->vbus_scale);
+    return s->ops->open(s->handle, &s->cur_scale, &s->vbus_scale);
 }
 
 void sense_set_sample_point(tSense *s, uint32_t tic)
 {
-    if (!s)
+    if (!s || !s->ops || !s->ops->set_sample_point)
         return;
-    sense_board_set_sample_point(tic);
+    s->ops->set_sample_point(s->handle, tic);
 }
 
 void sense_update(tSense *s, bool motor_idle)
 {
-    if (!s)
+    if (!s || !s->ops || !s->ops->get_cur_raw)
         return;
 
     uint16_t raw[3];
-    if (!sense_board_get_cur_raw(raw))
+    if (!s->ops->get_cur_raw(s->handle, raw))
         return;
 
     // ---- 三相电流 / 零点 ----
@@ -93,12 +104,13 @@ void sense_update(tSense *s, bool motor_idle)
     uint32_t now = time_get_ms();
     if ((now - s->last_vt_ms) >= SENSE_VT_REFRESH_MS)
     {
-        sense_board_vt_trigger();
+        if (s->ops->vt_trigger)
+            s->ops->vt_trigger(s->handle);
         s->last_vt_ms = now;
     }
 
     uint16_t vbus_raw = 0U, temp_raw = 0U;
-    if (sense_board_get_vt_raw(&vbus_raw, &temp_raw))
+    if (s->ops->get_vt_raw(s->handle, &vbus_raw, &temp_raw))
     {
         s->vbus = (float)vbus_raw * s->vbus_scale;
 

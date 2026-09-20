@@ -5,8 +5,7 @@
 // 读角序列：段1 发 0x83FF → 段2 发 0x84FF 收有效数据帧
 // 解析：磁场告警位 + 奇偶校验
 //
-// 实例形态：内/外各一份文件内静态实例（无堆分配、无 create/destroy）。
-// HAL / SPI 细节只出现在 enc_spi.c，本文件只表达芯片协议。
+// 实现 abs/encoder.h 的 tEncoderOps；实例持本路 CS（见 enc_spi.h）。
 // ============================================================
 #include "enc_mt6816.h"
 
@@ -18,22 +17,19 @@
 #define MT6816_MAG_WARN (1U << 1)   // 磁场告警位
 #define MT6816_PARITY_BIT (1U << 0) // 奇偶校验位
 
-// ---------- 实例 ----------
-typedef struct
+// ---------- 实例（每路一份，CS 由本路持有） ----------
+struct tMT6816Dev
 {
     bool inited;       // open 后置位，防止未初始化就读角
+    const tEncCs *cs;  // 本路 CS
     uint16_t cmd_high; // 段1 tx
     uint16_t cmd_low;  // 段2 tx
     uint8_t rx1[2];    // 段1 rx
     uint8_t rx2[2];    // 段2 rx
-} tMT6816Dev;
+};
 
-static tMT6816Dev s_dev[2]; // [EXT_ENCODER] / [INT_ENCODER]
-
-static bool mt6816_type_ok(eEncoderType type)
-{
-    return (unsigned)type <= (unsigned)INT_ENCODER;
-}
+tMT6816Dev g_mt6816_ext = {.cs = &g_enc_cs[ENC_PATH_EXT]};
+tMT6816Dev g_mt6816_int = {.cs = &g_enc_cs[ENC_PATH_INT]};
 
 static bool parity_odd(uint16_t v)
 {
@@ -46,15 +42,15 @@ static bool parity_odd(uint16_t v)
 
 // ---- 芯片接口 ----
 
-bool mt6816_open(eEncoderType type, uint16_t *resolution)
+static bool mt6816_open(void *handle, uint16_t *resolution)
 {
-    if (!resolution || !mt6816_type_ok(type))
+    tMT6816Dev *d = (tMT6816Dev *)handle;
+    if (!d || !d->cs || !resolution)
         return false;
 
     if (!enc_spi_ensure_mode(1U, 1U, 16U)) // 芯片协议：Mode3/16bit
         return false;
 
-    tMT6816Dev *d = &s_dev[type];
     d->cmd_high = MT6816_CMD_HIGH;
     d->cmd_low = MT6816_CMD_LOW;
     d->inited = true;
@@ -63,13 +59,10 @@ bool mt6816_open(eEncoderType type, uint16_t *resolution)
     return true;
 }
 
-bool mt6816_read(eEncoderType type, uint16_t *raw, uint32_t *ts_ms)
+static bool mt6816_read(void *handle, uint16_t *raw, uint32_t *ts_ms)
 {
-    if (!raw || !ts_ms || !mt6816_type_ok(type))
-        return false;
-
-    tMT6816Dev *d = &s_dev[type];
-    if (!d->inited)
+    tMT6816Dev *d = (tMT6816Dev *)handle;
+    if (!d || !d->cs || !raw || !ts_ms || !d->inited)
         return false;
 
     // 与另一路芯片交替读角时，总线模式可能被对方改过
@@ -84,7 +77,7 @@ bool mt6816_read(eEncoderType type, uint16_t *raw, uint32_t *ts_ms)
     segs[1].rx = d->rx2;
     segs[1].len = 2U;
 
-    if (!enc_spi_transfer(segs, type, 2U, ts_ms))
+    if (!enc_spi_transfer(segs, d->cs, 2U, ts_ms))
         return false;
 
     uint16_t high = (uint16_t)(d->rx1[0] | ((uint16_t)d->rx1[1] << 8));
@@ -102,9 +95,17 @@ bool mt6816_read(eEncoderType type, uint16_t *raw, uint32_t *ts_ms)
     return true;
 }
 
-void mt6816_abort(eEncoderType type)
+static void mt6816_abort(void *handle)
 {
-    if (!mt6816_type_ok(type))
+    tMT6816Dev *d = (tMT6816Dev *)handle;
+    if (!d)
         return;
-    enc_spi_abort(type);
+    enc_spi_abort(d->cs);
 }
+
+// ---- 驱动出口 ----
+const tEncoderOps mt6816_ops = {
+    .open = mt6816_open,
+    .read = mt6816_read,
+    .abort = mt6816_abort,
+};

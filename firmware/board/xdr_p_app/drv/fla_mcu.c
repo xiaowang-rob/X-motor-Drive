@@ -6,17 +6,14 @@
 //   - write ：按 word(4B) 编程，前导/尾部不足处按 byte；不做对齐假设
 //   - erase ：按 F405 真实扇区几何（16K×4 + 64K×1 + 128K×7）逐扇区擦除
 // 厂商库符号（HAL_FLASH_*、FLASH 寄存器）只出现在本文件。
-// 本文件实现 app/abs/flash_board.h 的 MCU 路由，并给出 IAP 配置。
+// 实现 abs/flash.h 的 tFlashOps；IAP 出口见 board_flash.h。
 // ============================================================
 #include "fla_mcu.h"
-
-#include "board_flash.h"
 
 #include "stm32f4xx_hal.h" // FLASH 编程接口（HAL 总头按 conf 决定是否展开）
 
 #define FLASH_START_ADDR 0x08000000U   // Flash 起始地址
 #define FLASH_CAPACITY (1024U * 1024U) // Flash 容量 (bytes)
-#define FLASH_END_ADDR 0x080FFFFFU     // Flash 结束地址
 
 #define MCU_FLASH_NUM_SECTORS 12U
 #define MCU_NUM_SECTOR_BL 2U  // Bootloader 扇区数量
@@ -51,10 +48,24 @@ static const uint8_t USR_SECTOR_ID[MCU_NUM_SECTOR_USR] = {9U, 10U, 11U};
 #define BL_SIZE (APP_START_ADDR - BL_START_ADDR)
 #define APP_SIZE (USR_START_ADDR - APP_START_ADDR)
 
-// ---------- 地址 → 扇区索引（0..11）；越界返回 -1 ----------
-static int sector_index_at(uint32_t addr)
+// ---------- 实例 ----------
+struct tFlaMcu
 {
-    if (addr < FLASH_START_ADDR || addr >= FLASH_END_ADDR)
+    uint32_t start_addr; // 介质起始地址
+    uint32_t end_addr;   // 介质结束地址（含）
+    bool inited;
+};
+
+tFlaMcu g_fla_mcu = {
+    .start_addr = FLASH_START_ADDR,
+    .end_addr = FLASH_START_ADDR + FLASH_CAPACITY - 1U,
+    .inited = false,
+};
+
+// ---------- 地址 → 扇区索引（0..11）；越界返回 -1 ----------
+static int sector_index_at(const tFlaMcu *inst, uint32_t addr)
+{
+    if (addr < inst->start_addr || addr > inst->end_addr)
         return -1;
     uint8_t i = 0U;
     for (; i < MCU_FLASH_NUM_SECTORS; i++)
@@ -65,18 +76,23 @@ static int sector_index_at(uint32_t addr)
     return (int)i - 1;
 }
 
-// ---------- 板级钩子实现（MCU 路由） ----------
+// ---------- 驱动接口（tFlashOps） ----------
 
-bool fla_mcu_open(void)
+static bool fla_mcu_open(void *handle)
 {
+    tFlaMcu *inst = (tFlaMcu *)handle;
+    if (!inst)
+        return false;
+    inst->inited = true;
     return true; // 内部 Flash 无需初始化
 }
 
-bool fla_mcu_read(uint32_t addr, uint8_t *data, uint32_t len)
+static bool fla_mcu_read(void *handle, uint32_t addr, uint8_t *data, uint32_t len)
 {
-    if (!data || len == 0U)
+    const tFlaMcu *inst = (const tFlaMcu *)handle;
+    if (!inst || !data || len == 0U)
         return false;
-    if (addr < FLASH_START_ADDR || (addr + len) > FLASH_END_ADDR)
+    if (addr < inst->start_addr || (addr + len - 1U) > inst->end_addr)
         return false;
     // 内部 Flash 是存储器映射：直接 memcpy（按字拷贝，远快于逐字节 volatile 读）
     memcpy(data, (const void *)addr, len);
@@ -85,11 +101,12 @@ bool fla_mcu_read(uint32_t addr, uint8_t *data, uint32_t len)
 
 // 以 word 编程；前导/尾部不足 4 字节处用 byte 编程补齐。
 // 注：原实现无条件按 word 写，addr 未 4 字节对齐时 HAL 会拒绝 —— 这里修正。
-bool fla_mcu_write(uint32_t addr, const uint8_t *data, uint32_t len)
+static bool fla_mcu_write(void *handle, uint32_t addr, const uint8_t *data, uint32_t len)
 {
-    if (!data || len == 0U)
+    const tFlaMcu *inst = (const tFlaMcu *)handle;
+    if (!inst || !data || len == 0U)
         return false;
-    if (addr < FLASH_START_ADDR || (addr + len) > FLASH_END_ADDR)
+    if (addr < inst->start_addr || (addr + len - 1U) > inst->end_addr)
         return false;
 
     if (HAL_FLASH_Unlock() != HAL_OK)
@@ -134,8 +151,9 @@ bool fla_mcu_write(uint32_t addr, const uint8_t *data, uint32_t len)
     return ok;
 }
 
-bool fla_mcu_erase_sector(uint8_t sec_id)
+static bool fla_mcu_erase_sector(void *handle, uint8_t sec_id)
 {
+    (void)handle;
     if (sec_id >= MCU_NUM_SECTOR_USR)
         return false;
 
@@ -161,13 +179,14 @@ bool fla_mcu_erase_sector(uint8_t sec_id)
     return ok;
 }
 
-bool fla_mcu_erase_addr(uint32_t addr, uint32_t len)
+static bool fla_mcu_erase_addr(void *handle, uint32_t addr, uint32_t len)
 {
-    if (len == 0U)
+    const tFlaMcu *inst = (const tFlaMcu *)handle;
+    if (!inst || len == 0U)
         return false;
 
-    int first = sector_index_at(addr);
-    int last = sector_index_at(addr + len - 1U);
+    int first = sector_index_at(inst, addr);
+    int last = sector_index_at(inst, addr + len - 1U);
     if (first < 0 || last < 0)
         return false;
 
@@ -199,20 +218,23 @@ bool fla_mcu_erase_addr(uint32_t addr, uint32_t len)
     return ok;
 }
 
-uint8_t fla_mcu_sector_count(void)
+static uint8_t fla_mcu_sector_count(void *handle)
 {
+    (void)handle;
     return MCU_NUM_SECTOR_USR;
 }
 
-uint32_t fla_mcu_sector_addr(uint8_t sec_id)
+static uint32_t fla_mcu_sector_addr(void *handle, uint8_t sec_id)
 {
+    (void)handle;
     if (sec_id >= MCU_NUM_SECTOR_USR)
         return 0U;
     return SECTOR_BOUNDS[USR_SECTOR_ID[sec_id]];
 }
 
-uint32_t fla_mcu_sector_size(uint8_t sec_id)
+static uint32_t fla_mcu_sector_size(void *handle, uint8_t sec_id)
 {
+    (void)handle;
     if (sec_id >= MCU_NUM_SECTOR_USR)
         return 0U;
     return SECTOR_BOUNDS[USR_SECTOR_ID[sec_id] + 1U] - SECTOR_BOUNDS[USR_SECTOR_ID[sec_id]];
@@ -220,32 +242,30 @@ uint32_t fla_mcu_sector_size(uint8_t sec_id)
 
 // ---------- IAP：分区表 + 平台跳转 ----------
 
-// 分区表（[IAP_BL] / [IAP_APP]），几何来自上面的扇区计算
-static tIAPPartition s_iap_parts[IAP_PART_COUNT];
-
-static void iap_parts_init(void)
-{
-    s_iap_parts[IAP_BL].base = BL_START_ADDR;
-    s_iap_parts[IAP_BL].size = BL_SIZE;
-    s_iap_parts[IAP_APP].base = APP_START_ADDR;
-    s_iap_parts[IAP_APP].size = APP_SIZE;
-}
+const tIAPPartition g_bl_parts = {
+    .base = BL_START_ADDR,
+    .size = BL_SIZE,
+};
+const tIAPPartition g_app_parts = {
+    .base = APP_START_ADDR,
+    .size = APP_SIZE,
+};
 
 // MCU App 初始化：复位向量表偏移至 BL 之后，中断必须恢复（重启后）
-void mcu_app_init(void)
+void mcu_iap_app_init(void)
 {
     SCB->VTOR = FLASH_START_ADDR | BL_SIZE;
     __enable_irq();
 }
 
 // 平台跳转：BL → 软复位；APP → 切向量表后跳转
-static bool mcu_iap_jump(eIAPtype type)
+bool mcu_iap_jump_bl(void)
 {
-    if (type == IAP_BL)
-    {
-        NVIC_SystemReset();
-        return true;
-    }
+    NVIC_SystemReset();
+    return true;
+}
+bool mcu_iap_jump_app(void)
+{
 
     // 校验目标向量表位于内部 flash 区（粗略防护）
     if ((APP_START_ADDR & 0xFFF00000U) != 0x08000000U)
@@ -260,18 +280,14 @@ static bool mcu_iap_jump(eIAPtype type)
     return true; // 不可达
 }
 
-// 取 IAP 配置（组装层据此初始化 tIAP）：介质为 MCU 内部 Flash，
-// 分区表与平台跳转由本文件提供；整区校验由 abs 的 iap_verify_crc 完成。
-tIAPConfig mcu_iap_config(eIAPtype type)
-{
-    iap_parts_init();
-
-    tIAPConfig cfg = {
-        .flash_dev = FLASH_DEV_MCU,
-        .parts = s_iap_parts,
-        .part_count = IAP_PART_COUNT,
-        .jump = mcu_iap_jump,
-        .type = type,
-    };
-    return cfg;
-}
+// ---- 驱动出口 ----
+const tFlashOps fla_mcu_ops = {
+    .open = fla_mcu_open,
+    .read = fla_mcu_read,
+    .write = fla_mcu_write,
+    .erase_addr = fla_mcu_erase_addr,
+    .erase_sector = fla_mcu_erase_sector,
+    .sector_count = fla_mcu_sector_count,
+    .sector_addr = fla_mcu_sector_addr,
+    .sector_size = fla_mcu_sector_size,
+};

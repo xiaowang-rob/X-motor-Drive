@@ -5,9 +5,9 @@
 // 每组 16 个扇区共 256 组，分组管理；容量 16MB。
 // 操作前写使能(0x06)，完成后轮询状态寄存器 BUSY。
 //
-// 实例形态：文件内静态实例（外设 SPI / CS / 收发缓冲），无 ops、无堆。
+// 实例形态：外部链接实例（外设 SPI / CS / 收发缓冲），无堆。
 // 时间统一走 bsp_time（HAL_Delay 依赖 SysTick，仅主循环上下文可用）。
-// 本文件实现 app/abs/flash_board.h 的 W25Qxx 路由。
+// 实现 abs/flash.h 的 tFlashOps。
 // ============================================================
 #include "fla_w25qxx.h"
 
@@ -45,7 +45,7 @@ static const uint32_t W25_SECTOR_BOUNDS[BLOCK_SECTOR_NUM + 1] = {
 };
 
 // ---------- 实例 ----------
-typedef struct
+struct tW25Qxx
 {
     SPI_HandleTypeDef *hspi; // 外设：SPI
     GPIO_TypeDef *cs_port;   // 配置：片选端口
@@ -53,9 +53,9 @@ typedef struct
     uint8_t tx_buf[4U + W25_PAGE_SIZE];
     uint8_t rx_buf[4U + W25_PAGE_SIZE];
     uint8_t rd_ff[READ_CHUNK];
-} tW25Qxx;
+};
 
-static tW25Qxx s_w25 = {
+tW25Qxx g_fla_w25 = {
     .hspi = &hspi2,
     .cs_port = GPIOB,
     .cs_pin = GPIO_PIN_12,
@@ -65,7 +65,7 @@ static tW25Qxx s_w25 = {
 
 static void w25_cs(bool active)
 {
-    HAL_GPIO_WritePin(s_w25.cs_port, s_w25.cs_pin,
+    HAL_GPIO_WritePin(g_fla_w25.cs_port, g_fla_w25.cs_pin,
                       active ? GPIO_PIN_RESET : GPIO_PIN_SET);
 }
 
@@ -73,25 +73,25 @@ static bool w25_xfer(const uint8_t *tx, uint8_t *rx, uint16_t len)
 {
     if (!tx || !rx || len == 0U)
         return false;
-    if (HAL_SPI_GetState(s_w25.hspi) != HAL_SPI_STATE_READY)
+    if (HAL_SPI_GetState(g_fla_w25.hspi) != HAL_SPI_STATE_READY)
         return false;
-    return HAL_SPI_TransmitReceive(s_w25.hspi, (uint8_t *)tx, rx, len, 100U) == HAL_OK;
+    return HAL_SPI_TransmitReceive(g_fla_w25.hspi, (uint8_t *)tx, rx, len, 100U) == HAL_OK;
 }
 
 static bool w25_tx(uint16_t len)
 {
-    return w25_xfer(s_w25.tx_buf, s_w25.rx_buf, len);
+    return w25_xfer(g_fla_w25.tx_buf, g_fla_w25.rx_buf, len);
 }
 
 // 读状态寄存器（BUSY 位）
 static uint8_t w25_read_sr(void)
 {
-    s_w25.tx_buf[0] = FCMD_READ_STATUS;
-    s_w25.tx_buf[1] = 0xFFU;
+    g_fla_w25.tx_buf[0] = FCMD_READ_STATUS;
+    g_fla_w25.tx_buf[1] = 0xFFU;
     w25_cs(true);
-    bool ok = w25_xfer(s_w25.tx_buf, s_w25.rx_buf, 2U);
+    bool ok = w25_xfer(g_fla_w25.tx_buf, g_fla_w25.rx_buf, 2U);
     w25_cs(false);
-    return ok ? s_w25.rx_buf[1] : 0xFFU;
+    return ok ? g_fla_w25.rx_buf[1] : 0xFFU;
 }
 
 // 等待操作完成（BUSY 位清零）
@@ -114,33 +114,34 @@ static bool w25_wait_idle(uint32_t timeout_ms)
 // 写使能
 static bool w25_write_enable(void)
 {
-    s_w25.tx_buf[0] = FCMD_WRITE_ENABLE;
-    s_w25.tx_buf[1] = 0xFFU;
+    g_fla_w25.tx_buf[0] = FCMD_WRITE_ENABLE;
+    g_fla_w25.tx_buf[1] = 0xFFU;
     w25_cs(true);
-    bool ok = w25_xfer(s_w25.tx_buf, s_w25.rx_buf, 2U);
+    bool ok = w25_xfer(g_fla_w25.tx_buf, g_fla_w25.rx_buf, 2U);
     w25_cs(false);
     return ok;
 }
 
-// ---------- 板级钩子实现（W25Qxx 路由） ----------
+// ---------- 驱动接口（tFlashOps） ----------
 
-bool fla_w25_open(void)
+static bool fla_w25_open(void *handle)
 {
+    (void)handle;
     // SPI 已由 CubeMX 配置（Mode0/3）；这里做 JEDEC ID 连接校验
     for (uint8_t attempt = 0U; attempt < 5U; attempt++)
     {
-        s_w25.tx_buf[0] = FCMD_READ_ID;
-        s_w25.tx_buf[1] = 0xFFU;
-        s_w25.tx_buf[2] = 0xFFU;
-        s_w25.tx_buf[3] = 0xFFU;
+        g_fla_w25.tx_buf[0] = FCMD_READ_ID;
+        g_fla_w25.tx_buf[1] = 0xFFU;
+        g_fla_w25.tx_buf[2] = 0xFFU;
+        g_fla_w25.tx_buf[3] = 0xFFU;
 
         w25_cs(true);
-        bool ok = w25_xfer(s_w25.tx_buf, s_w25.rx_buf, 4U);
+        bool ok = w25_xfer(g_fla_w25.tx_buf, g_fla_w25.rx_buf, 4U);
         w25_cs(false);
 
-        if (ok && s_w25.rx_buf[1] == W25_JEDEC_ID[0] &&
-            s_w25.rx_buf[2] == W25_JEDEC_ID[1] &&
-            s_w25.rx_buf[3] == W25_JEDEC_ID[2])
+        if (ok && g_fla_w25.rx_buf[1] == W25_JEDEC_ID[0] &&
+            g_fla_w25.rx_buf[2] == W25_JEDEC_ID[1] &&
+            g_fla_w25.rx_buf[3] == W25_JEDEC_ID[2])
             return true;
 
         bsp_time_delay_ms(10U);
@@ -148,15 +149,16 @@ bool fla_w25_open(void)
     return false;
 }
 
-bool fla_w25_read(uint32_t addr, uint8_t *data, uint32_t len)
+static bool fla_w25_read(void *handle, uint32_t addr, uint8_t *data, uint32_t len)
 {
+    (void)handle;
     if (!data || len == 0U || (addr + len) > W25_CAPACITY_BYTES)
         return false;
 
-    s_w25.tx_buf[0] = FCMD_READ_DATA;
-    s_w25.tx_buf[1] = (uint8_t)(addr >> 16);
-    s_w25.tx_buf[2] = (uint8_t)(addr >> 8);
-    s_w25.tx_buf[3] = (uint8_t)addr;
+    g_fla_w25.tx_buf[0] = FCMD_READ_DATA;
+    g_fla_w25.tx_buf[1] = (uint8_t)(addr >> 16);
+    g_fla_w25.tx_buf[2] = (uint8_t)(addr >> 8);
+    g_fla_w25.tx_buf[3] = (uint8_t)addr;
 
     w25_cs(true);
     if (!w25_tx(4U))
@@ -166,7 +168,7 @@ bool fla_w25_read(uint32_t addr, uint8_t *data, uint32_t len)
     }
 
     for (uint8_t i = 0U; i < READ_CHUNK; i++)
-        s_w25.rd_ff[i] = 0xFFU;
+        g_fla_w25.rd_ff[i] = 0xFFU;
 
     uint32_t done = 0U;
     while (done < len)
@@ -174,7 +176,7 @@ bool fla_w25_read(uint32_t addr, uint8_t *data, uint32_t len)
         uint32_t n = len - done;
         if (n > READ_CHUNK)
             n = READ_CHUNK;
-        if (!w25_xfer(s_w25.rd_ff, data + done, (uint16_t)n))
+        if (!w25_xfer(g_fla_w25.rd_ff, data + done, (uint16_t)n))
         {
             w25_cs(false);
             return false;
@@ -195,15 +197,15 @@ static bool w25_page_program(uint32_t addr, const uint8_t *data, uint16_t len)
     if (!w25_write_enable())
         return false;
 
-    s_w25.tx_buf[0] = FCMD_WRITE_PAGE;
-    s_w25.tx_buf[1] = (uint8_t)(addr >> 16);
-    s_w25.tx_buf[2] = (uint8_t)(addr >> 8);
-    s_w25.tx_buf[3] = (uint8_t)addr;
+    g_fla_w25.tx_buf[0] = FCMD_WRITE_PAGE;
+    g_fla_w25.tx_buf[1] = (uint8_t)(addr >> 16);
+    g_fla_w25.tx_buf[2] = (uint8_t)(addr >> 8);
+    g_fla_w25.tx_buf[3] = (uint8_t)addr;
     for (uint16_t i = 0U; i < len; i++)
-        s_w25.tx_buf[4U + i] = data[i];
+        g_fla_w25.tx_buf[4U + i] = data[i];
 
     w25_cs(true);
-    bool ok = w25_xfer(s_w25.tx_buf, s_w25.rx_buf, (uint16_t)(4U + len));
+    bool ok = w25_xfer(g_fla_w25.tx_buf, g_fla_w25.rx_buf, (uint16_t)(4U + len));
     w25_cs(false);
 
     if (!ok)
@@ -211,8 +213,9 @@ static bool w25_page_program(uint32_t addr, const uint8_t *data, uint16_t len)
     return w25_wait_idle(FTIMEOUT_OP_MS);
 }
 
-bool fla_w25_write(uint32_t addr, const uint8_t *data, uint32_t len)
+static bool fla_w25_write(void *handle, uint32_t addr, const uint8_t *data, uint32_t len)
 {
+    (void)handle;
     if (!data || len == 0U || (addr + len) > W25_CAPACITY_BYTES)
         return false;
 
@@ -238,13 +241,13 @@ static bool w25_erase_sector_at(uint32_t sector_addr)
     if (!w25_write_enable())
         return false;
 
-    s_w25.tx_buf[0] = FCMD_ERASE_SECTOR;
-    s_w25.tx_buf[1] = (uint8_t)(sector_addr >> 16);
-    s_w25.tx_buf[2] = (uint8_t)(sector_addr >> 8);
-    s_w25.tx_buf[3] = (uint8_t)sector_addr;
+    g_fla_w25.tx_buf[0] = FCMD_ERASE_SECTOR;
+    g_fla_w25.tx_buf[1] = (uint8_t)(sector_addr >> 16);
+    g_fla_w25.tx_buf[2] = (uint8_t)(sector_addr >> 8);
+    g_fla_w25.tx_buf[3] = (uint8_t)sector_addr;
 
     w25_cs(true);
-    bool ok = w25_xfer(s_w25.tx_buf, s_w25.rx_buf, 4U);
+    bool ok = w25_xfer(g_fla_w25.tx_buf, g_fla_w25.rx_buf, 4U);
     w25_cs(false);
 
     if (!ok)
@@ -252,8 +255,9 @@ static bool w25_erase_sector_at(uint32_t sector_addr)
     return w25_wait_idle(FTIMEOUT_OP_MS);
 }
 
-bool fla_w25_erase_addr(uint32_t addr, uint32_t len)
+static bool fla_w25_erase_addr(void *handle, uint32_t addr, uint32_t len)
 {
+    (void)handle;
     if (len == 0U || (addr + len) > W25_CAPACITY_BYTES)
         return false;
 
@@ -268,28 +272,44 @@ bool fla_w25_erase_addr(uint32_t addr, uint32_t len)
     return true;
 }
 
-bool fla_w25_erase_sector(uint8_t sec_id)
+static bool fla_w25_erase_sector(void *handle, uint8_t sec_id)
 {
+    (void)handle;
     if (sec_id >= BLOCK_SECTOR_NUM)
         return false;
     return w25_erase_sector_at(W25_SECTOR_BOUNDS[sec_id]);
 }
 
-uint8_t fla_w25_sector_count(void)
+static uint8_t fla_w25_sector_count(void *handle)
 {
+    (void)handle;
     return BLOCK_SECTOR_NUM;
 }
 
-uint32_t fla_w25_sector_addr(uint8_t sec_id)
+static uint32_t fla_w25_sector_addr(void *handle, uint8_t sec_id)
 {
+    (void)handle;
     if (sec_id >= BLOCK_SECTOR_NUM)
         return 0U;
     return W25_SECTOR_BOUNDS[sec_id];
 }
 
-uint32_t fla_w25_sector_size(uint8_t sec_id)
+static uint32_t fla_w25_sector_size(void *handle, uint8_t sec_id)
 {
+    (void)handle;
     if (sec_id >= BLOCK_SECTOR_NUM)
         return 0U;
     return W25_SECTOR_SIZE;
 }
+
+// ---- 驱动出口 ----
+const tFlashOps fla_w25_ops = {
+    .open = fla_w25_open,
+    .read = fla_w25_read,
+    .write = fla_w25_write,
+    .erase_addr = fla_w25_erase_addr,
+    .erase_sector = fla_w25_erase_sector,
+    .sector_count = fla_w25_sector_count,
+    .sector_addr = fla_w25_sector_addr,
+    .sector_size = fla_w25_sector_size,
+};

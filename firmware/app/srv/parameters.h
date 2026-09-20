@@ -1,5 +1,5 @@
-#ifndef __DATA_MANAGER_H
-#define __DATA_MANAGER_H
+#ifndef __PARAMETERS_H
+#define __PARAMETERS_H
 
 #include "protocol.h"
 #include "field.h"
@@ -10,11 +10,12 @@
 typedef struct
 {
     // 配置参数
+    uint8_t ienc_mode;
     uint8_t ienc_chip;
+    uint8_t eenc_mode;
     uint8_t eenc_chip;
 
-    uint8_t obs_mode;
-    uint8_t run_mode;
+    uint8_t ctrl_mode;
     uint8_t traj_type;
 
     // 电机参数
@@ -101,4 +102,4 @@ bool dm_param_init(void);  // 读取 → 校验 → 失败则回默认值
 
 // ==================== ② 数据（运行量） ====================
 
-#endif // __DATA_MANAGER_H
+#endif // __PARAMETERS_H

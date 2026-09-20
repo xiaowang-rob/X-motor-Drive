@@ -1,5 +1,5 @@
-#ifndef __PORT_MAPPING_H__
-#define __PORT_MAPPING_H__
+#ifndef __PORT_MAPPING_H
+#define __PORT_MAPPING_H
 
 #include "protocol.h"
 #include "device.h"

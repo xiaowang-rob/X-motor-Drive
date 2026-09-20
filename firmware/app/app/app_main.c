@@ -78,14 +78,3 @@ void main_init(void)
 void core_reset(void)
 {
 }
-// 轨迹规划初始化
-void foc_traj_init(tTraj *traj, tParameter *param)
-{
-    tTraj_Config traj_cfg;
-    traj_cfg.limit_d1 = param->traj_limit_d1;
-    traj_cfg.limit_d2 = param->traj_limit_d2;
-    traj_cfg.limit_d3 = param->traj_limit_d3;
-    traj_cfg.tolerance = param->tolerance;
-    traj_cfg.type = param->traj_type;
-    traj_init(traj, traj_cfg);
-}

@@ -1,17 +1,17 @@
 // ============================================================
 // sen_mcu.c — 板采样驱动（板级，直连 HAL）
 //
-// 实现 app/abs/sense_board.h 的板级钩子：
+// 实现 abs/sense.h 的 tSenseOps：
 //   - ADC1：12bit×3（三相电流），TIM8_TRGO 触发 + DMA 持续
 //   - ADC2：8bit×2（Vbus/温度），软件触发，每轮 2 转换
-// 实例形态：文件内静态实例（外设 / 配置 / DMA 落点缓冲），无 ops、无堆。
+// 实例形态：外部链接实例（外设 / 配置 / DMA 落点缓冲），无堆。
 // 中断：HAL_ADC_ConvCpltCallback 本体在 bsp_irq，本驱动只注册处理函数。
 //
 // TODO: 电流帧撕裂保护 —— ADC1 走循环 DMA 持续写 cur_raw，而 FOC 在下溢
 //       中断里直接读取，理论上可能读到"半更新"的帧。后续可改为 DMA
 //       半满/全满双缓冲，或在采样点之后读取并做一致性判断。
 // ============================================================
-#include "sense_board.h"
+#include "sen_mcu.h"
 
 #include "bsp_irq.h"
 #include "bsp_time.h"
@@ -29,7 +29,7 @@
 #define SENSE_VBUS_GAIN 16.0f // 母线分压比
 
 // ---------- 实例 ----------
-typedef struct
+struct tSenseAdc
 {
     ADC_HandleTypeDef *hadc_cur;    // 外设：三相电流 ADC
     ADC_HandleTypeDef *hadc_vt;     // 外设：Vbus/温度 ADC
@@ -42,9 +42,9 @@ typedef struct
     volatile uint16_t cur_raw[SENSE_CUR_CH]; // DMA 落点：三相电流
     volatile uint16_t vt_raw[SENSE_VT_CH];   // DMA 落点：Vbus/温度
     volatile bool vt_new;                    // Vbus/温度新帧标志
-} tSenseAdc;
+};
 
-static tSenseAdc s_adc = {
+tSenseAdc g_sen_mcu = {
     .hadc_cur = &hadc1,
     .hadc_vt = &hadc2,
     .htim_sample = &htim8,
@@ -56,27 +56,28 @@ static tSenseAdc s_adc = {
 };
 
 // ---- 中断 ----
-// HAL 回调本体在 bsp_irq；本驱动只注册处理函数（见 sense_board_open）。
+// HAL 回调本体在 bsp_irq；本驱动只注册处理函数（见 sen_mcu_open）。
 static void sd_on_vt_cplt(void *ctx)
 {
-    (void)ctx;
-    s_adc.vt_new = true;
+    tSenseAdc *inst = (tSenseAdc *)ctx;
+    if (inst)
+        inst->vt_new = true;
 }
 
-// ---- 板级钩子实现 ----
+// ---- 驱动接口（tSenseOps） ----
 
-bool sense_board_open(float *cur_scale, float *vbus_scale)
+static bool sen_mcu_open(void *handle, float *cur_scale, float *vbus_scale)
 {
-    if (!cur_scale || !vbus_scale)
+    tSenseAdc *inst = (tSenseAdc *)handle;
+    if (!inst || !cur_scale || !vbus_scale)
         return false;
-    tSenseAdc *inst = &s_adc;
     if (!inst->hadc_cur || !inst->hadc_vt || !inst->htim_sample)
         return false;
 
     // 注册 Vbus/温度转换完成处理函数（ADC1 走循环 DMA，无需完成回调）
     static const tAdcIrq s_vt_irq = {
         .on_conv_cplt = sd_on_vt_cplt,
-        .ctx = NULL,
+        .ctx = &g_sen_mcu,
     };
     if (!bsp_irq_bind_adc(inst->hadc_vt->Instance, &s_vt_irq))
         return false;
@@ -104,36 +105,53 @@ bool sense_board_open(float *cur_scale, float *vbus_scale)
     return true;
 }
 
-void sense_board_set_sample_point(uint32_t tic)
+static void sen_mcu_set_sample_point(void *handle, uint32_t tic)
 {
-    __HAL_TIM_SetCompare(s_adc.htim_sample, s_adc.sample_ch, tic);
+    const tSenseAdc *inst = (const tSenseAdc *)handle;
+    if (!inst)
+        return;
+    __HAL_TIM_SetCompare(inst->htim_sample, inst->sample_ch, tic);
 }
 
-bool sense_board_get_cur_raw(uint16_t raw[3])
+static bool sen_mcu_get_cur_raw(void *handle, uint16_t raw[3])
 {
-    if (!raw)
+    const tSenseAdc *inst = (const tSenseAdc *)handle;
+    if (!inst || !raw)
         return false;
     for (uint8_t i = 0U; i < SENSE_CUR_CH; i++)
-        raw[i] = (uint16_t)(s_adc.cur_raw[i] & 0x0FFFU); // 12bit 右对齐
+        raw[i] = (uint16_t)(inst->cur_raw[i] & 0x0FFFU); // 12bit 右对齐
     return true;
 }
 
-void sense_board_vt_trigger(void)
+static void sen_mcu_vt_trigger(void *handle)
 {
-    if (HAL_ADC_GetState(s_adc.hadc_vt) != HAL_ADC_STATE_READY)
+    tSenseAdc *inst = (tSenseAdc *)handle;
+    if (!inst)
         return;
-    s_adc.vt_new = false;
-    HAL_ADC_Start_DMA(s_adc.hadc_vt, (uint32_t *)s_adc.vt_raw, SENSE_VT_CH);
+    if (HAL_ADC_GetState(inst->hadc_vt) != HAL_ADC_STATE_READY)
+        return;
+    inst->vt_new = false;
+    HAL_ADC_Start_DMA(inst->hadc_vt, (uint32_t *)inst->vt_raw, SENSE_VT_CH);
 }
 
-bool sense_board_get_vt_raw(uint16_t *vbus_raw, uint16_t *temp_raw)
+static bool sen_mcu_get_vt_raw(void *handle, uint16_t *vbus_raw, uint16_t *temp_raw)
 {
-    if (!s_adc.vt_new)
+    tSenseAdc *inst = (tSenseAdc *)handle;
+    if (!inst || !inst->vt_new)
         return false;
-    s_adc.vt_new = false;
+    inst->vt_new = false;
     if (vbus_raw)
-        *vbus_raw = (uint16_t)(s_adc.vt_raw[0] & 0x00FFU); // 8bit 右对齐
+        *vbus_raw = (uint16_t)(inst->vt_raw[0] & 0x00FFU); // 8bit 右对齐
     if (temp_raw)
-        *temp_raw = (uint16_t)(s_adc.vt_raw[1] & 0x00FFU);
+        *temp_raw = (uint16_t)(inst->vt_raw[1] & 0x00FFU);
     return true;
 }
+
+// ---- 驱动出口 ----
+const tSenseOps sen_mcu_ops = {
+    .open = sen_mcu_open,
+    .set_sample_point = sen_mcu_set_sample_point,
+    .get_cur_raw = sen_mcu_get_cur_raw,
+    .vt_trigger = sen_mcu_vt_trigger,
+    .get_vt_raw = sen_mcu_get_vt_raw,
+};

@@ -3,7 +3,7 @@
 #include "foc.h"
 #include "svpwm.h"
 
-#include "device_cfg.h"
+#include "bsp_cfg.h"
 #include "encoder.h"
 #include "pll.h"
 #include "trajectory.h"
@@ -69,16 +69,16 @@ void core_mainloop_tasks(void)
     if (core.enc_enable)
     {
         // TODO:这里暂时只是外部编码器 后续可以改
-        encoder_task(&g_dev.enc_ext);
-        core.val.theta_enc = encoder_get_angle_abs(&g_dev.enc_ext);
+        encoder_task(&g_enc_ext);
+        core.val.theta_enc = encoder_get_angle_abs(&g_enc_ext);
     }
 
     // 更新电流采集和读取电流值、电压值、温度值
-    sense_update(&g_dev.sense, !core.enable);
-    sense_get_current(&g_dev.sense, &foc.val.imu, &foc.val.imv, &foc.val.imw);
-    core.val.udc = sense_get_vbus(&g_dev.sense);
+    sense_update(&g_sense, !core.enable);
+    sense_get_current(&g_sense, &foc.val.imu, &foc.val.imv, &foc.val.imw);
+    core.val.udc = sense_get_vbus(&g_sense);
     core.val.vmax = core.val.udc * MATH_INSQRT3;
-    core.val.temp = sense_get_temperature(&g_dev.sense);
+    core.val.temp = sense_get_temperature(&g_sense);
 }
 
 // 时间槽高频任务
@@ -118,7 +118,7 @@ void high_schedule_task0(float ts)
         // svpwm 调制生成脉冲
         svpwm_update(&svpwm, foc.val.ualpha, foc.val.ubeta);
         // 门极驱动输出
-        gate_drv_set_compare(&g_dev.gate, svpwm.ticA, svpwm.ticB, svpwm.ticC);
+        gate_drv_set_compare(&g_gate, svpwm.ticA, svpwm.ticB, svpwm.ticC);
     }
     else
     { // TODO：高频跟随

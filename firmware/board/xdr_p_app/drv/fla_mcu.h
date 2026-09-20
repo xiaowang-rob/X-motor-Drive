@@ -1,16 +1,28 @@
-#ifndef XDR_BOARD_DRV_FLA_MCU_H
-#define XDR_BOARD_DRV_FLA_MCU_H
+#ifndef __FLA_MCU_H
+#define __FLA_MCU_H
 
+#include "flash.h"
 #include "iap.h"
 
-// MCU 内部 Flash —— 板级钩子的具体实现之一
-bool fla_mcu_open(void);
-bool fla_mcu_read(uint32_t addr, uint8_t *data, uint32_t len);
-bool fla_mcu_write(uint32_t addr, const uint8_t *data, uint32_t len);
-bool fla_mcu_erase_addr(uint32_t addr, uint32_t len);
-bool fla_mcu_erase_sector(uint8_t sec_id);
-uint8_t fla_mcu_sector_count(void);
-uint32_t fla_mcu_sector_addr(uint8_t sec_id);
-uint32_t fla_mcu_sector_size(uint8_t sec_id);
+// ============================================================
+// fla_mcu.h — MCU 内部 Flash 介质驱动（板级）
+//
+// 实现 abs/flash.h 的 tFlashOps，并导出驱动实例供装配层挂钩；
+// 同时提供 IAP 出口（分区表符号 + 平台跳转，见 board_flash.h）。
+// ============================================================
 
-#endif // XDR_BOARD_DRV_FLA_MCU_H
+// 驱动实例（布局私有：只暴露符号，装配层仅取地址）
+typedef struct tFlaMcu tFlaMcu;
+extern tFlaMcu g_fla_mcu;
+
+// 驱动 ops（abs/flash.h 的 tFlashOps）
+extern const tFlashOps fla_mcu_ops;
+
+extern const tIAPPartition g_bl_parts;
+extern const tIAPPartition g_app_parts;
+
+void mcu_iap_app_init(void);
+bool mcu_iap_jump_bl(void);
+bool mcu_iap_jump_app(void);
+
+#endif // __FLA_MCU_H

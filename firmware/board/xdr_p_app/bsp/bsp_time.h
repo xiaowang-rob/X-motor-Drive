@@ -1,5 +1,5 @@
-#ifndef XDR_BOARD_BSP_TIME_H
-#define XDR_BOARD_BSP_TIME_H
+#ifndef __BSP_TIME_H
+#define __BSP_TIME_H
 
 #include <stdint.h>
 
@@ -32,4 +32,4 @@ void bsp_time_delay_ms(uint32_t ms);
 uint32_t bsp_critical_enter(void);
 void bsp_critical_exit(uint32_t primask);
 
-#endif // XDR_BOARD_BSP_TIME_H
+#endif // __BSP_TIME_H

@@ -1,5 +1,5 @@
-#ifndef XDR_BOARD_BSP_IRQ_H
-#define XDR_BOARD_BSP_IRQ_H
+#ifndef __BSP_IRQ_H
+#define __BSP_IRQ_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -70,4 +70,4 @@ typedef struct
 
 bool bsp_irq_bind_can(CAN_TypeDef *can, const tCanIrq *irq);
 
-#endif // XDR_BOARD_BSP_IRQ_H
+#endif // __BSP_IRQ_H

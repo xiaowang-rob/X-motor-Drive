@@ -1,24 +1,24 @@
 // ============================================================
 // gate_drv.c — 电机功率级业务对象（abs）
 //
-// 只做"状态维护 + 转发"：硬件动作经板级钩子（gate_drv_board.h）直接调用。
-// 无 ops 表、无句柄强转。
+// 只做"状态维护 + 转发"：硬件动作经 ops + handle（装配时挂）直达驱动。
 // ============================================================
 
 #include "gate_drv.h"
 
-#include "gate_drv_board.h"
-
 bool gate_drv_init(tGateDrv *drv)
 {
-    if (!drv)
+    if (!drv || !drv->ops || !drv->handle || !drv->ops->open)
         return false;
 
     drv->pwm_period = 0U;
     drv->dstate = DEV_OFFLINE;
 
-    if (!gate_board_open(&drv->pwm_period))
+    if (!drv->ops->open(drv->handle, &drv->pwm_period))
+    {
+        drv->dstate = DEV_RUN_ERROR;
         return false;
+    }
 
     drv->dstate = DEV_ONLINE;
     return true;
@@ -26,28 +26,30 @@ bool gate_drv_init(tGateDrv *drv)
 
 void gate_drv_power_on(tGateDrv *drv, bool on)
 {
-    if (!drv)
+    if (!drv || !drv->ops || !drv->ops->power)
         return;
-    gate_board_power(on);
+    drv->ops->power(drv->handle, on);
     drv->dstate = on ? DEV_ONLINE : DEV_OFFLINE;
 }
 
 void gate_drv_enable(tGateDrv *drv, bool en)
 {
-    if (!drv)
+    if (!drv || !drv->ops || !drv->ops->enable)
         return;
-    gate_board_enable(en);
+    drv->ops->enable(drv->handle, en);
     drv->dstate = en ? DEV_RUNNING : DEV_ONLINE;
 }
 
 void gate_drv_set_compare(tGateDrv *drv, uint16_t ticA, uint16_t ticB, uint16_t ticC)
 {
-    if (!drv)
+    if (!drv || !drv->ops || !drv->ops->set_compare)
         return;
-    gate_board_set_compare(ticA, ticB, ticC);
+    drv->ops->set_compare(drv->handle, ticA, ticB, ticC);
 }
 
-void gate_drv_register_isrs(void (*sample_cb)(void), void (*ctrl_cb)(void))
+void gate_drv_register_isrs(tGateDrv *drv, void (*sample_cb)(void), void (*ctrl_cb)(void))
 {
-    gate_board_register_isrs(sample_cb, ctrl_cb);
+    if (!drv || !drv->ops || !drv->ops->set_isr)
+        return;
+    drv->ops->set_isr(drv->handle, sample_cb, ctrl_cb);
 }

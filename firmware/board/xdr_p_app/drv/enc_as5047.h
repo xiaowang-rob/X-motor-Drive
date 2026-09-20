@@ -1,5 +1,5 @@
-#ifndef XDR_BOARD_DRV_ENC_AS5047_H
-#define XDR_BOARD_DRV_ENC_AS5047_H
+#ifndef __ENC_AS5047_H
+#define __ENC_AS5047_H
 
 #include <stdint.h>
 
@@ -9,8 +9,12 @@
 // 读角序列：段1 发 0x7FFF（弃响应）→ 段2 发 0x0000 收角度帧
 #define AS5047_RESOLUTION 16384U
 
-bool as5047_open(eEncoderType type, uint16_t *resolution);
-bool as5047_read(eEncoderType type, uint16_t *raw, uint32_t *ts_ms);
-void as5047_abort(eEncoderType type);
+// 驱动实例（布局私有：只暴露符号，装配层仅取地址）
+typedef struct tAS5047Dev tAS5047Dev;
+extern tAS5047Dev g_as5047_ext; // 外接编码器实例
+extern tAS5047Dev g_as5047_int; // 板载编码器实例
 
-#endif // XDR_BOARD_DRV_ENC_AS5047_H
+// 驱动 ops（abs/encoder.h 的 tEncoderOps）
+extern const tEncoderOps as5047_ops;
+
+#endif // __ENC_AS5047_H

@@ -1,5 +1,5 @@
-#ifndef __ABS_TIME_H
-#define __ABS_TIME_H
+#ifndef __IF_TIME_H
+#define __IF_TIME_H
 
 #include "device.h"
 
@@ -39,4 +39,4 @@ uint32_t time_get_ms(void);
 uint32_t time_get_us(void);
 void time_delay_ms(uint32_t ms);
 
-#endif // __ABS_TIME_H
+#endif // __IF_TIME_H

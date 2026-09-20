@@ -1,45 +1,50 @@
 // ============================================================
 // encoder.c — 编码器业务对象（abs，纯逻辑）
 //
-// 输入：板级钩子 encoder_board_read（同步读原始角 + 时间戳）
-// 输出：angle_abs、数据有效性 valid_counter、设备状态 dstate
-//
-// 无 ops 表、无 void* 句柄：直接调用板级钩子，链接期解析。
+// 硬件动作经 ops + handle 直达驱动：enc->ops->read(enc->handle, ...)。
+// 型号、外设与 CS 引脚等板级事实不在本层出现。
 // ============================================================
 
 #include "encoder.h"
 
-#include "encoder_board.h"
 #include "math_fast.h"
 
-bool encoder_init(tEncoder *enc, eEncoderType type, eEncoderChipId chip)
+bool encoder_init(tEncoder *enc, eEncoderMode mode)
 {
-    if (!enc)
+    if (!enc || !enc->ops || !enc->handle)
+        return false;
+    if (!enc->ops->open || !enc->ops->read)
         return false;
 
-    memset(enc, 0, sizeof(tEncoder));
-    enc->type = type;
+    // 只重置业务字段；ops / handle 是装配结果，不在本层改动
+    enc->mode = mode;
     enc->dstate = DEV_OFFLINE;
+    enc->resolution = 0U;
+    enc->rad_per_lsb = 0.0f;
+    enc->angle_abs = 0.0f;
+    enc->valid_counter = 0U;
 
     uint16_t resolution = 0U;
-    if (!encoder_board_open(type, chip, &resolution) || resolution == 0U)
+    if (!enc->ops->open(enc->handle, &resolution) || resolution == 0U)
+    {
+        enc->dstate = DEV_RUN_ERROR;
         return false;
+    }
 
     enc->resolution = resolution;
     enc->rad_per_lsb = MATH_2PI / (float)resolution;
-    enc->valid_counter = 0U;
     enc->dstate = DEV_ONLINE;
     return true;
 }
 
 void encoder_task(tEncoder *enc)
 {
-    if (!enc)
+    if (!enc || !enc->ops || !enc->ops->read)
         return;
 
     uint16_t raw = 0U;
     uint32_t ts_ms = 0U;
-    if (!encoder_board_read(enc->type, &raw, &ts_ms))
+    if (!enc->ops->read(enc->handle, &raw, &ts_ms))
     {
         // 读取失败：滑动计数向失效方向走
         enc->valid_counter = (enc->valid_counter < ENCODER_VALID_COUNT_MAX)

@@ -1,17 +1,16 @@
 // ============================================================
 // led.c — LED / RGB 业务编排（abs，纯逻辑）
 //
-// tLed：开/关/慢闪/快闪（按时间切换，toggle 板级）
+// tLed：开/关/慢闪/快闪（按时间切换，toggle 驱动）
 // tRgb：灭/亮/慢闪/快闪/呼吸（正弦亮度曲线）
 // 颜色常量与 64 点正弦表定义于此。
 //
-// 硬件动作经板级钩子 led_board.h 直接调用，无 ops 表。
+// 硬件动作经 ops + handle（装配时挂）直达驱动。
 // ============================================================
 
 #include "led.h"
 
 #include "IF_time.h"
-#include "led_board.h"
 
 // ---- 预置颜色 ----
 const tRGBColor RGB_BLACK = {0, 0, 0};
@@ -34,17 +33,18 @@ static const uint8_t SINE_TABLE[64] = {
 
 // ==================== tLed ====================
 
-bool led_init(tLed *led, uint8_t idx)
+bool led_init(tLed *led)
 {
-    if (!led)
+    if (!led || !led->ops || !led->handle || !led->ops->open)
         return false;
 
-    memset(led, 0, sizeof(tLed));
-    led->idx = idx;
+    // 只重置业务字段；ops / handle 是装配结果，不在本层改动
     led->state = LED_OFF;
     led->fast_ms = 300U; // 默认：快速闪烁 300ms 半周期
     led->slow_ms = 800U; // 默认：慢速闪烁 800ms 半周期
-    return led_board_open(idx);
+    led->next_change_ms = 0U;
+
+    return led->ops->open(led->handle);
 }
 
 void led_set_state(tLed *led, eLedState state)
@@ -67,16 +67,18 @@ void led_set_times(tLed *led, uint16_t fast_ms, uint16_t slow_ms)
 
 void led_task(tLed *led)
 {
-    if (!led)
+    if (!led || !led->ops)
         return;
 
     switch (led->state)
     {
     case LED_ON:
-        led_board_set(led->idx, true);
+        if (led->ops->set)
+            led->ops->set(led->handle, true);
         break;
     case LED_OFF:
-        led_board_set(led->idx, false);
+        if (led->ops->set)
+            led->ops->set(led->handle, false);
         break;
     case LED_BLINK_SLOW:
     case LED_BLINK_FAST:
@@ -85,7 +87,8 @@ void led_task(tLed *led)
         uint32_t half = (led->state == LED_BLINK_FAST) ? led->fast_ms : led->slow_ms;
         if ((now - led->next_change_ms) >= half)
         {
-            led_board_toggle(led->idx);
+            if (led->ops->toggle)
+                led->ops->toggle(led->handle);
             led->next_change_ms = now;
         }
         break;
@@ -99,16 +102,19 @@ void led_task(tLed *led)
 
 bool rgb_init(tRgb *rgb)
 {
-    if (!rgb)
+    if (!rgb || !rgb->ops || !rgb->handle || !rgb->ops->open)
         return false;
 
-    memset(rgb, 0, sizeof(tRgb));
+    // 只重置业务字段；ops / handle 是装配结果，不在本层改动
     rgb->state = RGB_OFF;
     rgb->color = RGB_BLACK;
     rgb->fast_ms = 300U;
     rgb->slow_ms = 800U;
     rgb->breathe_ms = 40U;
-    return rgb_board_open();
+    rgb->next_change_ms = 0U;
+    rgb->breath_idx = 0U;
+
+    return rgb->ops->open(rgb->handle);
 }
 
 void rgb_set_state(tRgb *rgb, eRgbState state)
@@ -121,10 +127,11 @@ void rgb_set_state(tRgb *rgb, eRgbState state)
 
 void rgb_set_color(tRgb *rgb, tRGBColor color)
 {
-    if (!rgb)
+    if (!rgb || !rgb->ops)
         return;
     rgb->color = color;
-    rgb_board_set_color(color); // 颜色缓存到驱动，亮度由 task 驱动
+    if (rgb->ops->set_color)
+        rgb->ops->set_color(rgb->handle, color); // 颜色缓存到驱动，亮度由 task 驱动
 }
 
 void rgb_set_times(tRgb *rgb, uint16_t fast_ms, uint16_t slow_ms, uint16_t breathe_ms)
@@ -141,18 +148,22 @@ void rgb_set_times(tRgb *rgb, uint16_t fast_ms, uint16_t slow_ms, uint16_t breat
 
 void rgb_task(tRgb *rgb)
 {
-    if (!rgb)
+    if (!rgb || !rgb->ops)
         return;
 
     switch (rgb->state)
     {
     case RGB_ON:
-        rgb_board_set_brightness(255U);
-        rgb_board_refresh();
+        if (rgb->ops->set_brightness)
+            rgb->ops->set_brightness(rgb->handle, 255U);
+        if (rgb->ops->refresh)
+            rgb->ops->refresh(rgb->handle);
         break;
     case RGB_OFF:
-        rgb_board_set_brightness(0U);
-        rgb_board_refresh();
+        if (rgb->ops->set_brightness)
+            rgb->ops->set_brightness(rgb->handle, 0U);
+        if (rgb->ops->refresh)
+            rgb->ops->refresh(rgb->handle);
         break;
     case RGB_BLINK_SLOW:
     case RGB_BLINK_FAST:
@@ -163,8 +174,10 @@ void rgb_task(tRgb *rgb)
         {
             // 以 0/255 两档切换亮度
             uint8_t b = (rgb->breath_idx & 1U) ? 0U : 255U;
-            rgb_board_set_brightness(b);
-            rgb_board_refresh();
+            if (rgb->ops->set_brightness)
+                rgb->ops->set_brightness(rgb->handle, b);
+            if (rgb->ops->refresh)
+                rgb->ops->refresh(rgb->handle);
             rgb->breath_idx++;
             rgb->next_change_ms = now;
         }
@@ -175,8 +188,10 @@ void rgb_task(tRgb *rgb)
         uint32_t now = time_get_ms();
         if ((now - rgb->next_change_ms) >= (uint32_t)rgb->breathe_ms)
         {
-            rgb_board_set_brightness(SINE_TABLE[rgb->breath_idx]);
-            rgb_board_refresh();
+            if (rgb->ops->set_brightness)
+                rgb->ops->set_brightness(rgb->handle, SINE_TABLE[rgb->breath_idx]);
+            if (rgb->ops->refresh)
+                rgb->ops->refresh(rgb->handle);
             rgb->breath_idx = (uint8_t)((rgb->breath_idx + 1U) & 63U);
             rgb->next_change_ms = now;
         }

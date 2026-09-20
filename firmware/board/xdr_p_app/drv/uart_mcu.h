@@ -1,11 +1,19 @@
-#ifndef XDR_BOARD_DRV_UART_MCU_H
-#define XDR_BOARD_DRV_UART_MCU_H
+#ifndef __UART_MCU_H
+#define __UART_MCU_H
 
 #include "uart_com.h"
 
-// MCU 串口（DMA + 空闲中断）—— 板级钩子的具体实现之一
-bool uart_mcu_open(void);
-bool uart_mcu_send(const uint8_t *data, uint16_t len);
-void uart_mcu_register_cb(uart_rx_done_cb cb, void *ctx);
+// ============================================================
+// uart_mcu.h — MCU 串口驱动（板级，DMA + 空闲中断）
+//
+// 实现 abs/uart_com.h 的 tUartOps，并导出驱动实例供装配层挂钩。
+// ============================================================
 
-#endif // XDR_BOARD_DRV_UART_MCU_H
+// 驱动实例（布局私有：只暴露符号，装配层仅取地址）
+typedef struct tUartMcu tUartMcu;
+extern tUartMcu g_uart1;
+
+// 驱动 ops（abs/uart_com.h 的 tUartOps）
+extern const tUartOps uart_mcu_ops;
+
+#endif // __UART_MCU_H

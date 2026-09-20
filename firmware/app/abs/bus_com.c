@@ -2,13 +2,12 @@
 
 #include <string.h>
 
-#include "bus_com_board.h"
-
 // ============================================================
 // bus_com.c — 总线式通信业务对象（abs，纯逻辑）
 //
-// 职责：把板级送来的原始帧放进"内存池 + 队列"，供主线程提取。
-// 板级只负责在中断里回调注册进来的 cb（回传 ctx = 本实例）。
+// 职责：把驱动送来的原始帧放进"内存池 + 队列"，供主线程提取。
+// 驱动只负责在中断里回调注册进来的 cb（回传 ctx = 本实例）。
+// 硬件动作经 ops + handle（装配时挂）直达驱动。
 // 内存池 / 队列缓冲由调用方提供（见 tBusBuffer），本文件无静态缓冲。
 // ============================================================
 
@@ -45,16 +44,18 @@ static void bus_on_rx_frame(void *ctx, uint32_t id, const uint8_t *data, uint8_t
     }
 }
 
-bool bus_init(tBusDriver *bus, eBusPort port, const tBusBuffer *buf)
+bool bus_init(tBusDriver *bus, const tBusBuffer *buf)
 {
-    if (!bus || !buf || (unsigned)port >= (unsigned)BUS_PORT_NUM)
+    if (!bus || !buf || !bus->ops || !bus->handle)
         return false;
     if (!buf->mp_buf || buf->mp_block_num == 0U || !buf->queue_buf || buf->queue_bytes == 0U)
         return false;
 
-    memset(bus, 0, sizeof(*bus));
-    bus->port = port;
+    // 只初始化业务字段；ops / handle 是装配结果，不在本层改动
+    bus->device_id = 0U;
     bus->dstate = DEV_OFFLINE;
+    bus->tstate = DEV_OFFLINE;
+    bus->rstate = DEV_OFFLINE;
 
     mp_init(&bus->mem_pool, buf->mp_buf, sizeof(tBus_Frame), (uint8_t)buf->mp_block_num);
 
@@ -63,17 +64,18 @@ bool bus_init(tBusDriver *bus, eBusPort port, const tBusBuffer *buf)
         return false;
 
     // 注册回调并把本实例作为 ctx 回传
-    bus_board_register_cb(bus->port, bus_on_rx_frame, bus);
+    if (bus->ops->set_rx_cb)
+        bus->ops->set_rx_cb(bus->handle, bus_on_rx_frame, bus);
     return true;
 }
 
 bool bus_start(tBusDriver *bus, uint32_t device_id)
 {
-    if (!bus)
+    if (!bus || !bus->ops || !bus->ops->open)
         return false;
 
     bus->device_id = device_id;
-    if (!bus_board_open(bus->port, device_id))
+    if (!bus->ops->open(bus->handle, device_id))
     {
         bus->dstate = DEV_RUN_ERROR;
         return false;
@@ -87,10 +89,10 @@ bool bus_start(tBusDriver *bus, uint32_t device_id)
 
 bool bus_send(tBusDriver *bus, const tBus_Frame *frame)
 {
-    if (!bus || !frame)
+    if (!bus || !frame || !bus->ops || !bus->ops->send)
         return false;
 
-    if (!bus_board_send(bus->port, frame->id, frame->data, frame->data_len))
+    if (!bus->ops->send(bus->handle, frame->id, frame->data, frame->data_len))
     {
         bus->tstate = DEV_BUSY; // 发送失败一般因邮箱忙
         return false;

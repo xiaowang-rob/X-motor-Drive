@@ -1,12 +1,12 @@
-#ifndef XDR_APP_ABS_SENSE_H
-#define XDR_APP_ABS_SENSE_H
+#ifndef __SENSE_H
+#define __SENSE_H
 
 #include "device.h"
 
 // ============================================================
 // sense.h — 电流/电压/温度采样业务对象（abs）
 //
-// 编译期绑定：原始码经板级钩子（sense_board.h）取回，无 ops 表。
+// 接口形态：ops + handle（装配层在定义 tSense 对象时挂上）。
 //
 // 吃原始码 → 输出物理量：
 //   - 三相电流：原始码 - 零点（EMA 跟踪）× 换算系数
@@ -20,9 +20,23 @@
 #define SENSE_IDLE_K 0.002f     // 零点 EMA 系数
 #define SENSE_VT_REFRESH_MS 10U // Vbus/温度刷新周期
 
+// 驱动接口（板级实现）；handle 为驱动实例
 typedef struct
 {
-    // 换算系数（init 时由板级给出，之后不变）
+    bool (*open)(void *handle, float *cur_scale, float *vbus_scale); // 启动采样前端 + 给换算系数
+    void (*set_sample_point)(void *handle, uint32_t tic);            // 电流采样点在 PWM 周期内的位置
+    bool (*get_cur_raw)(void *handle, uint16_t raw[3]);              // 取最新一帧三相电流原始码
+    void (*vt_trigger)(void *handle);                                // 触发一轮 Vbus/温度转换
+    bool (*get_vt_raw)(void *handle, uint16_t *vbus_raw,
+                       uint16_t *temp_raw);                          // 取 Vbus/温度原始码
+} tSenseOps;
+
+typedef struct
+{
+    const tSenseOps *ops; // 驱动 ops（装配时挂）
+    void *handle;         // 驱动实例（装配时挂）
+
+    // 换算系数（init 时由驱动给出，之后不变）
     float cur_scale;  // A/码（12bit 电流）
     float vbus_scale; // V/码（8bit Vbus）
 
@@ -38,10 +52,10 @@ typedef struct
     uint32_t last_vt_ms; // 上次 Vbus/温度刷新时刻
 } tSense;
 
-// 绑定并初始化（内部调用板级钩子 sense_board_open，含启动采样与取回换算系数）
+// 启动对象：ops/handle 须已由装配层挂好（任一为空返回 false）
 bool sense_init(tSense *s);
 
-// 设置电流采样点在 PWM 周期内的位置（转发给板级）
+// 设置电流采样点在 PWM 周期内的位置（转发给驱动）
 void sense_set_sample_point(tSense *s, uint32_t tic);
 
 // PWM 周期内调用一次：
@@ -56,4 +70,4 @@ float sense_get_vbus(const tSense *s);
 float sense_get_temperature(const tSense *s);
 bool sense_is_zero_ready(const tSense *s);
 
-#endif // XDR_APP_ABS_SENSE_H
+#endif // __SENSE_H
