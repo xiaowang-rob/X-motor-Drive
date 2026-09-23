@@ -3,17 +3,20 @@
 XDr 统一构建脚本
 
 用法:
-  python3 firmware/tools/build.py build --board=xdr_p_app --type=app
-  python3 firmware/tools/build.py flash --board=xdr_p_app
+  python3 firmware/tools/build.py build --board=xdr_s --type=app
+  python3 firmware/tools/build.py build --board=xdr_p --type=bl
+  python3 firmware/tools/build.py flash --board=xdr_p --debugger=jlink
   python3 firmware/tools/build.py bf          # 编译 + 烧录
   python3 firmware/tools/build.py clean
 
+两个维度：board（xdr_p | xdr_s） × type（app | bl）。
+
 项目结构（构建单元在 firmware/ 下）：
-  firmware/board/<board>/   板级：HAL + CubeMX Core + USB + drv + startup
-  firmware/app/             应用侧：abs / app / ctl / srv / utils
-  firmware/bootload/        引导固件（--type=bl）
-  firmware/build/<board>-<type>/  CMake 构建目录（与 CMakePresets 的目录一致）
-  firmware/firmware_out/    输出 bin/hex
+  firmware/board/<board>/<type>/  板级：HAL + CubeMX Core + USB + drv + startup
+  firmware/app/                   应用侧：abs / app / ctl / srv / utils
+  firmware/bootload/              引导固件（--type=bl）
+  firmware/build/<board>-<type>/  CMake 构建目录（与 CMakePresets 的 preset 名一致）
+  firmware/firmware_out/          输出 bin/hex
 """
 import json
 import re
@@ -34,9 +37,48 @@ REPO_ROOT = PROJECT_ROOT.parent        # 仓库根
 BUILD_ROOT = PROJECT_ROOT / "build"
 FIRMWARE_OUT = PROJECT_ROOT / "firmware_out"
 
-# 板级目录名 -> 产品显示名（对应 firmware/board/<board>/）
+# 板卡 -> 产品显示名（对应 firmware/board/<board>/）
 BOARDS = {
-    "xdr_p_app": "XDr-P",
+    "xdr_p": "XDr-P",
+    "xdr_s": "XDr-S",
+}
+
+# 固件类型
+FW_TYPES = ("app", "bl")
+
+# 板卡 -> 默认 openocd target（板级 project_config.json 缺失时的兜底）
+DEFAULT_TARGET = {
+    "xdr_p": "target/stm32f4x.cfg",
+    "xdr_s": "target/stm32g4x.cfg",
+}
+
+# 板卡 -> 内部 Flash 几何（KB）：固件大小与分配展示、区域占用以此为准。
+# 需与板级 fla_mcu.c 的分区表一致：
+#   xdr_p：1MB，BL 32 / APP 608 / 用户区 384（LOG + PARAM + IAP 各 128）
+#   xdr_s：128KB，BL 32 / APP 80 / USR 16
+FLASH_GEOM = {
+    "xdr_p": {
+        "total_kb": 1024,
+        "bl_kb": 32,
+        "app_kb": 608,
+        "regions": [
+            ("BL", 32, 32),
+            ("APP", 608, 34),
+            ("LOG", 128, 33),
+            ("PARAM", 128, 35),
+            ("IAP", 128, 36),
+        ],
+    },
+    "xdr_s": {
+        "total_kb": 128,
+        "bl_kb": 32,
+        "app_kb": 80,
+        "regions": [
+            ("BL", 32, 32),
+            ("APP", 80, 34),
+            ("USR", 16, 33),
+        ],
+    },
 }
 
 
@@ -51,13 +93,32 @@ def _load_project_config():
 _project_cfg = _load_project_config()  # 缓存
 
 
-def _load_board_config(board, debugger=None):
-    """加载板级配置（调试器信息等），debugger 可覆盖配置文件中的 debugger_type"""
-    cfg_path = PROJECT_ROOT / "board" / board / "project_config.json"
-    if cfg_path.exists():
-        cfg = json.loads(cfg_path.read_text())
+def _board_dir(board, fw_type):
+    """板级工程目录：firmware/board/<board>/<type>/"""
+    return PROJECT_ROOT / "board" / board / fw_type
+
+
+def _load_board_config(board, fw_type, debugger=None):
+    """加载板级配置（调试器信息等）。
+
+    查找顺序：board/<board>/<type>/project_config.json
+              → board/<board>/app/project_config.json
+    调试器/接口属板级属性、与固件类型无关，故 bl 可复用 app 的配置；
+    再找不到则用 DEFAULT_TARGET[board] 兜底。
+    """
+    for path in (_board_dir(board, fw_type) / "project_config.json",
+                 _board_dir(board, "app") / "project_config.json"):
+        if path.exists():
+            cfg = json.loads(path.read_text())
+            break
     else:
-        cfg = {"debugger": {"stlink": {"interface": "interface/stlink.cfg", "target": "target/stm32f4x.cfg"}}}
+        target = DEFAULT_TARGET.get(board, "target/stm32f4x.cfg")
+        cfg = {"debugger": {
+            "stlink": {"interface": "interface/stlink.cfg", "target": target},
+            "jlink": {"interface": "interface/jlink.cfg", "target": target},
+            "daplink": {"interface": "interface/cmsis-dap.cfg", "target": target},
+        }}
+
     if debugger:
         cfg["debugger_type"] = debugger
     return cfg
@@ -123,17 +184,26 @@ def cmd_build(board, fw_type):
     """编译固件"""
     desc = BOARDS[board]
     elf_name = "XDr-BL.elf" if fw_type == "bl" else "XDr.elf"
+    board_dir = _board_dir(board, fw_type)
 
     # 编译类型：来自 project.json，默认 Debug
     build_type = _project_cfg.get('build_type', 'Debug')
 
     print(f"\n  \033[1m{desc} ({fw_type})\033[0m")
-    print(f"  板级: board/{board}")
+    print(f"  板级: board/{board}/{fw_type}")
     print(f"  固件: {'bootload/' if fw_type == 'bl' else 'app/'}")
     print(f"  编译类型: {build_type}")
     print()
 
-    toolchain = PROJECT_ROOT / "board" / board / "cmake" / "gcc-arm-none-eabi.cmake"
+    # 板级工程预检：目录里可能只有 CubeMX 的 .ioc（尚未生成工程）
+    if not (board_dir / "CMakeLists.txt").exists():
+        print(f"  \033[31m✗ 板级工程不完整: {board_dir}\033[0m")
+        print(f"    该目录下没有 CMakeLists.txt（只有 .ioc 时属'未由 CubeMX 生成'状态）。")
+        print(f"    请用 STM32CubeMX 打开 {board_dir}/*.ioc 生成板级工程，")
+        print(f"    或改用已就绪的组合，例如 --board={board} --type=app。")
+        sys.exit(1)
+
+    toolchain = board_dir / "cmake" / "gcc-arm-none-eabi.cmake"
     if not toolchain.exists():
         print(f"  \033[31m✗ 找不到工具链文件: {toolchain}\033[0m")
         sys.exit(1)
@@ -200,40 +270,35 @@ def cmd_build(board, fw_type):
             else:
                 dec_total = 0
 
-        # Flash 分配进度条（全片）
-        print(f"\n  \033[1mFlash 分配:\033[0m")
-        regions = [
-            ("BL", 32, 32),           # 32: green
-            ("APP", 608, 34),         # 34: blue
-            ("LOG", 128, 33),         # 33: yellow
-            ("PARAM", 128, 35),       # 35: magenta
-            ("IAP", 128, 36),         # 36: cyan
-        ]
-        max_bar = 40
-        bar_chars = []
-        legend = []
-        for name, size_kb, color in regions:
-            n = max(1, size_kb * max_bar // 1024)
-            bar_chars.append(f"\033[{color}m{'█' * n}\033[0m")
-            legend.append(f"\033[{color}m{name}\033[0m")
-        print(f"    [{' '.join(legend)}]")
-        print(f"    {' ' * 4}{''.join(bar_chars)}  1MB (1024 KB)")
+        # Flash 分配进度条（按板几何：xdr_p 1MB / xdr_s 128KB）
+        geom = FLASH_GEOM.get(board)
+        if geom:
+            total_kb = geom["total_kb"]
+            print(f"\n  \033[1mFlash 分配:\033[0m  \033[90m({desc}, {total_kb} KB)\033[0m")
+            max_bar = 40
+            bar_chars = []
+            legend = []
+            for name, size_kb, color in geom["regions"]:
+                n = max(1, size_kb * max_bar // total_kb)
+                bar_chars.append(f"\033[{color}m{'█' * n}\033[0m")
+                legend.append(f"\033[{color}m{name}\033[0m")
+            print(f"    [{' '.join(legend)}]")
+            print(f"    {' ' * 4}{''.join(bar_chars)}  {total_kb} KB")
 
-        # 当前固件区域使用进度条（与全片分配分开显示）
-        app_size_kb = 1024 - 128 - 128 - 128 - 32  # total - flag - param - log - bl
-        region_name = "BL" if fw_type == "bl" else "APP"
-        region_total = 32 if fw_type == "bl" else app_size_kb
-        if dec_total > 0:
-            used = dec_total / 1024
-            pct = int(used / region_total * 100) if region_total > 0 else 0
-            bar_len = 30
-            filled = max(1, int(used * bar_len / region_total)) if region_total > 0 else 1
-            empty = bar_len - filled
-            # 根据占用百分比变色：<70% 绿  70-90% 黄  >90% 红
-            used_color = 32 if pct < 70 else (33 if pct < 90 else 31)
-            bar = f"\033[{used_color}m{'█' * filled}\033[0m\033[90m{'░' * empty}\033[0m"
-            print(f"\n  \033[1m{region_name} 区域占用:\033[0m")
-            print(f"    \033[1m{region_name}\033[0m {bar}  {used:.1f}KB / {region_total}KB (\033[{used_color}m{pct}%\033[0m)")
+            # 当前固件区域使用进度条（与全片分配分开显示）
+            region_name = "BL" if fw_type == "bl" else "APP"
+            region_total = geom["bl_kb"] if fw_type == "bl" else geom["app_kb"]
+            if dec_total > 0 and region_total > 0:
+                used = dec_total / 1024
+                pct = int(used / region_total * 100)
+                bar_len = 30
+                filled = max(1, int(used * bar_len / region_total))
+                empty = bar_len - filled
+                # 根据占用百分比变色：<70% 绿  70-90% 黄  >90% 红
+                used_color = 32 if pct < 70 else (33 if pct < 90 else 31)
+                bar = f"\033[{used_color}m{'█' * filled}\033[0m\033[90m{'░' * empty}\033[0m"
+                print(f"\n  \033[1m{region_name} 区域占用:\033[0m")
+                print(f"    \033[1m{region_name}\033[0m {bar}  {used:.1f}KB / {region_total}KB (\033[{used_color}m{pct}%\033[0m)")
 
         # 输出到 firmware_out/
         date_str = datetime.now().strftime("%y%m%d")
@@ -264,7 +329,7 @@ def cmd_build(board, fw_type):
 
 def _resolve_cli():
     """解析命令行参数，返回 (cmd, board, fw_type, debugger)"""
-    board = _project_cfg.get("board", "xdr_p_app")
+    board = _project_cfg.get("board", "xdr_p")
     fw_type = _project_cfg.get("fw_type", "app")
     debugger = _project_cfg.get("debugger")
 
@@ -282,37 +347,42 @@ def _resolve_cli():
 def main():
     if len(sys.argv) < 2:
         print("XDr 构建脚本")
-        print("用法: python3 firmware/tools/build.py build --board=xdr_p_app --type=app")
-        print("       python3 firmware/tools/build.py flash --board=xdr_p_app --debugger=jlink")
+        print("用法: python3 firmware/tools/build.py build --board=xdr_s --type=app")
+        print("       python3 firmware/tools/build.py flash --board=xdr_p --debugger=jlink")
         print("命令: build | flash | bf (编译+烧录) | erase | clean")
-        print(f"板卡: {', '.join(BOARDS.keys())}")
+        print(f"板卡: {', '.join(BOARDS)}")
+        print(f"固件类型: {', '.join(FW_TYPES)}")
         print("选项:")
-        print("  --board=<board>      板卡名称（board/<board>/）")
+        print("  --board=<board>      板卡（board/<board>/<type>/）")
         print("  --type=<app|bl>      固件类型")
         print("  --debugger=<type>    调试器类型: stlink/jlink/daplink")
-        print("默认值取自 project.json，未配置时: board=xdr_p_app, type=app, debugger=stlink")
+        print("默认值取自 project.json，未配置时: board=xdr_p, type=app, debugger=stlink")
         sys.exit(1)
 
     cmd = sys.argv[1]
     board, fw_type, debugger = _resolve_cli()
 
     if board not in BOARDS:
-        print(f"未知板卡: {board}（可用: {', '.join(BOARDS.keys())}）")
+        print(f"未知板卡: {board}（可用: {', '.join(BOARDS)}）")
+        sys.exit(1)
+
+    if fw_type not in FW_TYPES:
+        print(f"未知固件类型: {fw_type}（可用: {', '.join(FW_TYPES)}）")
         sys.exit(1)
 
     if cmd == "build":
         cmd_build(board, fw_type)
     elif cmd == "flash":
-        cfg = _load_board_config(board, debugger)
+        cfg = _load_board_config(board, fw_type, debugger)
         elf = _build_dir(board, fw_type) / flash_core.elf_name(PROJECT_ROOT, fw_type)
         flash_core.cmd_flash(cfg, elf)
     elif cmd == "bf":
         cmd_build(board, fw_type)
-        cfg = _load_board_config(board, debugger)
+        cfg = _load_board_config(board, fw_type, debugger)
         elf = _build_dir(board, fw_type) / flash_core.elf_name(PROJECT_ROOT, fw_type)
         flash_core.cmd_flash(cfg, elf)
     elif cmd == "erase":
-        cfg = _load_board_config(board, debugger)
+        cfg = _load_board_config(board, fw_type, debugger)
         flash_core.cmd_erase(cfg)
     elif cmd == "clean":
         if BUILD_ROOT.exists():

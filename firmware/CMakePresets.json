@@ -11,36 +11,66 @@
       }
     },
     {
-      "name": "xdr_p_app-app",
-      "displayName": "XDr-P xdr_p_app APP",
-      "description": "应用固件：firmware/app + firmware/board/xdr_p_app",
+      "name": "xdr_p-app",
+      "displayName": "XDr-P  APP",
+      "description": "应用固件：firmware/app + firmware/board/xdr_p/app",
       "inherits": "base",
-      "toolchainFile": "${sourceDir}/board/xdr_p_app/cmake/gcc-arm-none-eabi.cmake",
+      "toolchainFile": "${sourceDir}/board/xdr_p/app/cmake/gcc-arm-none-eabi.cmake",
       "cacheVariables": {
-        "BOARD": "xdr_p_app",
+        "BOARD": "xdr_p",
         "FW_TYPE": "app"
       }
     },
     {
-      "name": "xdr_p_app-bl",
-      "displayName": "XDr-P xdr_p_app BL",
-      "description": "引导固件：firmware/bootload + firmware/board/xdr_p_app",
+      "name": "xdr_p-bl",
+      "displayName": "XDr-P  BL",
+      "description": "引导固件：firmware/bootload + firmware/board/xdr_p/bl",
       "inherits": "base",
-      "toolchainFile": "${sourceDir}/board/xdr_p_app/cmake/gcc-arm-none-eabi.cmake",
+      "toolchainFile": "${sourceDir}/board/xdr_p/bl/cmake/gcc-arm-none-eabi.cmake",
       "cacheVariables": {
-        "BOARD": "xdr_p_app",
+        "BOARD": "xdr_p",
+        "FW_TYPE": "bl"
+      }
+    },
+    {
+      "name": "xdr_s-app",
+      "displayName": "XDr-S  APP",
+      "description": "应用固件：firmware/app + firmware/board/xdr_s/app",
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/board/xdr_s/app/cmake/gcc-arm-none-eabi.cmake",
+      "cacheVariables": {
+        "BOARD": "xdr_s",
+        "FW_TYPE": "app"
+      }
+    },
+    {
+      "name": "xdr_s-bl",
+      "displayName": "XDr-S  BL",
+      "description": "引导固件：firmware/bootload + firmware/board/xdr_s/bl",
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/board/xdr_s/bl/cmake/gcc-arm-none-eabi.cmake",
+      "cacheVariables": {
+        "BOARD": "xdr_s",
         "FW_TYPE": "bl"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "xdr_p_app-app",
-      "configurePreset": "xdr_p_app-app"
+      "name": "xdr_p-app",
+      "configurePreset": "xdr_p-app"
     },
     {
-      "name": "xdr_p_app-bl",
-      "configurePreset": "xdr_p_app-bl"
+      "name": "xdr_p-bl",
+      "configurePreset": "xdr_p-bl"
+    },
+    {
+      "name": "xdr_s-app",
+      "configurePreset": "xdr_s-app"
+    },
+    {
+      "name": "xdr_s-bl",
+      "configurePreset": "xdr_s-bl"
     }
   ]
 }

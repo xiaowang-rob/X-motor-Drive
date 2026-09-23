@@ -1,4 +1,4 @@
-#include "device_cfg.h"
+#include "bsp_cfg.h"
 
 void bsp_init_front(void)
 {
@@ -11,26 +11,6 @@ void bsp_init_back(void)
     // 参数必须尽早出现 flash在其之前，初始化的时候最好不要有其他中断干涉，所有adc得往后放，但是foc初始化必须得有adc值，故最后
     // 正确的顺序应该是：
     // flash和参数一起-通讯-保护-日志-adc -foc初始化
-
-    // 1、初始化驱动层 （存储-iap-状态-传感-gate-通讯）
-    dev_base_init(); // 初始化板载驱动层
-    // 2、初始化参数服务 读参数
-
-    // 3、初始化日志服务 读日志
-
-    // TODO:重写参数从这里开始重新初始化
-
-    // 4、初始化状态服务
-
-    // 5、初始化保护服务
-
-    // 6、配置编码器设备驱动
-
-    // 7、启动通信
-
-    // 6、初始化时间槽服务
-
-    // 7、初始化core、启动时间槽服务
 
     // 电流采样初始化  get 电压温度电流
     // 编码器初始化
@@ -74,6 +54,28 @@ void bsp_error_handler()
 
 void main_init(void)
 {
+    iap_app_init();
+
+    // 1、初始化驱动层 （存储-iap-状态-传感-gate-通讯）
+    dev_base_init();
+    // 2、初始化参数服务 读参数
+
+    // 3、初始化日志服务 读日志
+
+    // TODO:重写参数从这里开始重新初始化
+
+    // 4、初始化状态服务
+
+    // 5、初始化保护服务
+
+    // 6、配置编码器设备驱动
+    dev_int_enc_init();
+    dev_ext_enc_init();
+    // 7、启动通信
+
+    // 6、初始化时间槽服务
+
+    // 7、初始化core、启动时间槽服务
 }
 void core_reset(void)
 {

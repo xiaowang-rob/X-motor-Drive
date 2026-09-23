@@ -20,6 +20,14 @@ typedef enum
     ENC_AUX,  // 辅编码器 启动时的辅助角度获取
 } eEncoderMode;
 
+typedef enum
+{
+    ENC_NONE, /* 无 */
+    MT6816,   /* MT6816 */
+    MT6835,   /* MT6835 */
+    AS5047,   /* AS5047 */
+} eEncoderChip;
+
 #define ENCODER_ERR_VALID_LIMIT 100 // valid_counter 超过该值判编码器通讯出问题
 #define ENCODER_VALID_COUNT_MAX 110 // 失效方向的饱和值
 

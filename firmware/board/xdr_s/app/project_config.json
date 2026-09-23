@@ -1,0 +1,19 @@
+{
+    "prod_name": "XDr",
+    "author": "wxd",
+    "debugger_type": "stlink",
+    "debugger": {
+        "stlink": {
+            "interface": "interface/stlink.cfg",
+            "target": "target/stm32g4x.cfg"
+        },
+        "jlink": {
+            "interface": "interface/jlink.cfg",
+            "target": "target/stm32g4x.cfg"
+        },
+        "daplink": {
+            "interface": "interface/cmsis-dap.cfg",
+            "target": "target/stm32g4x.cfg"
+        }
+    }
+}
