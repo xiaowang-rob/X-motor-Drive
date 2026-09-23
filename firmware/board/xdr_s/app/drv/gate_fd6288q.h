@@ -4,7 +4,7 @@
 #include "gate_drv.h"
 
 // ============================================================
-// gate_fd6288q.h — pwm 栅极驱动
+// gate_fd6288q.h — pwm 栅极驱动（板级）
 // ============================================================
 
 // ---------- 本板配置 ----------
@@ -21,6 +21,8 @@
 // 驱动实例（布局私有：只暴露符号，装配层仅取地址）
 typedef struct tFd6288q tFd6288q;
 extern tFd6288q g_fd6288q;
+
+bool fd6288q_owns_tim(const TIM_HandleTypeDef *htim);
 
 // 驱动 ops（abs/gate_drv.h 的 tGateOps）
 extern const tGateOps fd6288q_ops;

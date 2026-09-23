@@ -1,12 +1,12 @@
 // ============================================================
 // gate_fd6288q.c — 电机功率级驱动（板级，直连 HAL）
 //
-// TIM1 中心对齐 6 路 PWM（CH1-3 + 互补）+ 12V 电源 + FOC 节拍中断。
+// TIM1 中心对齐 6 路 PWM（CH1-3 + 互补）+ 12V 电源。
 // 本板外设：TIM1（Core/Src/tim.c 的 htim1，PA8/9/10=CH1/2/3，
 //           PB13/14/15=CH1N/2N/3N，ARR=4249 → 20kHz）。
-// 实例形态：外部链接实例（外设 / 通道映射 / 使能引脚 / PWM 周期 / FOC 回调）。
-// 中断：HAL_TIM_PeriodElapsedCallback 由本驱动定义（本板功率级只有 TIM1
-//       一路），上溢/下溢分别转发到注册进来的 FOC 回调。
+// 实例形态：外部链接实例（外设 / 通道映射 / 使能引脚 / PWM 周期）。
+// 中断：FOC 节拍回调（上/下溢）由板级 bsp_irq.c 独占定义，本驱动通过
+//       fd6288q_owns_tim() 供其判定事件源，不定义 HAL 回调符号。
 //
 // 实现 abs/gate_drv.h 的 tGateOps。
 // ============================================================
@@ -24,9 +24,6 @@ struct tFd6288q
     GPIO_TypeDef *pwr_port;  // 12V 使能 GPIO
     uint16_t pwr_pin;        // 12V 使能引脚
     uint32_t tic_pwm;        // PWM 周期计数
-
-    void (*sample_cb)(void); // 下溢：电流采样点（由 gate_drv 注册）
-    void (*ctrl_cb)(void);   // 上溢：FOC 控制（由 gate_drv 注册）
 };
 
 tFd6288q g_fd6288q = {
@@ -39,24 +36,11 @@ tFd6288q g_fd6288q = {
     .tic_pwm = GATE_TIC_PWM,
 };
 
-// ---------- FOC 节拍中断 ----------
-// HAL 回调由本驱动独占定义；采样/控制回调在中断上下文运行，须短小。
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+// ---------- 事件源判定（供 bsp_irq.c 的 HAL 回调过滤） ----------
+bool fd6288q_owns_tim(const TIM_HandleTypeDef *htim)
 {
-    if (!g_fd6288q.htim || htim->Instance != g_fd6288q.htim->Instance)
-        return;
-
-    // 中心对齐：CR1.DIR=1 表示当前向下计数（下溢事件），否则向上（上溢）
-    if (htim->Instance->CR1 & TIM_CR1_DIR)
-    {
-        if (g_fd6288q.sample_cb)
-            g_fd6288q.sample_cb();
-    }
-    else
-    {
-        if (g_fd6288q.ctrl_cb)
-            g_fd6288q.ctrl_cb();
-    }
+    return (htim != NULL) && (g_fd6288q.htim != NULL) &&
+           (htim->Instance == g_fd6288q.htim->Instance);
 }
 
 // ---------- 驱动接口（tGateOps） ----------
@@ -118,21 +102,10 @@ static void fd6288q_set_compare(void *handle, uint16_t ticA, uint16_t ticB, uint
     tim->CCR1 = ticC;
 }
 
-static void fd6288q_set_isr(void *handle, void (*sample_cb)(void), void (*ctrl_cb)(void))
-{
-    tFd6288q *inst = (tFd6288q *)handle;
-    if (!inst || !inst->htim)
-        return;
-
-    inst->sample_cb = sample_cb;
-    inst->ctrl_cb = ctrl_cb;
-}
-
 // ---- 驱动出口 ----
 const tGateOps fd6288q_ops = {
     .open = fd6288q_open,
     .power = fd6288q_power,
     .enable = fd6288q_enable,
     .set_compare = fd6288q_set_compare,
-    .set_isr = fd6288q_set_isr,
 };

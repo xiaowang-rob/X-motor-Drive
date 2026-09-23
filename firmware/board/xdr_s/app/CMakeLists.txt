@@ -1,15 +1,14 @@
 # ============================================================
 # XDr-S / xdr_s 板级 CMakeLists.txt
 #
-# 由顶层 firmware/CMakeLists.txt 以 add_subdirectory(board/<BOARD>) 引入
-# （BOARD=xdr_s/app）。
+# 由顶层 firmware/CMakeLists.txt 以 add_subdirectory(board/<BOARD>/<FW_TYPE>) 引入。
 #
 # 提供目标：
 #   stm32_hal    厂商 HAL 库（含 CMSIS 头路径、USE_HAL_DRIVER/STM32G474xx 定义）
 #   stm32_core   CubeMX 外设初始化（Core/Src）
 #   stm32_usb    USB Device 中间件（含 usbd_cdc_if 等应用层）
-#   board_dsp    CMSIS-DSP 头路径与预编译库（本板暂未引入，占位 INTERFACE）
-#   board_hw     板级资源（本板暂无板根 *.c / 独立 usb 描述符，占位 INTERFACE）
+#   board_dsp    CMSIS-DSP 头路径与预编译库
+#   board_hw     板级资源（本板暂无板根 *.c 与独立 usb 描述符，占位 INTERFACE）
 #   board_drv    本板芯片驱动（drv/）+ 板级支撑层（bsp/）
 #
 # 另向父作用域暴露 BOARD_STARTUP（启动文件，交给可执行目标而非静态库）。
@@ -65,10 +64,14 @@ target_include_directories(stm32_usb PUBLIC
 )
 target_link_libraries(stm32_usb PUBLIC stm32_hal)
 
-# ── CMSIS-DSP（占位） ──
-# 本板 Middlewares/ST 下暂无 ARM/DSP 预编译库；置为 INTERFACE 以保证顶层
-# 目标名存在（app_ctl 若用到 arm_math 需另行引入 DSP 库并改为带 include 的实现）。
+# ── CMSIS-DSP（头路径 + 预编译库） ──
 add_library(board_dsp INTERFACE)
+target_include_directories(board_dsp INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/ST/ARM/DSP/Inc
+)
+target_link_libraries(board_dsp INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/ST/ARM/DSP/Lib/libarm_cortexM4lf_math.a
+)
 
 # ── 板级资源（占位） ──
 # 本板暂无板根 *.c 与独立 USB 描述符；后续新增板级源文件时改回 STATIC：
@@ -85,8 +88,8 @@ target_link_libraries(board_hw INTERFACE stm32_hal stm32_core stm32_usb)
 set(BOARD_STARTUP ${CMAKE_CURRENT_SOURCE_DIR}/startup_stm32g474xx.s PARENT_SCOPE)
 
 # ── 本板芯片驱动层（drv/）+ 板级支撑层（bsp/） ──
-# bsp：时间/临界区/集中中断分发等"驱动之下的地基"，唯一接触 HAL 回调符号。
-# drv：芯片驱动，只用 bsp 与 HAL 外设类型，不定义 HAL 回调。
+# bsp：时间/临界区/功率级节拍中断等"驱动之下的地基"。
+# drv：芯片驱动，只用 bsp 与 HAL 外设类型。
 file(GLOB DRV_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/drv/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bsp/*.c

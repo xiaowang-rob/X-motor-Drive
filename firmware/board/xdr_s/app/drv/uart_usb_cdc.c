@@ -3,10 +3,6 @@
 //
 // 接收链：usbd_cdc_if.c 的 CDC_Receive_FS（USER CODE）→ 本文件转发 → uart_com 入队
 // 发送：CDC_Transmit_FS（总线忙时返回 false，由上层重试）
-//
-// 说明：USB 栈的回调签名不带实例参数，故由文件内实例承接，
-//       再经回调指针把数据送回 uart_com 实例。
-// 实现 abs/uart_com.h 的 tUartOps。
 // ============================================================
 #include "uart_usb_cdc.h"
 

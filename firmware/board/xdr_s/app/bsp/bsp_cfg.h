@@ -57,19 +57,10 @@ extern tEncoder g_enc_int; // 内置编码器
 extern tEncoder g_enc_ext; // 外部编码器
 extern tSense g_sense;     // 电流 / 母线 / 温度采样
 
-// App 启动准备（复位中断向量表偏移，开全局中断）
-void iap_app_init(void);
-
 // 装配并启动全板设备
-bool dev_base_init(void);
+bool bsp_base_init(void);
 
-// 板载编码器启动（型号固定，只设置模式）
-bool dev_int_enc_init(eEncoderMode mode);
-
-// 外接编码器启动：型号来自参数。
-bool dev_ext_enc_init(eEncoderChip chip, eEncoderMode mode);
-
-// FOC 节拍回调注册（转发给功率级驱动；PWM 中断由板级集中分发持有）
-void device_cfg_register_foc_isr(void (*sample_cb)(void), void (*ctrl_cb)(void));
+// 编码器初始化
+bool bsp_enc_init(eEncoderMode int_mode, eEncoderMode ext_mode, eEncoderChip ext_chip);
 
 #endif // __BSP_CFG_H

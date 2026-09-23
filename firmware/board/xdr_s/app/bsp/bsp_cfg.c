@@ -14,16 +14,16 @@
 #include "bsp_cfg.h"
 
 // ---- 板级驱动出口（仅本层 include） ----
-#include "bus_can.h"      // g_can2 / can_bus_ops
-#include "enc_as5047.h"   // g_as5047_ext / as5047_ops
-#include "enc_mt6816.h"   // g_mt6816_int / mt6816_ops
-#include "enc_mt6835.h"   // g_mt6835_ext / mt6835_ops
-#include "fla_mcu.h"      // g_fla_mcu / fla_mcu_ops
-#include "gate_fd6288q.h" // g_fd6288q / fd6288q_ops
-#include "led_gpio.h"     // g_led_gpio_0/1 / led_gpio_ops
-#include "sen_mcu.h"      // g_sen_mcu / sen_mcu_ops
-#include "uart_mcu.h"     // g_uart1 / uart_mcu_ops
-#include "uart_usb_cdc.h" // g_uart_usb / uart_usb_ops
+#include "bus_can.h"
+#include "enc_as5047.h"
+#include "enc_mt6816.h"
+#include "enc_mt6835.h"
+#include "fla_mcu.h"
+#include "gate_fd6288q.h"
+#include "led_gpio.h"
+#include "sen_mcu.h"
+#include "uart_mcu.h"
+#include "uart_usb_cdc.h"
 
 // ---- 存储 ----
 tFlash g_flash = {
@@ -56,11 +56,11 @@ tLed g_led_1 = {
 // ---- 通讯 ----
 tBusDriver g_can = {
     .ops = &can_bus_ops,
-    .handle = &g_can2,
+    .handle = &g_can0,
 };
 tUartDriver g_uart = {
     .ops = &uart_mcu_ops,
-    .handle = &g_uart1,
+    .handle = &g_uart0,
 };
 tUartDriver g_usb = {
     .ops = &uart_usb_ops,
@@ -75,8 +75,8 @@ tEncoder g_enc_int = {
 };
 tEncoder g_enc_ext = {
     // ops / handle 由参数中的型号决定，见 dev_ext_enc_init
-    .ops = &mt6816_ops, // 默认
-    .handle = &g_mt6816_int,
+    .ops = NULL, // 默认无
+    .handle = NULL,
     .mode = ENC_OFF,
 };
 tSense g_sense = {
@@ -119,15 +119,12 @@ static const tUartBuffer s_usb_buf = {
     .tx_buf = s_usb_tx,
 };
 
-// app 固件先初始化这个（中断向量表偏移）并开启中断，不然程序无法运行
-void iap_app_init(void)
-{
-    mcu_iap_app_init();
-}
-
 // 板载设备初始化
-bool dev_base_init(void)
+bool bsp_base_init(void)
 {
+    // app 固件先初始化这个（中断向量表偏移）并开启中断，不然程序无法运行
+    mcu_iap_app_init();
+
     // 存储：MCU 内部 Flash（介质几何与扇区操作见 fla_mcu.c）
     if (!flash_init(&g_flash))
         return false;
@@ -162,14 +159,13 @@ bool dev_base_init(void)
 }
 
 // 板载编码器初始化（型号固定，ops/handle 已在定义处挂好）
-bool dev_int_enc_init(eEncoderMode mode)
+bool bsp_enc_init(eEncoderMode int_mode, eEncoderMode ext_mode, eEncoderChip ext_chip)
 {
-    return encoder_init(&g_enc_int, mode);
-}
-
-bool dev_ext_enc_init(eEncoderChip chip, eEncoderMode mode)
-{
-    switch (chip)
+    bool enc_ok = false;
+    // 板载编码器初始化
+    enc_ok = encoder_init(&g_enc_int, int_mode);
+    // 外接编码器初始化
+    switch (ext_chip)
     {
     case MT6816:
         g_enc_ext.ops = &mt6816_ops;
@@ -187,12 +183,9 @@ bool dev_ext_enc_init(eEncoderChip chip, eEncoderMode mode)
     default:
         g_enc_ext.ops = NULL;
         g_enc_ext.handle = NULL;
-        return false; // 该型号未装配
+        enc_ok = true;
+        return enc_ok;
     }
-    return encoder_init(&g_enc_ext, mode);
-}
-
-void device_cfg_register_foc_isr(void (*sample_cb)(void), void (*ctrl_cb)(void))
-{
-    gate_drv_register_isrs(&g_gate, sample_cb, ctrl_cb);
+    enc_ok = encoder_init(&g_enc_ext, ext_mode);
+    return enc_ok;
 }

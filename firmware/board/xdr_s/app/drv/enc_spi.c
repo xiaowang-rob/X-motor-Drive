@@ -13,17 +13,19 @@
 
 #define ENC_XFER_TIMEOUT_MS 100U // SPI 读取超时时间（ms）
 
-// ---------- 本板配置：两路 CS ----------
-const tEncCs g_enc_cs[ENC_PATH_NUM] = {
-    [ENC_PATH_EXT] = {.port = GPIOB, .pin = GPIO_PIN_7},
-    [ENC_PATH_INT] = {.port = GPIOB, .pin = GPIO_PIN_6},
-};
+// CS 描述（片选：端口 + 引脚）
+typedef struct
+{
+    GPIO_TypeDef *port;
+    uint16_t pin;
+} tEncCs;
 
 // ---------- SPI 单例 —— 外设 + 当前模式 ----------
 typedef struct
 {
     SPI_HandleTypeDef *hspi; // 外设：编码器 SPI
-    bool mode_valid;         // 当前模式是否已知
+    tEncCs cs[2];
+    bool mode_valid; // 当前模式是否已知
     uint8_t cpol;
     uint8_t cpha;
     uint8_t data_bits;
@@ -32,6 +34,8 @@ typedef struct
 static tEncSpi s_spi = {
     .hspi = &hspi1,
     .mode_valid = false,
+    .cs[ENC_INT] = {.port = GPIOB, .pin = GPIO_PIN_6},
+    .cs[ENC_EXT] = {.port = GPIOB, .pin = GPIO_PIN_7},
 };
 
 static void enc_cs(const tEncCs *cs, bool active)
@@ -79,14 +83,14 @@ bool enc_spi_ensure_mode(uint8_t cpol, uint8_t cpha, uint8_t data_bits)
     return true;
 }
 
-bool enc_spi_transfer(const tEncXferSeg *segs, const tEncCs *cs, uint8_t n, uint32_t *ts_ms)
+bool enc_spi_transfer(const tEncXferSeg *segs, eENCtype type, uint8_t n, uint32_t *ts_ms)
 {
-    if (!segs || n == 0U || !ts_ms || !cs || !s_spi.hspi)
+    if (!segs || n == 0U || !ts_ms || !s_spi.hspi)
         return false;
     if (HAL_SPI_GetState(s_spi.hspi) != HAL_SPI_STATE_READY)
         return false;
 
-    enc_cs(cs, true);
+    enc_cs(&s_spi.cs[type], true);
     for (uint8_t i = 0U; i < n; i++)
     {
         uint16_t units = (s_spi.data_bits == 16U) ? (uint16_t)(segs[i].len / 2U) : segs[i].len;
@@ -94,17 +98,17 @@ bool enc_spi_transfer(const tEncXferSeg *segs, const tEncCs *cs, uint8_t n, uint
             HAL_SPI_TransmitReceive(s_spi.hspi, (uint8_t *)segs[i].tx,
                                     segs[i].rx, units, ENC_XFER_TIMEOUT_MS) != HAL_OK)
         {
-            enc_cs(cs, false);
+            enc_cs(&s_spi.cs[type], false);
             return false;
         }
     }
-    enc_cs(cs, false);
+    enc_cs(&s_spi.cs[type], false);
 
     *ts_ms = bsp_time_ms(); // 时间戳统一走 bsp
     return true;
 }
 
-void enc_spi_abort(const tEncCs *cs)
+void enc_spi_abort(eENCtype type)
 {
-    enc_cs(cs, false);
+    enc_cs(&s_spi.cs[type], false);
 }

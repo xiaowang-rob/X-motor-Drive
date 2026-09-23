@@ -24,8 +24,7 @@ struct tUartMcu
     void *rx_ctx;                               // 回调上下文（uart_com 实例）
 };
 
-// 注：符号名沿用 g_uart1（"第 1 路 MCU 串口"），本板接在 USART2 上。
-tUartMcu g_uart1 = {
+tUartMcu g_uart0 = {
     .huart = &huart2,
     .rx_buffer_size = UART_MCU_RX_BUFFER_SIZE,
     .rx_cb = NULL,

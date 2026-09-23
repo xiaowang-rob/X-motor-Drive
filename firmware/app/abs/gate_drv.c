@@ -46,10 +46,3 @@ void gate_drv_set_compare(tGateDrv *drv, uint16_t ticA, uint16_t ticB, uint16_t 
         return;
     drv->ops->set_compare(drv->handle, ticA, ticB, ticC);
 }
-
-void gate_drv_register_isrs(tGateDrv *drv, void (*sample_cb)(void), void (*ctrl_cb)(void))
-{
-    if (!drv || !drv->ops || !drv->ops->set_isr)
-        return;
-    drv->ops->set_isr(drv->handle, sample_cb, ctrl_cb);
-}

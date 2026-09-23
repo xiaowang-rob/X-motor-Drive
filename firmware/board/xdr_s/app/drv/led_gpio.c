@@ -5,15 +5,6 @@
 
 #include "gpio.h"
 
-// ---------- 本板配置 ----------
-#define LED_0_GPIO_PORT GPIOA
-#define LED_0_GPIO_PIN GPIO_PIN_4
-#define LED_0_ACTIVE_LEVEL false // 低电平点亮
-
-#define LED_1_GPIO_PORT GPIOA
-#define LED_1_GPIO_PIN GPIO_PIN_5
-#define LED_1_ACTIVE_LEVEL false // 低电平点亮
-
 // ---------- 实例 ----------
 struct tLedGpio
 {
@@ -22,8 +13,8 @@ struct tLedGpio
     bool active_level;  // 触发电平（true 高电平点亮）
 };
 
-tLedGpio g_led_gpio_0 = {.port = LED_0_GPIO_PORT, .pin = LED_0_GPIO_PIN, .active_level = LED_0_ACTIVE_LEVEL};
-tLedGpio g_led_gpio_1 = {.port = LED_1_GPIO_PORT, .pin = LED_1_GPIO_PIN, .active_level = LED_1_ACTIVE_LEVEL};
+tLedGpio g_led_gpio_0 = {.port = GPIOA, .pin = GPIO_PIN_4, .active_level = false};
+tLedGpio g_led_gpio_1 = {.port = GPIOA, .pin = GPIO_PIN_5, .active_level = false};
 
 // ---------- 驱动接口（tLedOps） ----------
 
