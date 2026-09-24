@@ -1,7 +1,6 @@
 #ifndef __TRAJECTORY_H
 #define __TRAJECTORY_H
 
-#include "math_fast.h"
 #include <stdbool.h>
 
 /*

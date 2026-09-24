@@ -15,6 +15,8 @@ typedef struct
     uint8_t eenc_mode;
     uint8_t eenc_chip;
 
+    bool enc_active;
+    bool obs_active;
     uint8_t ctrl_mode;
     uint8_t traj_type;
 
@@ -35,8 +37,15 @@ typedef struct
     uint32_t can_id;
     uint8_t can_mode;
     float clbw;
+    float qclkp;
+    float qclki;
+    float dclkp;
+    float dclki;
+    float cfalpha;
     float vlkp;
     float vlki;
+    float wlkp;
+    float wlki;
     float plkp;
     float plki;
     float plkd;
@@ -46,6 +55,7 @@ typedef struct
     float mit_kd;
     float mit_tsta;
     float mit_tmax;
+
     float tune_current;
     float limit_current;
     float limit_vel;
@@ -59,31 +69,12 @@ typedef struct
     float traj_limit_d3;
     float tolerance;
 
-    // ---- 以下为内部参数：不进协议，仅参与持久化 ----
-    float qclkp;
-    float qclki;
-    float dclkp;
-    float dclki;
-    float wlkp;
-    float wlki;
-    float cfalpha;
-    float vfalpha;
 } tParameter;
 
 extern tParameter g_param;
 
 // 参数描述符表（[eParameter] 索引；
 extern const tField g_param_fields[PARAM_NUM];
-
-// ---- 掉电存储接口（由组装层注入，通常绑到内部 Flash 的参数区单元） ----
-typedef struct
-{
-    bool (*read)(uint8_t *buf, uint32_t len);
-    bool (*write)(const uint8_t *buf, uint32_t len);
-    bool (*erase)(void);
-} tParamStore;
-
-void dm_param_bind_store(const tParamStore *store);
 
 // ---- 参数生效钩子（各子系统注册自己的重配置动作） ----
 void dm_param_register_apply(void (*hook)(void));

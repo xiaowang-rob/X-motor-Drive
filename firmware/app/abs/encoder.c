@@ -7,7 +7,7 @@
 
 #include "encoder.h"
 
-#include "math_fast.h"
+#include "bsp_math.h"
 
 bool encoder_init(tEncoder *enc, eEncoderMode mode)
 {

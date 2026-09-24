@@ -5,17 +5,18 @@
 /*参数*/
 typedef enum
 {
-    INC_ENC_MODE, /* 板载编码器 */
+    INC_ENC_MODE, /* 板载编码器模式 */
+    INC_ENC_CHIP, // 板载编码器芯片
     EXT_ENC_MODE, /* 外接编码器 */
     EXT_ENC_CHIP, /* 外接编码器芯片 */
-    OBS_MODE,     /* 观测模式 */
-    RUN_MODE,     /* 运行模式 */
-    CAN_MODE,     /* CAN模式 */
-    TRAJ_TYPE,    /* 轨迹规划器 */
+    ENC_ACTIVE,   // 编码器
+    OBS_ACTIVE,   /* 无感观测 */
+    CTRL_MODE,    /* 控制模式 */
+    TRAJ_MODE,    /* 轨迹规划器 */
 
     MOTOR_POLEPAIRS, /* 电机极对数 */
-    THETA_OFFSET,    /* 角度补偿 */
     POSITIVE_DIR,    // 正方向
+    THETA_OFFSET,    /* 角度补偿 */
     MOTOR_KV,        /* KV */
     MOTOR_RS,        /* 相电阻 */
     MOTOR_Ld,        /* Ld */
@@ -25,18 +26,27 @@ typedef enum
     MOTOR_J,         /* 转动惯量 */
     MOTOR_B,         /* 摩擦系数 */
 
-    CAN_ID, /* CAN ID */
+    CAN_ID,   /* CAN ID */
+    CAN_MODE, /* CAN模式 */
+    CLBW,     // 电流环带宽
+    QCLKP,    // q轴电流环比例
+    QCLKI,    // q轴电流环积分
+    DCLKP,    // d轴电流环比例
+    DCLKI,    // d轴电流环积分
+    CFALPHA,  // 电流滤波系数
+    VLKP,     /* 速度环比例 */
+    VLKI,     /* 速度环积分 */
+    WLKP,     // 弱磁环比例
+    WLKI,     /* 弱磁环积分 */
+    PLKP,     /* 位置环比例 */
+    PLKI,     /* 位置环积分 */
+    PLKD,     /* 位置环微分 */
+    PLALPHA,  /* 位置环滤波系数 */
+    MIT_KP,   /* MIT刚度 */
+    MIT_KD,   /* MIT阻尼 */
+    MIT_TSTA, // MIT静态扭矩补偿
+    MIT_TMAX, /* MIT最大扭矩 */
 
-    CLBW,               // 电流环带宽
-    VLKP,               /* 速度环比例 */
-    VLKI,               /* 速度环积分 */
-    PLKP,               /* 位置环比例 */
-    PLKI,               /* 位置环积分 */
-    PLKD,               /* 位置环微分 */
-    PLALPHA,            /* 位置环滤波系数 */
-    MIT_KP,             /* MIT刚度 */
-    MIT_KD,             /* MIT阻尼 */
-    MIT_TMAX,           /* MIT最大扭矩 */
     TUNE_CURRENT,       /* 校准电流 */
     LIMIT_CURRENT,      /* 电流限幅 */
     LIMIT_VELOCITY,     /* 速度限幅 */
@@ -44,10 +54,11 @@ typedef enum
     LIMIT_POSITION_MAX, /* 位置限幅最大值 */
     TOLERANCE_TIME,     /* 容忍时间 */
     TOLERANCE_LIMIT,    /* 超限容忍度 */
-    TRAJ_LIMIT_D1,      /* 一阶限幅 */
-    TRAJ_LIMIT_D2,      /* 二阶限幅 */
-    TRAJ_LIMIT_D3,      /* 三阶限幅 */
-    TRAJ_TOLERANCE,     /* 轨迹规划容差 */
+
+    TRAJ_LIMIT_D1,  /* 一阶限幅 */
+    TRAJ_LIMIT_D2,  /* 二阶限幅 */
+    TRAJ_LIMIT_D3,  /* 三阶限幅 */
+    TRAJ_TOLERANCE, /* 轨迹规划容差 */
     PARAM_NUM,
 } eParameter;
 /*数据*/
@@ -102,7 +113,7 @@ typedef enum
     PID_SPEED,    /* PID速度模式 */
     PID_POSITION, /* PID位置模式 */
     MIT_MODE,     /* MIT模式 */
-} eRunMode;
+} eCtrlMode;
 /*CAN模式*/
 typedef enum
 {
@@ -129,7 +140,7 @@ typedef enum
     TUNE_DONE,       /* 完成 */
     TUNE_FAILED,     /* 失败 */
 } eTuneState;
-// 驱动器运行状态
+// 核心状态
 typedef enum
 {
     INIT,    // INIT
@@ -138,7 +149,7 @@ typedef enum
     RUNNING, // RUNNING
     FAULT,   // FAULT
     WARNING, // WARNING
-} eState;
+} eCoreState;
 /*错误*/
 typedef enum
 {

@@ -1,5 +1,5 @@
 #include "trajectory.h"
-
+#include "bsp_math.h"
 //  常量定义
 #define TRAJ_EPSILON 1.0e-6f
 #define TRAJ_TOL_DEFAULT 0.001f

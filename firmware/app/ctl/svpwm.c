@@ -1,5 +1,5 @@
 #include "svpwm.h"
-#include "math_fast.h"
+#include "bsp_math.h"
 
 void svpwm_init(tSvpwm *sv, uint16_t tic_pwm, float Vbus,
                 float tpwm, float ts_us, float tn_us, float td_us)

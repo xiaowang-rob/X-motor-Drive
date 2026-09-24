@@ -47,14 +47,13 @@ typedef struct
 // 主要核心
 typedef struct
 {
-    eState state; // 状态
+    eCoreState state; // 状态
 
     volatile bool enable;     // 使能标记
     volatile bool obs_enable; // 观测器使能标记
     volatile bool enc_enable; // 编码器使能标记
 
-    eObsMode obs_mode; // 观测器模式
-    eRunMode run_mode; // 运行模式
+    eCtrlMode ctrl_mode; // 运行模式
 
     tPI PI_weakmag;
     tPI PI_vel;
@@ -68,4 +67,5 @@ typedef struct
 
     tCoreVal val; // 反馈数据
 } tCore;
+
 #endif

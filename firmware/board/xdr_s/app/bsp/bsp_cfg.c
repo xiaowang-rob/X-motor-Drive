@@ -44,13 +44,9 @@ tGateDrv g_gate = {
 };
 
 // ---- 状态反馈 ----
-tLed g_led_0 = {
+tLed g_led = {
     .ops = &led_gpio_ops,
     .handle = &g_led_gpio_0, // 每颗 LED 一个实例
-};
-tLed g_led_1 = {
-    .ops = &led_gpio_ops,
-    .handle = &g_led_gpio_1,
 };
 
 // ---- 通讯 ----
@@ -144,7 +140,7 @@ bool bsp_base_init(void)
     sense_set_sample_point(&g_sense, g_gate.pwm_period - 1U);
 
     // 状态反馈（见 led_gpio.c）
-    if (!led_init(&g_led_0) || !led_init(&g_led_1))
+    if (!led_init(&g_led_0))
         return false;
 
     // 通讯（见 bus_can.c / uart_mcu.c / uart_usb_cdc.c）

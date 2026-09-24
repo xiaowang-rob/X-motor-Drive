@@ -1,8 +1,6 @@
 #ifndef __SVPWM_H
 #define __SVPWM_H
 
-#include "device_cfg.h"
-
 typedef struct
 {
     uint16_t tic_pwm; // pwm arr

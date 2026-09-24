@@ -1,16 +1,13 @@
 #ifndef __PROTECTION_H
 #define __PROTECTION_H
 
-#include "device.h"
-#include "port_mapping.h"
+#include "parameters.h"
 #include "protocol.h"
-#include "data_manager.h"
-#include "foc_core.h"
 
 typedef struct
 {
-    eFaultState fault;
-    eWarningState warning;
+    eFault fault;
+    eWarning warning;
     bool fault_flag;
     bool warning_flag;
     float max_current;
@@ -19,17 +16,11 @@ typedef struct
     float max_position;
     float tolerance_time_ms;
     float tolerance_limit;
-
-    tFOC_Mode *foc_mode;
-    tFOC_val *foc_val;
-    tCommunicationState *com_state;
-    tDeviceStatus *drive_state;
 } tProtectionManager;
 extern tProtectionManager g_pro_manager;
 
 // functions
 void pro_manager_init(tParameter *param);
-void pro_manager_config(tParameter *param);
 void pro_manager_clear_flag();
 void pro_manager_main_loop();
 

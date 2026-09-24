@@ -43,9 +43,11 @@ extern tIAP g_iap;     // 固件升级（BL/APP 分区 + 平台跳转）
 extern tGateDrv g_gate; // 功率级（PWM + 12V + 节拍中断）
 
 // ---- 状态反馈 ----
-// 注：XDr-S 无 WS2812 灯串，装配层不提供 tRgb 设备。
-extern tLed g_led_0; // 板载 LED0
-extern tLed g_led_1; // 板载 LED1
+#define LED_ACTIVE
+
+extern tLed g_led; // 板载 LED0
+
+// #define RGB_ACTIVE
 
 // ---- 通讯 ----
 extern tBusDriver g_can;   // 总线式（FDCAN）

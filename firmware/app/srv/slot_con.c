@@ -1,7 +1,5 @@
 
 #include "slot_con.h"
-#include "math_fast.h"
-#include "IF_irq.h"
 
 tSlotCon g_slotcon;
 

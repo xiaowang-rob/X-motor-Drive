@@ -1,24 +1,24 @@
 #ifndef __LOG_H
 #define __LOG_H
 
-#include "bsp_base.h"
-#include "bsp_flash.h"
-#include "protection_manager.h"
+#include "bsp_cfg.h"
+#include "flash.h"
+#include "protection.h"
 
 #define MAX_log_NUM 9
 
 typedef struct
 {
-    u8 num;
-    u8 minutes;
-    u8 fault;
-    u8 warning;
+    uint8_t num;
+    uint8_t minutes;
+    uint8_t fault;
+    uint8_t warning;
 
-    u8 sensor_mode;
-    u8 run_mode;
+    uint8_t sensor_mode;
+    uint8_t run_mode;
 
-    u8 can_state;
-    u8 encoder_state;
+    uint8_t can_state;
+    uint8_t encoder_state;
 
     float vbus;
     float temp;
@@ -37,7 +37,7 @@ typedef struct
 
 void log_data_save(tProtectionManager *pro_manager);
 void log_data_write(void);
-bool log_read_flash(u8 *data, u8 *len);
+bool log_read_flash(uint8_t *data, uint8_t *len);
 bool log_erase(void);
 
 #endif // __LOG_H

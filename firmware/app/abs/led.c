@@ -1,16 +1,20 @@
 // ============================================================
 // led.c — LED / RGB 业务编排（abs，纯逻辑）
 //
-// tLed：开/关/慢闪/快闪（按时间切换，toggle 驱动）
-// tRgb：灭/亮/慢闪/快闪/呼吸（正弦亮度曲线）
-// 颜色常量与 64 点正弦表定义于此。
+// tLed：灭/亮 + 5 种闪烁节奏（单长闪、双短闪、三短闪、短+长、连续短闪）
+// tRgb：同一套节奏 + 颜色 + 呼吸（正弦亮度曲线）
+// 颜色常量、节奏表与 64 点正弦表定义于此。
+//
+// 节奏以「段序列」描述：每段 = 亮一档 → 灭一档，末段的灭档即循环间隔；
+// 整轮播完回到首段，循环重复。档位（短/长/间隔）对应的毫秒是编译期常量，
+// 见下方 LED_DEF_*。
 //
 // 硬件动作经 ops + handle（装配时挂）直达驱动。
 // ============================================================
 
 #include "led.h"
 
-#include "IF_time.h"
+#include "bsp_time.h"
 
 // ---- 预置颜色 ----
 const tRGBColor RGB_BLACK = {0, 0, 0};
@@ -31,6 +35,133 @@ static const uint8_t SINE_TABLE[64] = {
     2, 3, 6, 11, 16, 22, 30, 38,
     47, 57, 68, 79, 91, 103, 116, 128};
 
+// ---- 档位时长（编译期常量，须非 0）----
+#define LED_DEF_SHORT_MS 200U  // 短闪档
+#define LED_DEF_LONG_MS 800U   // 长闪档
+#define LED_DEF_GAP_MS 1000U   // 循环间隔档
+#define RGB_DEF_BREATHE_MS 40U // 呼吸步进
+
+// ---- 节奏表（LED / RGB 共用）----
+
+// 单长闪：长
+static const tLedPulse P_LONG[] = {
+    {LED_T_LONG, LED_T_GAP},
+};
+
+// 双短闪：短 短
+static const tLedPulse P_DOUBLE_SHORT[] = {
+    {LED_T_SHORT, LED_T_SHORT},
+    {LED_T_SHORT, LED_T_GAP},
+};
+
+// 三短闪：短 短 短
+static const tLedPulse P_TRIPLE_SHORT[] = {
+    {LED_T_SHORT, LED_T_SHORT},
+    {LED_T_SHORT, LED_T_SHORT},
+    {LED_T_SHORT, LED_T_GAP},
+};
+
+// 短 + 长
+static const tLedPulse P_SHORT_LONG[] = {
+    {LED_T_SHORT, LED_T_SHORT},
+    {LED_T_LONG, LED_T_GAP},
+};
+
+// 连续短闪：段间隔即循环间隔，无限重复
+static const tLedPulse P_CONT_SHORT[] = {
+    {LED_T_SHORT, LED_T_SHORT},
+};
+
+static const tLedPattern PAT_LONG = {P_LONG, 1U};
+static const tLedPattern PAT_DOUBLE_SHORT = {P_DOUBLE_SHORT, 2U};
+static const tLedPattern PAT_TRIPLE_SHORT = {P_TRIPLE_SHORT, 3U};
+static const tLedPattern PAT_SHORT_LONG = {P_SHORT_LONG, 2U};
+static const tLedPattern PAT_CONT_SHORT = {P_CONT_SHORT, 1U};
+
+// 状态值 → 节奏表；LED_BLINK_* 与 RGB_BLINK_* 数值对齐，故共用此查表
+static const tLedPattern *pattern_of(uint8_t state)
+{
+    switch (state)
+    {
+    case LED_BLINK_LONG:
+        return &PAT_LONG;
+    case LED_BLINK_DOUBLE_SHORT:
+        return &PAT_DOUBLE_SHORT;
+    case LED_BLINK_TRIPLE_SHORT:
+        return &PAT_TRIPLE_SHORT;
+    case LED_BLINK_SHORT_LONG:
+        return &PAT_SHORT_LONG;
+    case LED_BLINK_CONT_SHORT:
+        return &PAT_CONT_SHORT;
+    default:
+        return NULL;
+    }
+}
+
+// ---- 节奏相位推进（LED / RGB 共用，不碰硬件）----
+
+typedef struct
+{
+    const tLedPattern *pat;
+    uint8_t *pulse_idx;
+    eLedPhase *phase;
+    uint32_t *next_change_ms;
+} tBlinkCtx;
+
+static bool phase_elapsed(uint32_t now, uint32_t deadline)
+{
+    return (int32_t)(now - deadline) >= 0; // 差比较，抗 32 位回绕
+}
+
+// 档位 → 毫秒（编译期常量；宏须非 0，否则该相位会每拍紧翻转）
+static uint32_t level_ms(eLedTime level)
+{
+    switch (level)
+    {
+    case LED_T_SHORT:
+        return LED_DEF_SHORT_MS;
+    case LED_T_LONG:
+        return LED_DEF_LONG_MS;
+    default:
+        return LED_DEF_GAP_MS;
+    }
+}
+
+// 推进一次相位机。
+// 返回 1 = 本拍应点亮，0 = 本拍应熄灭，-1 = 本拍无需动作。
+static int8_t blink_step(tBlinkCtx *ctx)
+{
+    if (!ctx || !ctx->pat || ctx->pat->count == 0U)
+        return -1;
+
+    uint32_t now = time_get_ms();
+
+    // 待启动：点亮首段（set_state 后由首个 task 生效，不在 set_state 里碰硬件）
+    if (*ctx->phase == LED_PHASE_IDLE)
+    {
+        *ctx->pulse_idx = 0U;
+        *ctx->phase = LED_PHASE_ON;
+        *ctx->next_change_ms = now + level_ms(ctx->pat->pulses[0].on);
+        return 1;
+    }
+
+    if (!phase_elapsed(now, *ctx->next_change_ms))
+        return -1;
+
+    if (*ctx->phase == LED_PHASE_ON) // 亮段结束 → 转灭
+    {
+        *ctx->phase = LED_PHASE_OFF;
+        *ctx->next_change_ms = now + level_ms(ctx->pat->pulses[*ctx->pulse_idx].off);
+        return 0;
+    }
+
+    // 灭段结束 → 下一段亮（末段回到首段，形成循环）
+    *ctx->pulse_idx = (uint8_t)((*ctx->pulse_idx + 1U) % ctx->pat->count);
+    *ctx->phase = LED_PHASE_ON;
+    *ctx->next_change_ms = now + level_ms(ctx->pat->pulses[*ctx->pulse_idx].on);
+    return 1;
+}
+
 // ==================== tLed ====================
 
 bool led_init(tLed *led)
@@ -40,8 +171,8 @@ bool led_init(tLed *led)
 
     // 只重置业务字段；ops / handle 是装配结果，不在本层改动
     led->state = LED_OFF;
-    led->fast_ms = 300U; // 默认：快速闪烁 300ms 半周期
-    led->slow_ms = 800U; // 默认：慢速闪烁 800ms 半周期
+    led->pulse_idx = 0U;
+    led->phase = LED_PHASE_IDLE;
     led->next_change_ms = 0U;
 
     return led->ops->open(led->handle);
@@ -52,17 +183,9 @@ void led_set_state(tLed *led, eLedState state)
     if (!led)
         return;
     led->state = state;
-    led->next_change_ms = 0U; // 强制下个 task 立即生效
-}
-
-void led_set_times(tLed *led, uint16_t fast_ms, uint16_t slow_ms)
-{
-    if (!led)
-        return;
-    if (fast_ms != 0U)
-        led->fast_ms = fast_ms;
-    if (slow_ms != 0U)
-        led->slow_ms = slow_ms;
+    led->pulse_idx = 0U;
+    led->phase = LED_PHASE_IDLE; // 强制下个 task 从首段重来
+    led->next_change_ms = 0U;
 }
 
 void led_task(tLed *led)
@@ -80,25 +203,37 @@ void led_task(tLed *led)
         if (led->ops->set)
             led->ops->set(led->handle, false);
         break;
-    case LED_BLINK_SLOW:
-    case LED_BLINK_FAST:
+    default:
     {
-        uint32_t now = time_get_ms();
-        uint32_t half = (led->state == LED_BLINK_FAST) ? led->fast_ms : led->slow_ms;
-        if ((now - led->next_change_ms) >= half)
-        {
-            if (led->ops->toggle)
-                led->ops->toggle(led->handle);
-            led->next_change_ms = now;
-        }
+        const tLedPattern *pat = pattern_of((uint8_t)led->state);
+        if (!pat)
+            break;
+
+        tBlinkCtx ctx = {
+            .pat = pat,
+            .pulse_idx = &led->pulse_idx,
+            .phase = &led->phase,
+            .next_change_ms = &led->next_change_ms,
+        };
+
+        int8_t act = blink_step(&ctx);
+        if (act >= 0 && led->ops->set)
+            led->ops->set(led->handle, act != 0);
         break;
     }
-    default:
-        break;
     }
 }
 
 // ==================== tRgb ====================
+
+// 亮度推给硬件（颜色由 rgb_set_color 缓存，refresh 一并生效）
+static void rgb_apply_brightness(tRgb *rgb, uint8_t value)
+{
+    if (rgb->ops->set_brightness)
+        rgb->ops->set_brightness(rgb->handle, value);
+    if (rgb->ops->refresh)
+        rgb->ops->refresh(rgb->handle);
+}
 
 bool rgb_init(tRgb *rgb)
 {
@@ -108,11 +243,10 @@ bool rgb_init(tRgb *rgb)
     // 只重置业务字段；ops / handle 是装配结果，不在本层改动
     rgb->state = RGB_OFF;
     rgb->color = RGB_BLACK;
-    rgb->fast_ms = 300U;
-    rgb->slow_ms = 800U;
-    rgb->breathe_ms = 40U;
-    rgb->next_change_ms = 0U;
+    rgb->pulse_idx = 0U;
+    rgb->phase = LED_PHASE_IDLE;
     rgb->breath_idx = 0U;
+    rgb->next_change_ms = 0U;
 
     return rgb->ops->open(rgb->handle);
 }
@@ -122,6 +256,9 @@ void rgb_set_state(tRgb *rgb, eRgbState state)
     if (!rgb)
         return;
     rgb->state = state;
+    rgb->pulse_idx = 0U;
+    rgb->phase = LED_PHASE_IDLE; // 强制下个 task 从首段重来
+    rgb->breath_idx = 0U;
     rgb->next_change_ms = 0U;
 }
 
@@ -134,18 +271,6 @@ void rgb_set_color(tRgb *rgb, tRGBColor color)
         rgb->ops->set_color(rgb->handle, color); // 颜色缓存到驱动，亮度由 task 驱动
 }
 
-void rgb_set_times(tRgb *rgb, uint16_t fast_ms, uint16_t slow_ms, uint16_t breathe_ms)
-{
-    if (!rgb)
-        return;
-    if (fast_ms != 0U)
-        rgb->fast_ms = fast_ms;
-    if (slow_ms != 0U)
-        rgb->slow_ms = slow_ms;
-    if (breathe_ms != 0U)
-        rgb->breathe_ms = breathe_ms;
-}
-
 void rgb_task(tRgb *rgb)
 {
     if (!rgb || !rgb->ops)
@@ -154,50 +279,38 @@ void rgb_task(tRgb *rgb)
     switch (rgb->state)
     {
     case RGB_ON:
-        if (rgb->ops->set_brightness)
-            rgb->ops->set_brightness(rgb->handle, 255U);
-        if (rgb->ops->refresh)
-            rgb->ops->refresh(rgb->handle);
+        rgb_apply_brightness(rgb, 255U);
         break;
     case RGB_OFF:
-        if (rgb->ops->set_brightness)
-            rgb->ops->set_brightness(rgb->handle, 0U);
-        if (rgb->ops->refresh)
-            rgb->ops->refresh(rgb->handle);
+        rgb_apply_brightness(rgb, 0U);
         break;
-    case RGB_BLINK_SLOW:
-    case RGB_BLINK_FAST:
-    {
-        uint32_t now = time_get_ms();
-        uint32_t half = (rgb->state == RGB_BLINK_FAST) ? rgb->fast_ms : rgb->slow_ms;
-        if ((now - rgb->next_change_ms) >= half)
-        {
-            // 以 0/255 两档切换亮度
-            uint8_t b = (rgb->breath_idx & 1U) ? 0U : 255U;
-            if (rgb->ops->set_brightness)
-                rgb->ops->set_brightness(rgb->handle, b);
-            if (rgb->ops->refresh)
-                rgb->ops->refresh(rgb->handle);
-            rgb->breath_idx++;
-            rgb->next_change_ms = now;
-        }
-        break;
-    }
     case RGB_BREATHE:
     {
         uint32_t now = time_get_ms();
-        if ((now - rgb->next_change_ms) >= (uint32_t)rgb->breathe_ms)
-        {
-            if (rgb->ops->set_brightness)
-                rgb->ops->set_brightness(rgb->handle, SINE_TABLE[rgb->breath_idx]);
-            if (rgb->ops->refresh)
-                rgb->ops->refresh(rgb->handle);
-            rgb->breath_idx = (uint8_t)((rgb->breath_idx + 1U) & 63U);
-            rgb->next_change_ms = now;
-        }
+        if (!phase_elapsed(now, rgb->next_change_ms))
+            break;
+        rgb_apply_brightness(rgb, SINE_TABLE[rgb->breath_idx & 63U]);
+        rgb->breath_idx = (uint8_t)((rgb->breath_idx + 1U) & 63U);
+        rgb->next_change_ms = now + RGB_DEF_BREATHE_MS;
         break;
     }
     default:
+    {
+        const tLedPattern *pat = pattern_of((uint8_t)rgb->state);
+        if (!pat)
+            break;
+
+        tBlinkCtx ctx = {
+            .pat = pat,
+            .pulse_idx = &rgb->pulse_idx,
+            .phase = &rgb->phase,
+            .next_change_ms = &rgb->next_change_ms,
+        };
+
+        int8_t act = blink_step(&ctx);
+        if (act >= 0)
+            rgb_apply_brightness(rgb, act != 0 ? 255U : 0U);
         break;
+    }
     }
 }
