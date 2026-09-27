@@ -3,7 +3,7 @@
 #include "slot_con.h"
 
 // FOC核心初始化
-bool foc_init(tFOC *foc, tParameter *param, float t_cl, float vmax)
+void foc_init(tFOC *foc, tParameter *param, float t_cl, float vmax)
 {
     pi_init(&foc->PI_iq, param->qclkp, param->qclki, vmax, t_cl);
     pi_init(&foc->PI_id, param->dclkp, param->dclki, vmax, t_cl);
@@ -15,7 +15,7 @@ bool foc_init(tFOC *foc, tParameter *param, float t_cl, float vmax)
     foc_reset(foc);
 }
 
-bool foc_reset(tFOC *foc)
+void foc_reset(tFOC *foc)
 {
     pi_reset(&foc->PI_iq);
     pi_reset(&foc->PI_id);

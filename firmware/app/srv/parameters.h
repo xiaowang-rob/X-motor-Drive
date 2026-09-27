@@ -67,7 +67,7 @@ typedef struct
     float traj_limit_d1;
     float traj_limit_d2;
     float traj_limit_d3;
-    float tolerance;
+    float traj_tolerance;
 
 } tParameter;
 
@@ -76,21 +76,15 @@ extern tParameter g_param;
 // 参数描述符表（[eParameter] 索引；
 extern const tField g_param_fields[PARAM_NUM];
 
-// ---- 参数生效钩子（各子系统注册自己的重配置动作） ----
-void dm_param_register_apply(void (*hook)(void));
-void dm_param_apply(void);
-
 // ---- 读写 / 持久化 ----
 // 写入一个参数（value 为该参数的原始字节；id 越界 = "应用并保存" 的协议约定）
-void dm_param_set(eParameter para, uint8_t *value);
+void param_set(eParameter para, uint8_t *value);
 
 // 读取一个参数（value 收原始字节，len 出长度；id 越界时 len=0）
-void dm_param_get(eParameter para, uint8_t *value, uint8_t *len);
+void param_get(eParameter para, uint8_t *value, uint8_t *len);
 
-bool dm_param_save(void);  // 落盘（version + size + crc32）
-bool dm_param_erase(void); // 擦除
-bool dm_param_init(void);  // 读取 → 校验 → 失败则回默认值
-
-// ==================== ② 数据（运行量） ====================
+bool param_init(void);  // 初始化存储单元、读取 、校验
+bool param_save(void);  // 保存进存储单元
+bool param_reset(void); // 恢复默认值
 
 #endif // __PARAMETERS_H

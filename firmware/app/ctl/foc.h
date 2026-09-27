@@ -45,8 +45,8 @@ typedef struct
 
 } tFOC;
 
-bool foc_init(tFOC *foc, tParameter *param, float t_cl, float vmax);
-bool foc_reset(tFOC *foc);
+void foc_init(tFOC *foc, tParameter *param, float t_cl, float vmax);
+void foc_reset(tFOC *foc);
 void foc_process(tFOC *foc, uint8_t sec);
 void foc_update(tFOC *foc);
 void foc_set_target(tFOC *foc, tFOCtarget tag);

@@ -39,10 +39,10 @@ typedef void (*bus_rx_frame_cb)(void *ctx, uint32_t id, const uint8_t *data, uin
 // 驱动接口（板级实现）；handle 为驱动实例
 typedef struct
 {
-    bool (*open)(void *handle, uint32_t std_id);                       // 配置过滤器并启动总线
+    bool (*open)(void *handle, uint32_t std_id); // 配置过滤器并启动总线
     bool (*send)(void *handle, uint32_t id, const uint8_t *data,
-                 uint16_t len);                                        // 发送一帧（忙则 false）
-    void (*set_rx_cb)(void *handle, bus_rx_frame_cb cb, void *ctx);    // 注册收帧回调
+                 uint16_t len);                                     // 发送一帧（忙则 false）
+    void (*set_rx_cb)(void *handle, bus_rx_frame_cb cb, void *ctx); // 注册收帧回调
 } tBusOps;
 
 typedef struct
@@ -67,8 +67,7 @@ bool bus_start(tBusDriver *bus, uint32_t device_id);
 // 发送一帧
 bool bus_send(tBusDriver *bus, const tBus_Frame *frame);
 
-// 持续从队列中提取数据帧并返回；没有数据帧则返回 NULL。
-// 注意：返回的帧实体来自内存池，调用方用毕必须 mp_free 归还。
-tBus_Frame *bus_process_frame(tBusDriver *bus);
+// 持续从队列中提取数据帧并返回；没有数据帧则返回false。
+bool bus_process_frame(tBusDriver *bus, tBus_Frame *frame);
 
 #endif // __BUS_COM_H

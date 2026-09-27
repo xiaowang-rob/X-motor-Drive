@@ -1,12 +1,6 @@
 #include "pll.h"
 #include "math_fast.h"
 
-// 默认 PLL 增益与错误判定
-#define ENCODER_PLL_KP 80.0f
-#define ENCODER_PLL_KI 2000.0f
-#define ENCODER_PLL_INTEG_LIMIT 0.1745f // 积分限值  ±10°
-#define ENCODER_VEL_PHYS_LIMIT 1046.0f  // rad/s 物理上限（≈10k rpm）
-
 // TODO:20khz pll跟随1khz角度变化 需要1khz的角度突变处理
 void pll_init(tPLL *pll, float kp, float ki, float integ_limit, float vel_limit)
 {

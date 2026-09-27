@@ -1,5 +1,11 @@
 #include "bsp_cfg.h"
 
+#include "parameters.h"
+#include "log.h"
+#include "uart_com.h"
+
+static void system_fault(void);
+
 void bsp_init_front(void)
 {
     bsp_set_vector_table_offset(VECT_TABLE_OFFSET); // iap下 需要设置偏移量
@@ -57,27 +63,23 @@ void main_init(void)
     iap_app_init();
 
     // 1、初始化驱动层 （存储-iap-状态-传感-gate-通讯）
-    dev_base_init();
+    if (!dev_base_init())
+        system_fault();
     // 2、初始化参数服务 读参数
-
+    if (!param_init())
+        system_fault();
     // 3、初始化日志服务 读日志
-
-    // 4、core初始化
-    // TODO:重写参数从这里开始重新初始化
-
-    // 4、初始化状态服务
-
-    // 5、初始化保护服务
-
-    // 6、配置编码器设备驱动
-    dev_int_enc_init();
-    dev_ext_enc_init();
-    // 7、启动通信
-
-    // 6、初始化时间槽服务
-
-    // 7、初始化core、启动时间槽服务
+    if (!log_init())
+        system_fault();
+    // 4、启动副通讯 usb/uart
+    if (!uart_start(&g_usb, UART_PACKET_HEAD, UART_PACKET_TAIL))
+        system_fault();
+    if (!uart_start(&g_uart, UART_PACKET_HEAD, UART_PACKET_TAIL))
+        system_fault();
+    // 5、core初始化
+    if (!core_init())
+        system_fault();
 }
-void core_reset(void)
+void system_fault(void)
 {
 }

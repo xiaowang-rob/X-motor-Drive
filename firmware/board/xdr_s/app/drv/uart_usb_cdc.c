@@ -11,11 +11,15 @@
 // ---------- 实例 ----------
 struct tUartUsb
 {
-    uart_rx_done_cb rx_cb; // 收字节回调（由 uart_com 注册）
-    void *rx_ctx;          // 回调上下文（uart_com 实例）
+    GPIO_TypeDef *dp_up_port; // 端口
+    uint16_t dp_up_pin;       // 引脚
+    uart_rx_done_cb rx_cb;    // 收字节回调（由 uart_com 注册）
+    void *rx_ctx;             // 回调上下文（uart_com 实例）
 };
 
 tUartUsb g_uart_usb = {
+    .dp_up_port = GPIOA,
+    .dp_up_pin = GPIO_PIN_15,
     .rx_cb = NULL,
     .rx_ctx = NULL,
 };
@@ -31,8 +35,10 @@ static void usb_on_rx(uint8_t *buf, uint16_t len)
 
 static bool uart_usb_open(void *handle)
 {
-    (void)handle; // USB 栈回调无实例参数，转发链固定在 g_uart_usb
+    tUartUsb *h = (tUartUsb *)handle; // USB 栈回调无实例参数，转发链固定在 g_uart_usb
     mcu_usb_register_rx_callback(usb_on_rx);
+    // 拉高dp让pc识别
+    HAL_GPIO_WritePin(h->dp_up_port, h->dp_up_pin, GPIO_PIN_SET);
     return true;
 }
 

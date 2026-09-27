@@ -3,7 +3,8 @@
 
 #include "parameters.h"
 #include "protocol.h"
-
+#include "core.h"
+#include "foc.h"
 typedef struct
 {
     eFault fault;
@@ -21,8 +22,8 @@ extern tProtectionManager g_pro_manager;
 
 // functions
 void pro_manager_init(tParameter *param);
-void pro_manager_clear_flag();
-void pro_manager_main_loop();
+void pro_manager_reset(void);
+void pro_manager_main_loop(tCore *core, tFOCval *foc_val);
 
 void pro_set_limit_position(float min_position, float max_position);
 

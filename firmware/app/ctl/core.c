@@ -1,14 +1,22 @@
 #include "core.h"
 
+#include "bsp_cfg.h"
+#include "bsp_irq.h"
+#include "bsp_math.h"
+
+#include "encoder.h"
+#include "bus_com.h"
+#include "sense.h"
+
 #include "foc.h"
 #include "svpwm.h"
-
-#include "bsp_cfg.h"
-#include "encoder.h"
 #include "pll.h"
 #include "trajectory.h"
+#include "pacc.h"
 
+#include "protection.h"
 #include "slot_con.h"
+#include "status_feedback.h"
 
 tCore core;
 tFOC foc;
@@ -16,6 +24,7 @@ tSvpwm svpwm;
 
 static tPLL enc_pll;
 static tTraj traj;
+static tPosAcc pos_acc;
 
 // 控制外环初始化 PI速度环 pid位置环 mit控制环 t_vl:速度环周期 t_pl:位置环周期
 static void core_loop_init(tCore *core, tParameter *param, float t_vl, float t_pl)
@@ -36,28 +45,66 @@ static void core_loop_reset(tCore *core)
     memset(&core->mittag, 0, sizeof(tMITtarget));
 }
 
-// 位置累积
-static void pos_accumulate(tCore *core)
-{
-    float angle_delta = core->val.theta_mech - core->pacc.last_angle;
-    if (angle_delta < -MATH_PI)
-        core->pacc.num_turns++;
-    else if (angle_delta > MATH_PI)
-        core->pacc.num_turns--;
-    core->pacc.last_angle = core->val.theta_mech;
-    core->val.pos = (core->val.theta_mech - core->pacc.zero_angle) + core->pacc.num_turns * MATH_2PI;
-}
+// 默认 PLL 增益与错误判定
+#define ENCODER_PLL_KP 80.0f
+#define ENCODER_PLL_KI 2000.0f
+#define ENCODER_PLL_INTEG_LIMIT 0.1745f // 积分限值  ±10°
+#define ENCODER_VEL_PHYS_LIMIT 1046.0f  // rad/s 物理上限（≈10k rpm）
 
-void core_init(void)
+bool core_init(void)
 {
     core.enable = false;
     core.state = INIT;
+    bool core_init_ok = false;
 
-    // 加载参数
+    // 初始化core配置
+    core.obs_enable = g_param.obs_active;
+    core.enc_enable = g_param.enc_active;
+    core.ctrl_mode = g_param.ctrl_mode;
 
-    // 启动foc
+    // 5、初始化保护服务
+    pro_manager_init(&g_param);
+    // 6、配置编码器设备驱动
+    core_init_ok = bsp_enc_init((eEncoderMode)g_param.ienc_mode,
+                                (eEncoderMode)g_param.eenc_mode, (eEncoderChip)g_param.eenc_chip);
+    // 7、启动主总线通信
+    core_init_ok = bus_start(&g_can, g_param.can_id);
+    // 6、初始化时间槽服务
+    slot_con_init(F_CON);
+    // 7、初始化core、启动时间槽服务
 
-    // 启动时间槽
+    // 控制内环 foc初始化
+    core.val.udc = sense_get_vbus(&g_sense);
+    core.val.vmax = core.val.udc * MATH_INSQRT3;
+    foc_init(&foc, &g_param, T_CON, core.val.vmax);
+
+    // 控制外环 pid mit 初始化
+    core_loop_init(&core, &g_param, g_slotcon.t_med, g_slotcon.t_low);
+    // 初始化编码器pll
+    if (core.enc_enable)
+        pll_init(&enc_pll, ENCODER_PLL_KP, ENCODER_PLL_KI,
+                 ENCODER_PLL_INTEG_LIMIT, ENCODER_VEL_PHYS_LIMIT);
+
+    // TODO: 初始化观测器
+    if (core.obs_enable)
+    {
+    }
+
+    // 初始化svpwm
+    svpwm_init(&svpwm, );
+
+    // 初始化 内置轨迹规划
+    tTraj_Config cfg = {
+        .limit_d1 = g_param.traj_limit_d1,
+        .limit_d2 = g_param.traj_limit_d2,
+        .limit_d3 = g_param.traj_limit_d3,
+        .tolerance = g_param.traj_tolerance,
+        .type = g_param.traj_type,
+    };
+    traj_init(&traj, cfg);
+
+    // 将solt槽任务注册到pwm下溢中断 以 启动solt槽任务
+    pwm_register_callback(NULL, slot_con_update);
 }
 void core_reset(void)
 {
@@ -79,6 +126,8 @@ void core_mainloop_tasks(void)
     core.val.udc = sense_get_vbus(&g_sense);
     core.val.vmax = core.val.udc * MATH_INSQRT3;
     core.val.temp = sense_get_temperature(&g_sense);
+
+    status_feedback_main_loop(core.state);
 }
 
 // 时间槽高频任务
@@ -131,7 +180,7 @@ void high_schedule_task0(float ts)
 void medium_schedule_task0(float ts)
 {
 
-    pos_accumulate(&core);
+    pos_accumulate(&pos_acc, core.val.theta_mech);
 }
 
 // 运行轨迹规划器

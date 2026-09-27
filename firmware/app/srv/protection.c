@@ -2,8 +2,6 @@
 #include "protection.h"
 
 #include "bsp_cfg.h"
-#include "core.h"
-#include "foc.h"
 
 tProtectionManager g_pro_manager;
 // 容忍度检测
@@ -39,7 +37,7 @@ void pro_set_limit_position(float min_position, float max_position)
     g_pro_manager.max_position = max_position;
 }
 // 保护程序复位
-void pro_manager_reset()
+void pro_manager_reset(void)
 {
     g_pro_manager.fault_flag = false;
     g_pro_manager.warning_flag = false;
@@ -153,7 +151,8 @@ void pro_manager_main_loop(tCore *core, tFOCval *foc_val)
     if (g_pro_manager.fault_flag || g_pro_manager.warning_flag)
     {
         log_data_save(&g_pro_manager);
-        foc_state_update(FOC_FAULT);
+        // TODO: 添加错误处理
+        //  log_data_write();
         // TODO: 添加警告处理
         //  log_data_write();
     }

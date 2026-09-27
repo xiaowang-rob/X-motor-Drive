@@ -62,7 +62,7 @@ tFlashUnit param_unit;
     X(TRAJ_LIMIT_D1, traj_limit_d1, F32, 1000.0f)             \
     X(TRAJ_LIMIT_D2, traj_limit_d2, F32, 1000.0f)             \
     X(TRAJ_LIMIT_D3, traj_limit_d3, F32, 1000.0f)             \
-    X(TRAJ_TOLERANCE, tolerance, F32, 0.1f)
+    X(TRAJ_TOLERANCE, traj_tolerance, F32, 0.1f)
 // ---- 描述符表（协议读写用；字段名错 → 编译期报错）----
 const tField g_param_fields[PARAM_NUM] = {
 #define P_DESC(id, field, type, def) \

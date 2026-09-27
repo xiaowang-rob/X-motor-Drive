@@ -21,18 +21,6 @@ typedef struct
     float tau_ff; // 转矩前馈
 } tMITtarget;
 
-// 位置记录
-typedef struct
-{
-    int32_t num_turns; // 圈数累积
-
-    float last_angle; // 上一个机械角度
-    float zero_angle; // 位置机械零点
-    float max_pos;    // 位置机械最大值
-    float min_pos;    // 位置机械最小值
-
-} tPosAcc;
-
 // 核心数据
 typedef struct
 {
@@ -53,7 +41,7 @@ typedef struct
     volatile bool obs_enable; // 观测器使能标记
     volatile bool enc_enable; // 编码器使能标记
 
-    eCtrlMode ctrl_mode; // 运行模式
+    eCtrlMode ctrl_mode; // 控制模式
 
     tPI PI_weakmag;
     tPI PI_vel;
@@ -63,9 +51,9 @@ typedef struct
     tPIDtarget pidtag; // PID 目标值
     tMITtarget mittag; // MIT 目标值
 
-    tPosAcc pacc; // 位置记录
-
     tCoreVal val; // 反馈数据
 } tCore;
+
+bool core_init(void);
 
 #endif

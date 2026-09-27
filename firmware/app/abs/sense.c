@@ -16,11 +16,14 @@ bool sense_init(tSense *s)
     }
     s->zero_ready = false;
     s->vbus = 0.0f;
-    s->temperature = 0.0f;
+    s->temperature = 0;
 
     // 启动采样前端
     if (!s->ops->open(s->handle))
         return false;
+
+    while (s->vbus < 0.1f) // 采样前端启动后，等待 VBUS 上电
+        ;
 
     s->dstate = DEV_ONLINE;
     return true;

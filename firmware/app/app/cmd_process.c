@@ -1,86 +1,197 @@
-// USB、串口、CAN 端口映射
-#include "port_mapping.h"
-#include "usr_config.h"
+#include "cmd_process.h"
+#include "protocol.h"
 
-#include "data_manager.h"
-#include "foc_main.h"
-#include "data_manager.h"
-#include "log.h"
-#include "protection_manager.h"
-#include "can_port.h"
-#include "usb_port.h"
-#include "uart_port.h"
-#include "string.h"
-#include "stdio.h"
-#include "tune.h"
-#include "bsp_base.h"
-#include "bsp_flash.h"
+#include "bsp_cfg.h"
+
+#include "uart_com.h"
+#include "bus_com.h"
 
 #define STR(x) #x
 #define XSTR(x) STR(x)
 
-// 多端口接收缓冲 — 每个端口独立，避免互斥
-#define PORT_NUM 3
-static struct
-{
-    eCOM port_id;
-    u8 cmd_id;
-    u8 rxbuffer[MAX_FRAME_LENGTH];
-    u8 rxlen;
-    bool pending;
-} g_port_rx[PORT_NUM] = {
-    {.port_id = CAN_port},
-    {.port_id = USB_port},
-    {.port_id = UART_port},
-};
+tUart_Frame uart_rx_frame;
+tUart_Frame uart_tx_frame;
+tBus_Frame can_rx_frame;
+tBus_Frame can_tx_frame;
 
-// 下发帧（应答/状态/数据）缓冲 — 互斥访问，由主循环使用
-static tCOM_Frame com_frame;
-tCommunicationState g_com_state = {.com_port = &com_frame.com_port, .is_busy = &com_frame.is_busy};
+const uint8_t EXECUTE = FB_EXECUTE;
+const uint8_t FAILURE = FB_FAILURE;
 
-const u8 EXECUTE = FEEDBACK_EXECUTE;
-const u8 FAILURE = FEEDBACK_FAILURE;
+static uint32_t _last_host_ping_ms = 0; // 上次收到主机心跳时间
 
-static u32 _last_host_ping_ms = 0; // 上次收到主机心跳时间
 static bool system_message_send_flag = false;
 
-// 通讯层初始化
-void comm_init()
-{
-    if (can_port_init(g_Param.can_id, g_Param.sw_canqueue))
-        g_device_status.can_state = ONLINE;
-    else
-        g_device_status.can_state = OFFLINE;
+// 数据流处理
+static uint8_t stream_num;
+static eDataList data_id_index[5];
 
-    uart_port_init();
-    usb_init();
-    g_com_state.Host_port = NONE_port;
-}
+static void uart_frame_process(ePort port, tUart_Frame *frame)
+{
 
-// 写入can配置参数
-void comm_write_can_config(u32 CAN_ID, bool canQUEUE)
-{
-    if (can_set_config(CAN_ID, canQUEUE))
-        g_device_status.can_state = ONLINE;
-    else
-        g_device_status.can_state = OFFLINE;
-}
-// 上位机发送 缓存中的数据
-void comm_host_send()
-{
-    if (com_frame.com_port == UART_port)
-        uart_port_send_frame(com_frame.cmd_id, com_frame.txdata, com_frame.txdatalen);
-    else if (!usb_send_frame(com_frame.cmd_id, com_frame.txdata, com_frame.txdatalen))
+    switch (frame->id)
     {
-        g_com_state.Host_port = NONE_port;
-        g_device_status.usb_state = OFFLINE;
+    case CMD_CONNECT:
+        _last_host_ping_ms = bsp_get_tick();
+        break;
+    case CMD_DISCONNECT:
         system_message_send_flag = false;
-        com_frame.stream_num = 0;
+        stream_num = 0;
+        break;
+    case CMD_START_TUNNING:
+        foc_state_update(FOC_TUNE);
+        break;
+    case CMD_CORE_NRST:
+        foc_state_update(FOC_RESET);
+        break;
+    case CMD_ENABLE:
+        foc_state_update(FOC_ENABLE);
+        break;
+    case CMD_DISABLE:
+        foc_state_update(FOC_DISABLE);
+        break;
+    case CMD_LOG_GET:
+        log_send_flag = true;
+        break;
+
+    case CMD_PARAM_RELOAD:
+        if (dm_param_erase())
+            com_frame.txdata[0] = EXECUTE;
+        else
+            com_frame.txdata[0] = FAILURE;
+        com_frame.txdatalen = 1;
+        comm_host_send();
+        break;
+    case CMD_PARAM_SAVE: // 一键保存
+        if (dm_param_save())
+            com_frame.txdata[0] = EXECUTE;
+        else
+            com_frame.txdata[0] = FAILURE;
+        com_frame.txdatalen = 1;
+        comm_host_send();
+        break;
+
+    case CMD_SET_ZERO_POS:
+        foc_set_zero_pos(); // 以当前位置为0点
+        break;
+    case CMD_SET_LIMIT_POS:
+        foc_set_limit_pos(); // 以当前位置为极限位置
+        break;
+    case CMD_SYSTEM_RESET: // 系统复位
+        bsp_system_reset();
+        break;
+
+    case CMD_IAP_ENTER:
+        memset(com_frame.txdata, 0, 24);
+        strcat((char *)com_frame.txdata, FIRM_VERSION);
+        if (bsp_jump_to_bootloader(com_frame.txdata, 24))
+            com_frame.txdata[0] = EXECUTE;
+        else
+            com_frame.txdata[0] = FAILURE;
+        com_frame.txdatalen = 1;
+        comm_host_send();
+        break;
+
+    case CMD_PARAM_WRITE: // 指定写入
+        dm_param_set(com_frame.rxdata[0], &com_frame.rxdata[1]);
+        break;
+    case CMD_PARAM_READ:
+        if (com_frame.rxdata[0] == 0xff)
+        { // 读取所有参数
+            param_send_flag = true;
+            break;
+        } // 指定读取
+        dm_param_get(com_frame.rxdata[0], com_frame.txdata, &com_frame.txdatalen);
+        comm_host_send();
+        break;
+    case CMD_TARGET_SET: // 目标值设置 4byte||8byte
+        memcpy(value_ref, com_frame.rxdata, 4);
+        value_ref[1] = 0.0f;
+        foc_set_target(value_ref);
+        break;
+    case CMD_MODE_SET: // 模式设置 1byte
+        foc_set_run_mode(com_frame.rxdata[0]);
+        break;
+    case CMD_DATA_ASK: // 监测值获取 单个值直接获取 1byte
+        dm_data_get(com_frame.rxdata[1], (float *)com_frame.txdata);
+        com_frame.txdatalen = 4;
+        comm_host_send();
+        break;
+    case CMD_STREAM_SET: // 监测值设置 5byte
+        stream_num = com_frame.rxdatalen;
+        for (uint8_t i = 0; i < stream_num; i++)
+            com_frame.data_id_index[i] = com_frame.rxdata[i];
+
+        break;
+    default:
+        break;
+    }
+}
+static void bus_frame_process(void)
+{
+    switch (can_rx_frame.id)
+    {
+    case CMD_TARGET_SET:
+        foc_set_target((float *)com_frame.rxdata);
+        break;
+    case CMD_ENABLE:
+        foc_state_update(FOC_ENABLE);
+        break;
+    case CMD_DISABLE:
+        foc_state_update(FOC_DISABLE);
+        break;
+    case CMD_MODE_SET:
+        foc_set_run_mode(com_frame.rxdata[0]);
+        break;
+    case CMD_DATA_ASK:
+        data_id = com_frame.rxdata[0];
+        dm_data_get((eDataList)data_id, (float *)com_frame.txdata);
+        can_send_data(com_frame.txdata, 4);
+        break;
+    case CMD_SYSTEM_RESET:
+        bsp_system_reset();
+        break;
+    case CMD_SET_ZERO_POS:
+        foc_set_zero_pos(); // 以当前位置为0点
+        break;
+    case CMD_SET_LIMIT_POS:
+        foc_set_limit_pos();
+        break;
+    default:
+        break;
+    }
+}
+
+void comm_process(void)
+{
+    while (uart_process_frame(&g_uart, &uart_rx_frame))
+    {
+    }
+    while (uart_process_frame(&g_usb, &uart_rx_frame))
+    {
+    }
+    while (bus_process_frame(&g_can, &can_rx_frame))
+    {
+    }
+}
+
+void comm_uart_send(ePort port, tUart_Frame *tx)
+{
+    if (port == PORT_UART)
+    {
+        uart_send(&g_uart, tx);
+    }
+    else
+    {
+        if (!uart_send(&g_usb, tx))
+        {
+            system_message_send_flag = false;
+            stream_num = 0;
+        }
     }
 }
 // 参数发送
 static bool param_send_flag = false;
-static u8 param_index = 0;
+static uint8_t param_index = 0;
 static inline void _all_params_send()
 {
     dm_param_get((eParameter)param_index, &com_frame.txdata[1], &com_frame.txdatalen);
@@ -106,7 +217,7 @@ static inline void _all_log_send()
 // 状态发送
 static inline void _status_send()
 {
-    com_frame.cmd_id = UC_CONNECT;
+    com_frame.cmd_id = CMD_CONNECT;
     if (system_message_send_flag == false)
     {
         static char drive_msg[128] = {0};
@@ -133,7 +244,7 @@ static inline void _status_send()
     }
     else
     {
-        // 状态包 对应 usr_config.json 中的状态包顺序
+        // 心跳状态包 对应 usr_config.json 中的状态包顺序
         com_frame.txdata[0] = tune_get_fault();
         com_frame.txdata[1] = g_foc.state;
         com_frame.txdata[2] = g_pro_manager.fault;
@@ -148,14 +259,14 @@ static inline void _status_send()
     {
         g_com_state.Host_port = NONE_port;
         system_message_send_flag = false;
-        com_frame.stream_num = 0;
+        stream_num = 0;
         _last_host_ping_ms = 0;
         return;
     }
     comm_host_send();
 }
 
-static u8 data_id = 0;
+static uint8_t data_id = 0;
 static float value_ref[2];
 // 命令解析
 static void _frame_data_deal()
@@ -185,7 +296,7 @@ static void _frame_data_deal()
             bsp_system_reset();
             break;
         case CMD_SET_ZERO_POS:
-             foc_set_zero_pos(); // 以当前位置为0点
+            foc_set_zero_pos(); // 以当前位置为0点
             break;
         case CMD_SET_LIMIT_POS:
             foc_set_limit_pos();
@@ -200,7 +311,7 @@ static void _frame_data_deal()
         {
             switch (com_frame.cmd_id)
             {
-            case UC_CONNECT:
+            case CMD_CONNECT:
                 if (g_com_state.Host_port == NONE_port)
                 {
                     if (com_frame.com_port == USB_port)
@@ -209,13 +320,13 @@ static void _frame_data_deal()
                 }
                 _last_host_ping_ms = bsp_get_tick();
                 break;
-            case UC_DISCONNECT:
+            case CMD_DISCONNECT:
                 system_message_send_flag = false;
                 g_device_status.usb_state = OFFLINE;
                 g_com_state.Host_port = NONE_port;
-                com_frame.stream_num = 0;
+                stream_num = 0;
                 break;
-            case START_TUNNING:
+            case CMD_START_TUNNING:
                 foc_state_update(FOC_TUNE);
                 break;
             case BRAKE:
@@ -230,7 +341,7 @@ static void _frame_data_deal()
             case CMD_DISABLE:
                 foc_state_update(FOC_DISABLE);
                 break;
-            case LOG_GET:
+            case CMD_LOG_GET:
                 log_send_flag = true;
                 break;
             case LOG_ERASE:
@@ -247,7 +358,7 @@ static void _frame_data_deal()
                 com_frame.txdatalen = 1;
                 comm_host_send();
                 break;
-            case PARAM_SAVE: // 一键保存
+            case CMD_PARAM_SAVE: // 一键保存
                 if (dm_param_save())
                     com_frame.txdata[0] = EXECUTE;
                 else
@@ -256,13 +367,13 @@ static void _frame_data_deal()
                 comm_host_send();
                 break;
             case CMD_STREAM_SET: // 除了状态位清除检测值
-                com_frame.stream_num = 0;
+                stream_num = 0;
                 break;
             case CMD_SET_ZERO_POS:
-                 foc_set_zero_pos(); // 以当前位置为0点
+                foc_set_zero_pos(); // 以当前位置为0点
                 break;
             case CMD_SET_LIMIT_POS:
-                 foc_set_limit_pos(); // 以当前位置为极限位置
+                foc_set_limit_pos(); // 以当前位置为极限位置
                 break;
             case CMD_SYSTEM_RESET: // 系统复位
                 bsp_system_reset();
@@ -286,10 +397,10 @@ static void _frame_data_deal()
         {
             switch (com_frame.cmd_id)
             {
-            case PARAM_WRITE: // 指定写入
+            case CMD_PARAM_WRITE: // 指定写入
                 dm_param_set(com_frame.rxdata[0], &com_frame.rxdata[1]);
                 break;
-            case PARAM_READ:
+            case CMD_PARAM_READ:
                 if (com_frame.rxdata[0] == 0xff)
                 { // 读取所有参数
                     param_send_flag = true;
@@ -312,8 +423,8 @@ static void _frame_data_deal()
                 comm_host_send();
                 break;
             case CMD_STREAM_SET: // 监测值设置 5byte
-                com_frame.stream_num = com_frame.rxdatalen;
-                for (u8 i = 0; i < com_frame.stream_num; i++)
+                stream_num = com_frame.rxdatalen;
+                for (uint8_t i = 0; i < stream_num; i++)
                     com_frame.data_id_index[i] = com_frame.rxdata[i];
 
                 break;
@@ -325,7 +436,7 @@ static void _frame_data_deal()
     com_frame.is_busy = false;
 }
 // 端口映射 — 每个回调只做拷贝 + 挂起，由主循环统一处理
-void can_rx_data_callback(u8 *RxData, u8 len)
+void can_rx_data_callback(uint8_t *RxData, uint8_t len)
 {
     if (g_port_rx[0].pending) // CAN is index 0
         return;
@@ -338,7 +449,7 @@ void can_rx_data_callback(u8 *RxData, u8 len)
     g_port_rx[0].pending = true;
 }
 
-void usb_rx_frame_callback(u8 id, u8 *data, u8 len)
+void usb_rx_frame_callback(uint8_t id, uint8_t *data, uint8_t len)
 {
     if (g_port_rx[1].pending) // USB is index 1
         return;
@@ -351,7 +462,7 @@ void usb_rx_frame_callback(u8 id, u8 *data, u8 len)
     g_port_rx[1].pending = true;
 }
 
-void uart_rx_frame_callback(u8 id, u8 *data, u8 len)
+void uart_rx_frame_callback(uint8_t id, uint8_t *data, uint8_t len)
 {
     if (g_port_rx[2].pending) // UART is index 2
         return;
@@ -363,10 +474,10 @@ void uart_rx_frame_callback(u8 id, u8 *data, u8 len)
     g_port_rx[2].pending = true;
 }
 
-static u32 _time_ms = 0;
-static u32 _time_prev_ms = 0;
-static u32 _state_prev_ms = 0;
-static u8 _datanum = 0;
+static uint32_t _time_ms = 0;
+static uint32_t _time_prev_ms = 0;
+static uint32_t _state_prev_ms = 0;
+static uint8_t _datanum = 0;
 void _stream_data_trans()
 {
     if (com_frame.is_busy) // 端口忙
@@ -405,10 +516,10 @@ void _stream_data_trans()
         }
         else if ((_time_ms - _time_prev_ms > T_DATA_STREAM))
         { // 数据发送
-            if (com_frame.stream_num == 0)
+            if (stream_num == 0)
                 return;
-            bool txflag = _datanum >= 12 / com_frame.stream_num * com_frame.stream_num - 1;
-            dm_data_prepare(com_frame.data_id_index[_datanum % com_frame.stream_num], _datanum, com_frame.txdata, txflag);
+            bool txflag = _datanum >= 12 / stream_num * stream_num - 1;
+            dm_data_prepare(com_frame.data_id_index[_datanum % stream_num], _datanum, com_frame.txdata, txflag);
             _datanum++;
             if (txflag)
             {
@@ -422,16 +533,16 @@ void _stream_data_trans()
     }
     else
     { // vofa端口
-        if (com_frame.stream_num == 0)
+        if (stream_num == 0)
             return;
         if ((_time_ms - _time_prev_ms < T_DATA_STREAM))
             return;
         _time_prev_ms = _time_ms;
-        for (u8 i = 0; i < com_frame.stream_num; i++)
+        for (uint8_t i = 0; i < stream_num; i++)
         {
             dm_data_get(com_frame.data_id_index[i], (float *)&com_frame.txdata[i * 4]);
         }
-        vofa_float_data_send((float *)com_frame.txdata, com_frame.stream_num);
+        vofa_float_data_send((float *)com_frame.txdata, stream_num);
     }
 }
 
@@ -443,9 +554,9 @@ static void _process_pending_rx(void)
         if (!g_port_rx[i].pending)
             continue;
 
-        u8 *buf = g_port_rx[i].rxbuffer;
-        u8 len = g_port_rx[i].rxlen;
-        u8 id = g_port_rx[i].cmd_id;
+        uint8_t *buf = g_port_rx[i].rxbuffer;
+        uint8_t len = g_port_rx[i].rxlen;
+        uint8_t id = g_port_rx[i].cmd_id;
 
         if (g_port_rx[i].port_id == CAN_port)
         {

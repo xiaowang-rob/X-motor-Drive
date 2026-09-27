@@ -83,6 +83,27 @@ typedef enum
     POSITION_REF,  /* pos_ref */
     DATA_NUM
 } eDataList;
+typedef enum
+{
+    LOG_HOURS,   // 时
+    LOG_MINUTES, // 分
+    LOG_FAULT,   // 故障
+    LOG_WARNING, // 警告`
+    LOG_VBUS,    // 电压
+    LOG_TEMP,    // 温度
+    LOG_IU,      // U 电流
+    LOG_IV,      // V 电流
+    LOG_IW,      // W 电流
+    LOG_ID,      // D 电流
+    LOG_ID_TAG,  // D 电流目标
+    LOG_IQ,      // Q 电流
+    LOG_IQ_TAG,  // Q 电流目标
+    LOG_VEL,     // 速度
+    LOG_VEL_TAG, // 速度目标
+    LOG_POS,     // 位置
+    LOG_POS_TAG, // 位置目标
+    LOG_NUM
+} eLogList;
 /*编码器模式*/
 typedef enum
 {
@@ -180,25 +201,25 @@ typedef enum
 } eWarning;
 
 /*  CMD ID  */
-#define UC_CONNECT 0xf0           /* 上位机连接 */
-#define UC_DISCONNECT 0xfe        /* 上位机断开 */
-#define START_TUNNING 0xf1        /* 开始调参 */
-#define BRAKE 0xf2                /* 刹车 */
-#define FOC_NRST 0xf3             /* FOC复位 */
-#define CMD_ENABLE 0xf4           /* 电机使能 */
-#define CMD_DISABLE 0xf5          /* 电机失能 */
-#define LOG_GET 0xf7              /* 获取日志 */
-#define LOG_ERASE 0xf8            /* 日志擦除 */
-#define PARAM_ERASE 0x01          /* 参数擦除 */
-#define PARAM_WRITE 0x02          /* 参数写入 */
-#define PARAM_READ 0x03           /* 参数读取 */
-#define PARAM_SAVE 0x04           /* 参数保存 */
-#define CMD_REFVALUE_SET 0x21     /* 目标值设置 */
-#define CMD_MODE_SET 0x22         /* 模式设置 */
-#define CMD_STREAM_GET 0x23       /* 监测值获取 */
-#define CMD_STREAM_SET 0x25       /* 数据流设置 */
-#define CMD_SET_ZERO_POS 0x26     /* 设置零点 */
-#define CMD_SET_LIMIT_POS 0x27    /* 设置极限位置 */
+#define CMD_CONNECT 0xf0       /* 上位机连接 */
+#define CMD_DISCONNECT 0xfe    /* 上位机断开 */
+#define CMD_START_TUNNING 0xf1 /* 开始调参 */
+#define CMD_CORE_NRST 0xf3     /* 核心复位 */
+#define CMD_LOG_GET 0xf7       /* 获取日志 */
+#define CMD_PARAM_RELOAD 0x01  /* 参数重置 */
+#define CMD_PARAM_WRITE 0x02   /* 参数写入 */
+#define CMD_PARAM_READ 0x03    /* 参数读取 */
+#define CMD_PARAM_SAVE 0x04    /* 参数保存 */
+
+#define CMD_ENABLE 0xf4        /* 电机使能 */
+#define CMD_DISABLE 0xf5       /* 电机失能 */
+#define CMD_TARGET_SET 0x21    /* 目标值设置 */
+#define CMD_MODE_SET 0x22      /* 控制模式设置 */
+#define CMD_DATA_ASK 0x23      /* 数据查询 */
+#define CMD_STREAM_SET 0x25    /* 数据流设置 */
+#define CMD_SET_ZERO_POS 0x26  /* 设置零点 */
+#define CMD_SET_LIMIT_POS 0x27 /* 设置极限位置 */
+
 #define CMD_SYSTEM_RESET 0x30     /* 系统复位 */
 #define CMD_IAP_ENTER 0x31        /* 进入IAP模式 */
 #define CMD_IAP_ERASE_FLASH 0x32  /* 擦除Flash */
@@ -207,18 +228,11 @@ typedef enum
 #define CMD_IAP_EXIT 0x35         /* 退出IAP模式 */
 
 /*  反馈 ID  */
-#define FEEDBACK_EXECUTE 0xf0 /* 成功 */
-#define FEEDBACK_FAILURE 0xfe /* 失败 */
+#define FB_EXECUTE 0xf0 /* 成功 */
+#define FB_FAILURE 0xfe /* 失败 */
 
-/*  USB 协议格式  */
-#define USB_PACKET_HEAD 0x55
-#define USB_PACKET_TAIL 0xAA
-
-/*  UART 协议格式  */
+/*  USBcdc/UART 协议格式  */
 #define UART_PACKET_HEAD 0x55
 #define UART_PACKET_TAIL 0xAA
-
-/*  帧长度  */
-#define MAX_FRAME_LENGTH 128
 
 #endif

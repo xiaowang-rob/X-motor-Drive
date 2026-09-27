@@ -102,14 +102,16 @@ bool bus_send(tBusDriver *bus, const tBus_Frame *frame)
     return true;
 }
 
-tBus_Frame *bus_process_frame(tBusDriver *bus)
+bool bus_process_frame(tBusDriver *bus, tBus_Frame *frame)
 {
-    if (!bus)
-        return NULL;
+    if (!bus | !frame)
+        return false;
 
     tBus_Frame *slot = NULL;
     if (QUEUE_STATUS_OK != queue_static_dequeue_bulk(&bus->frame_queue,
                                                      (uint8_t *)&slot, sizeof(slot)))
-        return NULL;
-    return slot;
+        return false;
+    memcpy(frame, slot, sizeof(tBus_Frame));
+    mp_free(&bus->mem_pool, slot); // 释放内存块
+    return true;
 }

@@ -14,6 +14,7 @@
 // 缓冲由**调用方提供**（见 tUartBuffer），实例本身不内嵌大数组。
 //
 // 接口形态：ops + handle（装配层在定义 tUartDriver 对象时挂上）。
+// TODO:优化，在接收进队列时直接解析包头包尾地址 并传送给上层 从队列中取时 直接按帧提取
 // ============================================================
 
 #define UART_MAX_PKT_SIZE 128 // 单帧最大载荷字节数
@@ -41,9 +42,9 @@ typedef void (*uart_rx_done_cb)(void *ctx, const uint8_t *data, uint16_t len);
 // 驱动接口（板级实现）；handle 为驱动实例
 typedef struct
 {
-    bool (*open)(void *handle);                                            // 初始化该路并挂起接收
-    bool (*send)(void *handle, const uint8_t *data, uint16_t len);         // 发送一段字节（忙则 false）
-    void (*set_rx_cb)(void *handle, uart_rx_done_cb cb, void *ctx);        // 注册收字节回调
+    bool (*open)(void *handle);                                     // 初始化该路并挂起接收
+    bool (*send)(void *handle, const uint8_t *data, uint16_t len);  // 发送一段字节（忙则 false）
+    void (*set_rx_cb)(void *handle, uart_rx_done_cb cb, void *ctx); // 注册收字节回调
 } tUartOps;
 
 typedef struct
