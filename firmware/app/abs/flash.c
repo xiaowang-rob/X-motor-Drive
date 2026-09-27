@@ -101,6 +101,8 @@ bool flash_unit_register(tFlash *s, tFlashUnit *unit)
     if (s->usr_sector_free == 0U)
         return false;
 
+    unit->flash = s;
+
     for (uint32_t i = 0U; i < s->usr_sector_count; i++)
     {
         if (0U == (s->usr_sector_bit_status & (uint16_t)(1U << i)))
@@ -119,59 +121,59 @@ bool flash_unit_register(tFlash *s, tFlashUnit *unit)
     return false;
 }
 
-void flash_unit_unregister(tFlash *s, tFlashUnit *unit)
+void flash_unit_unregister(tFlashUnit *unit)
 {
-    if (!s || !unit)
+    if (!unit->flash || !unit)
         return;
-    s->usr_sector_bit_status &= (uint16_t)~(1U << unit->id);
-    s->usr_sector_free++;
+    unit->flash->usr_sector_bit_status &= (uint16_t)~(1U << unit->id);
+    unit->flash->usr_sector_free++;
 }
 
 // 追加写入一条记录（自动落在 free_addr）；空间不足先擦除再从头写
-bool flash_unit_append(tFlash *s, tFlashUnit *unit, const uint8_t *data, uint32_t len)
+bool flash_unit_append(tFlashUnit *unit, const uint8_t *data, uint32_t len)
 {
-    if (!s || !unit || !data || len == 0U)
+    if (!unit->flash || !unit || !data || len == 0U)
         return false;
 
     if ((unit->free_addr + len) > unit->size)
     {
-        if (!flash_unit_erase(s, unit))
+        if (!flash_unit_erase(unit))
             return false;
     }
 
     uint32_t addr = unit->base_addr + unit->free_addr;
-    if (!s->ops->write(s->handle, addr, data, len))
+    if (!unit->flash->ops->write(unit->flash->handle, addr, data, len))
     {
-        s->dstate = DEV_RUN_ERROR;
+        unit->flash->dstate = DEV_RUN_ERROR;
         return false;
     }
 
     unit->free_addr += len; // 推进写位置
-    s->dstate = DEV_RUNNING;
+    unit->flash->dstate = DEV_RUNNING;
     return true;
 }
 
 // 读上一条记录数据
-bool flash_unit_read(tFlash *s, tFlashUnit *unit, uint8_t *data, uint32_t len)
+bool flash_unit_read(tFlashUnit *unit, uint8_t *data, uint32_t len)
 {
-    if (!s || !unit || !data || len == 0U)
+    if (!unit->flash || !unit || !data || len == 0U)
         return false;
     if (unit->free_addr < len)
         return false; // 无记录
 
     uint32_t addr = unit->base_addr + unit->free_addr - len;
-    return flash_rd(s, addr, data, len);
+    return flash_rd(unit->flash, addr, data, len);
 }
 
 // 擦除整个单元并复位写位置
-bool flash_unit_erase(tFlash *s, tFlashUnit *unit)
+bool flash_unit_erase(tFlashUnit *unit)
 {
-    if (!s || !unit)
+    if (!unit->flash || !unit)
         return false;
 
-    if (!s->ops->erase_sector(s->handle, unit->id))
+    if (!unit->flash->ops->erase_sector(unit->flash->handle, unit->id))
     {
-        s->dstate = DEV_RUN_ERROR;
+        unit->flash->dstate = DEV_RUN_ERROR;
         return false;
     }
     unit->free_addr = 0U;

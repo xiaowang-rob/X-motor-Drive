@@ -1,6 +1,4 @@
 #include "parameters.h"
-#include "flash.h"
-#include "bsp_cfg.h"
 
 #include "crc.h" // crc32（参数持久化校验）
 
@@ -72,7 +70,7 @@ const tField g_param_fields[PARAM_NUM] = {
 };
 
 // ---- 默认值----
-static const tParameter s_param_default = {
+static const tParameter param_default = {
 #define P_DEF(id, field, type, def) \
     .field = def,
     PARAM_FIELDS(P_DEF)
@@ -88,14 +86,14 @@ typedef struct
 #define PARAM_BLOB_SIZE (sizeof(tParamHdr) + sizeof(tParameter))
 
 // 参数服务初始化 注册存储单元 读出上次数值
-bool param_init(void)
+bool param_init(tFlash *flash)
 {
-    if (!flash_unit_register(&g_flash, &param_unit))
+    if (!flash_unit_register(flash, &param_unit))
         return false;
-    g_param = s_param_default; // 唯一默认值来源
+    g_param = param_default; // 唯一默认值来源
 
     uint8_t blob[PARAM_BLOB_SIZE];
-    if (flash_unit_read(&g_flash, &param_unit, blob, PARAM_BLOB_SIZE))
+    if (flash_unit_read(&param_unit, blob, PARAM_BLOB_SIZE))
     {
         tParamHdr hdr;
         memcpy(&hdr, blob, sizeof(hdr));
@@ -125,12 +123,12 @@ bool param_save(void)
     memcpy(blob, &hdr, sizeof(hdr));
     memcpy(blob + sizeof(hdr), &g_param, sizeof(tParameter));
 
-    return flash_unit_append(&g_flash, &param_unit, blob, PARAM_BLOB_SIZE);
+    return flash_unit_append(&param_unit, blob, PARAM_BLOB_SIZE);
 }
 // 重置参数到默认值
 bool param_reset(void)
 {
-    g_param = s_param_default;
+    g_param = param_default;
     return param_save();
 }
 

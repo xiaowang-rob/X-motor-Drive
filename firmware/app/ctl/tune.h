@@ -1,14 +1,17 @@
 #ifndef __TUNE_H
 #define __TUNE_H
 
-#include "foc_core.h"
+#include <stdint.h>
+#include <stdbool.h>
+
 #include "protocol.h"
+#include "parameters.h"
 
 // ================================= 整定参数配置 =================================
 // 通用时间转换 (假设 20kHz 中断，1 tick = 50us)
 
 #define TICK_TO_MS(tick) ((tick) * 0.05f)
-#define MS_TO_TICK(ms) ((u16)((ms) * 20.0f))
+#define MS_TO_TICK(ms) ((uint16_t)((ms) * 20.0f))
 
 #define TUNE_WAIT_TICKS MS_TO_TICK(1000) // 先静止等待时间
 
@@ -70,17 +73,13 @@
 typedef struct
 {
     // 系统参数
-    float dt;             // 控制周期 (s)
+
     float tune_cur_limit; // 电流限幅 (A)
 
     // 控制参数
     float bandwidth_current; // 电流滞环带宽
     float bandwidth_speed;   // 速度滞环带宽
     float bandwidth_pos;     // 位置滞环带宽
-
-    float uadc_offset; // adc 偏移
-    float vadc_offset;
-    float wadc_offset;
 
     float cur_filter_alpha; // 电流滤波系数
 
@@ -112,7 +111,7 @@ typedef struct
 
     // ========== 编码器参数 =====
     float theta_offset; // 编码器角度偏移 (rad)
-    u8 pole_pairs;      // 极对数
+    uint8_t pole_pairs; // 极对数
     bool direction;     // 转动方向 (true:逆 false 顺)
     bool theta_elec_need_180;
 
@@ -123,15 +122,16 @@ typedef struct
 {
     // 通用状态
     eTuneState state;
-    eFaultState fault;
-    u8 freq_tick;          // 频率计数
-    u32 steady_tick;       // 稳态计数
-    u32 timeout_tick;      // 超时计数
-    u32 align_total_ticks; // 对齐总时长 (tick)，按电流比例缩放
-    u8 tune_round;         // 整定轮次: 0=第一轮(电压), 1=第二轮(电流评估)
+    eFault fault;
+    uint8_t freq_tick;          // 频率计数
+    uint32_t steady_tick;       // 稳态计数
+    uint32_t timeout_tick;      // 超时计数
+    uint32_t align_total_ticks; // 对齐总时长 (tick)，按电流比例缩放
+    uint8_t tune_round;         // 整定轮次: 0=第一轮(电压), 1=第二轮(电流评估)
     // 电阻整定上下文 (阈值在进入阶段时一次预计算)
     struct
     {
+        float ia;
         float i_target;    // 当前点目标电流 (A)
         float i_target_2;  // 第二点目标电流 (A)
         float hyst_band;   // 滞环带宽 (A)
@@ -143,10 +143,10 @@ typedef struct
         float v_cmd;
         float ol_rs[3];
         float ol_u[3];
-        u16 hold_cnt;
-        u16 step_ticks;
-        u8 step;
-        u8 ol_stage;
+        uint16_t hold_cnt;
+        uint16_t step_ticks;
+        uint8_t step;
+        uint8_t ol_stage;
     } rs_ctx;
 
     // 电感整定上下文 (阈值在进入阶段时一次预计算)
@@ -196,12 +196,12 @@ typedef struct
         float sum_me[2]; // Σ(θ_m·θ_e)
         float sum_mm[2]; // Σ(θ_m²)
 
-        u16 cnt[2]; // 采样点数
+        uint16_t cnt[2]; // 采样点数
 
         bool forward_done;
         bool backward_done;
-        u8 test_step;
-        u8 step; // 0对齐 1正向 2反向 3拟合计算 4完成
+        uint8_t test_step;
+        uint8_t step; // 0对齐 1正向 2反向 3拟合计算 4完成
 
     } encoder_ctx;
 
@@ -210,7 +210,7 @@ typedef struct
     {
         float sum_e_mag;
         float sum_vel;
-        u16 valid_cnt;
+        uint16_t valid_cnt;
         bool ready;
     } psi_ctx;
 
@@ -220,7 +220,7 @@ typedef struct
         float vel_start;
         float sum_torque;
         float sum_accel;
-        u16 sample_cnt;
+        uint16_t sample_cnt;
         bool accel_phase;
         bool ready;
     } jb_ctx;
@@ -234,7 +234,7 @@ typedef struct
 void motor_param_tune_init();
 void motor_param_tune_reset();
 eTuneState tune_main_loop(tFOC_val *foc_val);
-u8 motor_param_tune_get_progress(void);
-eFaultState tune_get_fault(void);
+uint8_t motor_param_tune_get_progress(void);
+eFault tune_get_fault(void);
 
 #endif // __TUNE_H

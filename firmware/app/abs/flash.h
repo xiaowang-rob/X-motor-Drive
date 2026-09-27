@@ -21,14 +21,14 @@
 // 驱动接口（板级实现）；handle 为驱动实例
 typedef struct
 {
-    bool (*open)(void *handle);                                                  // 初始化介质，返回前资源须可用
-    bool (*read)(void *handle, uint32_t addr, uint8_t *data, uint32_t len);      // 连续读
+    bool (*open)(void *handle);                                                    // 初始化介质，返回前资源须可用
+    bool (*read)(void *handle, uint32_t addr, uint8_t *data, uint32_t len);        // 连续读
     bool (*write)(void *handle, uint32_t addr, const uint8_t *data, uint32_t len); // 连续写（目标须已擦除）
-    bool (*erase_addr)(void *handle, uint32_t addr, uint32_t len);               // 擦除覆盖 [addr, addr+len)，按扇区向上取整
-    bool (*erase_sector)(void *handle, uint8_t sec_id);                          // 擦除指定用户扇区
-    uint8_t (*sector_count)(void *handle);                                       // 用户扇区数量
-    uint32_t (*sector_addr)(void *handle, uint8_t sec_id);                       // 用户扇区基地址
-    uint32_t (*sector_size)(void *handle, uint8_t sec_id);                       // 用户扇区大小
+    bool (*erase_addr)(void *handle, uint32_t addr, uint32_t len);                 // 擦除覆盖 [addr, addr+len)，按扇区向上取整
+    bool (*erase_sector)(void *handle, uint8_t sec_id);                            // 擦除指定用户扇区
+    uint8_t (*sector_count)(void *handle);                                         // 用户扇区数量
+    uint32_t (*sector_addr)(void *handle, uint8_t sec_id);                         // 用户扇区基地址
+    uint32_t (*sector_size)(void *handle, uint8_t sec_id);                         // 用户扇区大小
 } tFlashOps;
 
 // Flash 业务对象
@@ -52,6 +52,7 @@ typedef struct
 // 记录格式由上层定义；空闲边界由二分探测"首个未写位置"得到（重启后可恢复）。
 typedef struct
 {
+    tFlash *flash;
     uint8_t id;         // 单元 ID（= 用户扇区编号）
     uint32_t base_addr; // 单元在介质中的基地址（须擦除单元对齐）
     uint32_t size;      // 单元大小（= 一个擦除单元）
@@ -63,15 +64,15 @@ bool flash_init(tFlash *s);
 
 // 注册/注销 一个日志式存储单元（unit 由调用方提供，无堆分配）
 bool flash_unit_register(tFlash *s, tFlashUnit *unit);
-void flash_unit_unregister(tFlash *s, tFlashUnit *unit);
+void flash_unit_unregister(tFlashUnit *unit);
 
 // 追加写入一条记录（自动落在 free_addr）；空间不足先擦除再从头写
-bool flash_unit_append(tFlash *s, tFlashUnit *unit, const uint8_t *data, uint32_t len);
+bool flash_unit_append(tFlashUnit *unit, const uint8_t *data, uint32_t len);
 
 // 读上一条记录数据
-bool flash_unit_read(tFlash *s, tFlashUnit *unit, uint8_t *data, uint32_t len);
+bool flash_unit_read(tFlashUnit *unit, uint8_t *data, uint32_t len);
 
 // 擦除整个单元并复位写位置
-bool flash_unit_erase(tFlash *s, tFlashUnit *unit);
+bool flash_unit_erase(tFlashUnit *unit);
 
 #endif // __FLASH_H

@@ -1,8 +1,9 @@
 #include "smo.h"
-#include "math_fast.h"
-#include "usr_config.h"
+#include "bsp_math.h"
 #include "filter.h"
+#include "bsp_cfg.h"
 
+// TODO:完善smo算法
 #define SMO_DTICK 4
 #define SMO_FREQ fpwm / SMO_DTICK
 
@@ -17,7 +18,7 @@ tFirstOrderLagFilter emf_beta_lpf;
 
 tFirstOrderLagFilter vel_lpf;
 
-static tSMO smo;
+tSMO g_smo;
 
 // 默认配置
 static const tSMO_Config SMO_DEFAULT_CFG = {
@@ -31,16 +32,16 @@ static const tSMO_Config SMO_DEFAULT_CFG = {
     .emf_max = 15.0f};
 
 // 预计算不变量
-__STATIC_INLINE void _SmoPrecompute(tSMO *p)
+static inline void _SmoPrecompute(tSMO *p, float ts)
 {
     float L_avg = (p->ld + p->lq) * 0.5f;
-    p->inv_l_eff = 1.0f / (L_avg + p->rs * p->dt);
+    p->inv_l_eff = 1.0f / (L_avg + p->rs * ts);
 }
 
 // 自适应滑模增益 — 基于电压模长（BEMF信号强度），vs 基于估计速度
 // 基于电压: v_mag 越大说明信号越好，增益可以降低
 // 避免了"速度不准→增益乱调"的鸡生蛋问题
-__STATIC_INLINE float _CalcAdaptiveGain(tSMO *p, float vel_abs, float v_alpha, float v_beta)
+static inline float _CalcAdaptiveGain(tSMO *p, float vel_abs, float v_alpha, float v_beta)
 {
 #if SMO_GAIN_BY_DUTY
     float v_mag = sqrtf(v_alpha * v_alpha + v_beta * v_beta);
@@ -66,54 +67,25 @@ __STATIC_INLINE float _CalcAdaptiveGain(tSMO *p, float vel_abs, float v_alpha, f
 #endif
 }
 
-// ===== PLL 角度跟踪 =====
-// 归一化到 [-PI, PI]
-static inline float _norm_rad_pi(float a)
+static inline void smo_pll_init(tPLL *pll, float kp, float ki)
 {
-    while (a > 3.14159265f)
-        a -= 6.2831853f;
-    while (a < -3.14159265f)
-        a += 6.2831853f;
-    return a;
-}
-
-void smo_pll_init(tSmoPll *pll, float kp, float ki, float dt)
-{
-    pll->theta_pll = 0.0f;
-    pll->vel_pll = 0.0f;
+    pll->theta = 0.0f;
+    pll->vel = 0.0f;
     pll->kp = kp;
     pll->ki = ki;
-    pll->dt = dt;
 }
 
-void smo_pll_update(tSmoPll *pll, float theta_obs_rad)
+void smo_init(tParameter *param, float ts)
 {
-    // Type-1 PLL: 角度误差 → 速度积分 + 比例修正
-    float delta = _norm_rad_pi(theta_obs_rad - pll->theta_pll);
+    g_smo.rs = param->motor_rs;
+    g_smo.ld = param->motor_ld;
+    g_smo.lq = param->motor_lq;
+    g_smo.psi_f = param->motor_psif;
 
-    // 比例 + 积分
-    pll->theta_pll += (pll->vel_pll + pll->kp * delta) * pll->dt;
-    pll->vel_pll += pll->ki * delta * pll->dt;
-
-    // 归一化输出角度
-    while (pll->theta_pll > 6.2831853f)
-        pll->theta_pll -= 6.2831853f;
-    while (pll->theta_pll < 0.0f)
-        pll->theta_pll += 6.2831853f;
-}
-
-void smo_init(tMotor *motor)
-{
-    smo.rs = motor->rs;
-    smo.ld = motor->ld;
-    smo.lq = motor->lq;
-    smo.psi_f = motor->psi_f;
-    smo.dt = T_CON * SMO_DTICK;
-
-    smo.cfg = SMO_DEFAULT_CFG;
-    _SmoPrecompute(&smo);
+    g_smo.cfg = SMO_DEFAULT_CFG;
+    _SmoPrecompute(&g_smo, ts);
     // PLL 初始化: Kp=200, Ki=10000  @ dt 约 20us(SMO_DTICK=4)
-    smo_pll_init(&smo.pll, 200.0f, 10000.0f, smo.dt);
+    smo_pll_init(&g_smo.pll, 200.0f, 10000.0f);
     smo_reset();
 
     // 滤波器初始化
@@ -126,109 +98,105 @@ void smo_init(tMotor *motor)
 
 void smo_reset(void)
 {
-    smo.i_alpha_hat = smo.i_beta_hat = 0.0f;
-    smo.e_alpha = smo.e_beta = 0.0f;
-    smo.e_alpha_filt = smo.e_beta_filt = 0.0f;
-    smo.theta_elec = smo.theta_prev = smo.vel_elec = 0.0f;
-    smo.k_sl_curr = smo.cfg.k_sl_base;
-    smo.pll.theta_pll = 0;
-    smo.pll.vel_pll = 0;
+    g_smo.i_alpha_hat = g_smo.i_beta_hat = 0.0f;
+    g_smo.e_alpha = g_smo.e_beta = 0.0f;
+    g_smo.e_alpha_filt = g_smo.e_beta_filt = 0.0f;
+    g_smo.theta_elec = g_smo.theta_prev = g_smo.vel_elec = 0.0f;
+    g_smo.k_sl_curr = g_smo.cfg.k_sl_base;
+    g_smo.pll.theta = 0;
+    g_smo.pll.vel = 0;
 }
 
-void smo_set_config(tSMO_Config *cfg)
+void smo_set_config(tSMO_Config *cfg, float ts)
 {
     if (cfg == NULL)
         return;
-    smo.cfg = *cfg;
-    _SmoPrecompute(&smo);
+    g_smo.cfg = *cfg;
+    _SmoPrecompute(&g_smo, ts);
 }
 
 void smo_main_loop(float v_alpha, float v_beta,
-                  float i_alpha, float i_beta)
+                   float i_alpha, float i_beta, float ts)
 {
     // 空闲时刻对电流进行滤波
 
-    if (smo.ts_tick++ < SMO_DTICK)
+    if (g_smo.ts_tick++ < SMO_DTICK)
         return;
-    smo.ts_tick = 0;
+    g_smo.ts_tick = 0;
 
     // === 步骤 1：电流观测器 ===
 #if SMO_USE_CURRENT_OBSERVER
-    float i_err_alpha = i_alpha - smo.i_alpha_hat;
-    float i_err_beta = i_beta - smo.i_beta_hat;
+    float i_err_alpha = i_alpha - g_smo.i_alpha_hat;
+    float i_err_beta = i_beta - g_smo.i_beta_hat;
     i_err_alpha = CLAMP(i_err_alpha, -2.0f, 2.0f);
     i_err_beta = CLAMP(i_err_beta, -2.0f, 2.0f);
 
-    float di_alpha = (v_alpha - smo.rs * smo.i_alpha_hat - smo.e_alpha) * smo.inv_l_eff;
-    float di_beta = (v_beta - smo.rs * smo.i_beta_hat - smo.e_beta) * smo.inv_l_eff;
+    float di_alpha = (v_alpha - g_smo.rs * g_smo.i_alpha_hat - g_smo.e_alpha) * g_smo.inv_l_eff;
+    float di_beta = (v_beta - g_smo.rs * g_smo.i_beta_hat - g_smo.e_beta) * g_smo.inv_l_eff;
 
-    float k_slm = smo.k_sl_curr * smo.inv_l_eff;
-    di_alpha += k_slm * tanhf(i_err_alpha / smo.cfg.delta);
-    di_beta += k_slm * tanhf(i_err_beta / smo.cfg.delta);
+    float k_slm = g_smo.k_sl_curr * g_smo.inv_l_eff;
+    di_alpha += k_slm * tanhf(i_err_alpha / g_smo.cfg.delta);
+    di_beta += k_slm * tanhf(i_err_beta / g_smo.cfg.delta);
 
-    smo.i_alpha_hat += di_alpha * smo.dt;
-    smo.i_beta_hat += di_beta * smo.dt;
-    smo.i_alpha_hat = CLAMP(smo.i_alpha_hat, -MAX_CURRENT, MAX_CURRENT);
-    smo.i_beta_hat = CLAMP(smo.i_beta_hat, -MAX_CURRENT, MAX_CURRENT);
+    g_smo.i_alpha_hat += di_alpha * ts;
+    g_smo.i_beta_hat += di_beta * ts;
+    g_smo.i_alpha_hat = CLAMP(g_smo.i_alpha_hat, -MAX_CURRENT, MAX_CURRENT);
+    g_smo.i_beta_hat = CLAMP(g_smo.i_beta_hat, -MAX_CURRENT, MAX_CURRENT);
 
-    smo.e_alpha = k_slm * tanhf(i_err_alpha / smo.cfg.delta);
-    smo.e_beta = k_slm * tanhf(i_err_beta / smo.cfg.delta);
+    g_smo.e_alpha = k_slm * tanhf(i_err_alpha / g_smo.cfg.delta);
+    g_smo.e_beta = k_slm * tanhf(i_err_beta / g_smo.cfg.delta);
 #else
     // 测试模式：直接用反馈电流估算反电动势
-    smo.e_alpha = v_alpha - smo.rs * i_alpha;
-    smo.e_beta = v_beta - smo.rs * i_beta;
-    smo.e_alpha = CLAMP(smo.e_alpha, -smo.cfg.emf_max, smo.cfg.emf_max);
-    smo.e_beta = CLAMP(smo.e_beta, -smo.cfg.emf_max, smo.cfg.emf_max);
-    smo.i_alpha_hat = i_alpha;
-    smo.i_beta_hat = i_beta;
+    g_smo.e_alpha = v_alpha - g_smo.rs * i_alpha;
+    g_smo.e_beta = v_beta - g_smo.rs * i_beta;
+    g_smo.e_alpha = CLAMP(g_smo.e_alpha, -g_smo.cfg.emf_max, g_smo.cfg.emf_max);
+    g_smo.e_beta = CLAMP(g_smo.e_beta, -g_smo.cfg.emf_max, g_smo.cfg.emf_max);
+    g_smo.i_alpha_hat = i_alpha;
+    g_smo.i_beta_hat = i_beta;
 #endif
 
     // === 步骤 2：自适应增益（基于电压模长，避免速度不准的影响） ===
-    float vel_abs = FABSF(smo.vel_elec);
-    smo.k_sl_curr = _CalcAdaptiveGain(&smo, vel_abs, v_alpha, v_beta);
+    float vel_abs = FABSF(g_smo.vel_elec);
+    g_smo.k_sl_curr = _CalcAdaptiveGain(&g_smo, vel_abs, v_alpha, v_beta);
 
     // === 步骤 3：反电动势滤波 ===
 
-    smo.e_alpha_filt = filter_first_order_lag(&emf_alpha_lpf, smo.e_alpha);
-    smo.e_beta_filt = filter_first_order_lag(&emf_beta_lpf, smo.e_beta);
+    g_smo.e_alpha_filt = filter_first_order_lag(&emf_alpha_lpf, g_smo.e_alpha);
+    g_smo.e_beta_filt = filter_first_order_lag(&emf_beta_lpf, g_smo.e_beta);
 
     // === 步骤 4：角度计算（PLL vs atan2+平滑） ===
-    float emf_mag_sq = smo.e_alpha_filt * smo.e_alpha_filt +
-                       smo.e_beta_filt * smo.e_beta_filt;
+    float emf_mag_sq = g_smo.e_alpha_filt * g_smo.e_alpha_filt +
+                       g_smo.e_beta_filt * g_smo.e_beta_filt;
 
 #if SMO_USE_PLL
     if (emf_mag_sq > 0.01f)
     {
         // PLL: 角度速度联合估计，无附加LPF
-        float theta_obs = atan2f(smo.e_beta_filt, smo.e_alpha_filt); // [-PI, PI] rad
-        smo_pll_update(&smo.pll, theta_obs);
-        smo.theta_elec = smo.pll.theta_pll; // 直接 rad
-        smo.vel_elec = smo.pll.vel_pll;
+        float theta_obs = atan2f(g_smo.e_beta_filt, g_smo.e_alpha_filt); // [-PI, PI] rad
+        pll_update(&g_smo.pll, theta_obs, ts);
+        g_smo.theta_elec = g_smo.pll.theta; // 直接 rad
+        g_smo.vel_elec = g_smo.pll.vel;
     }
     else
     {
-         smo.theta_elec = smo.theta_prev; // 保持上次值
-        smo.vel_elec = 0;
+        g_smo.theta_elec = g_smo.theta_prev; // 保持上次值
+        g_smo.vel_elec = 0;
     }
 #else
     // 原方案：atan2 + 50%融合平滑（用于对比）
     if (emf_mag_sq > 0.01f)
     {
-        float theta_new = atan2f(smo.e_beta_filt, smo.e_alpha_filt);
-        float diff = normalize_angle_pi(theta_new - smo.theta_elec);
-        smo.theta_elec += 0.5f * diff;
+        float theta_new = atan2f(g_smo.e_beta_filt, g_smo.e_alpha_filt);
+        float diff = normalize_angle_pi(theta_new - g_smo.theta_elec);
+        g_smo.theta_elec += 0.5f * diff;
     }
-    smo.theta_elec = normalize_angle_360(smo.theta_elec);
+    g_smo.theta_elec = normalize_angle_360(g_smo.theta_elec);
 
-    float angle_diff = normalize_angle_pi(smo.theta_elec - smo.theta_prev);
-    float speed_raw = angle_diff / smo.dt;
-    smo.vel_elec = filter_first_order_lag(&vel_lpf, speed_raw);
-    smo.vel_elec = CLAMP(smo.vel_elec, -smo.cfg.max_vel_elec, smo.cfg.max_vel_elec);
+    float angle_diff = normalize_angle_pi(g_smo.theta_elec - g_smo.theta_prev);
+    float speed_raw = angle_diff / g_smo.dt;
+    g_smo.vel_elec = filter_first_order_lag(&vel_lpf, speed_raw);
+    g_smo.vel_elec = CLAMP(g_smo.vel_elec, -g_smo.cfg.max_vel_elec, g_smo.cfg.max_vel_elec);
 #endif
 
-    smo.theta_prev = smo.theta_elec;
+    g_smo.theta_prev = g_smo.theta_elec;
 }
-
-// 数据获取
-float smo_get_theta(void) { return smo.theta_elec; }
-float smo_get_vel(void) { return smo.vel_elec; }

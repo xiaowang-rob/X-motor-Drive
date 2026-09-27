@@ -1,6 +1,5 @@
 #include "log.h"
-#include "flash.h"
-#include "bsp_cfg.h"
+
 #include "bsp_time.h"
 
 tLog g_log;
@@ -39,13 +38,13 @@ const tField g_log_fields[LOG_NUM] = {
 };
 
 // 日志服务初始化：注册存储单元，回读最后一条有效日志
-bool log_init(void)
+bool log_init(tFlash *flash)
 {
-    if (!flash_unit_register(&g_flash, &log_unit))
+    if (!flash_unit_register(flash, &log_unit))
         return false;
 
     // 无文件头：每条就是 sizeof(tLog) 字节，单元为空时读失败即保持默认值
-    flash_unit_read(&g_flash, &log_unit, (uint8_t *)&g_log, (uint32_t)sizeof(g_log));
+    flash_unit_read(&log_unit, (uint8_t *)&g_log, (uint32_t)sizeof(g_log));
     return true;
 }
 
@@ -70,7 +69,7 @@ void log_data_save(tProtectionManager *pro_manager)
 // 把当前 g_log 作为一条记录追加写入存储单元
 void log_data_write(void)
 {
-    flash_unit_append(&g_flash, &log_unit, (const uint8_t *)&g_log, (uint32_t)sizeof(g_log)));
+    flash_unit_append(&log_unit, (const uint8_t *)&g_log, (uint32_t)sizeof(g_log));
 }
 
 // 读指定log

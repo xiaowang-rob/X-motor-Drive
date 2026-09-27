@@ -1,6 +1,7 @@
 #include "foc.h"
 #include "filter.h"
 #include "slot_con.h"
+#include "bsp_math.h"
 
 // FOC核心初始化
 void foc_init(tFOC *foc, tParameter *param, float t_cl, float vmax)
@@ -72,9 +73,6 @@ void foc_update(tFOC *foc)
 {
     foc->val.uq = pi_update(&foc->PI_iq, foc->tag.iq, foc->val.iq);
     foc->val.ud = pi_update(&foc->PI_id, foc->tag.id, foc->val.id);
-
-    inv_park_transform(foc->val.ud, foc->val.uq, foc->val.sin_e, foc->val.cos_e,
-                       &foc->val.ualpha, &foc->val.ubeta);
 }
 
 // 设置各环指令值

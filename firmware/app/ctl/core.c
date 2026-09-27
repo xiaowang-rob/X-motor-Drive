@@ -27,30 +27,48 @@ static tTraj traj;
 static tPosAcc pos_acc;
 
 // 控制外环初始化 PI速度环 pid位置环 mit控制环 t_vl:速度环周期 t_pl:位置环周期
-static void core_loop_init(tCore *core, tParameter *param, float t_vl, float t_pl)
+static inline void core_loop_init(float t_vl, float t_pl)
 {
-    pi_init(&core->PI_vel, param->vlkp, param->vlki, param->limit_current, t_vl);
-    pi_init(&core->PI_weakmag, param->vlkp / 2, param->vlki / 2, param->limit_current, t_vl);
-    pid_init(&core->PID_pos, param->plkp, param->plki, param->plkd, param->limit_vel, param->plalpha, t_pl);
-    mit_init(&core->mit, param->mit_kp, param->mit_kd, param->mit_tsta, param->mit_tmax);
+    pi_init(&core.PI_vel, g_param.vlkp, g_param.vlki, g_param.limit_current, t_vl);
+    pi_init(&core.PI_weakmag, g_param.vlkp / 2, g_param.vlki / 2, g_param.limit_current, t_vl);
+    pid_init(&core.PID_pos, g_param.plkp, g_param.plki, g_param.plkd, g_param.limit_vel, g_param.plalpha, t_pl);
+    mit_init(&core.mit, g_param.mit_kp, g_param.mit_kd, g_param.mit_tsta, g_param.mit_tmax);
 }
 // 控制外环复位 PI速度环 pid位置环复位 mit/pid指令值归零
-static void core_loop_reset(tCore *core)
+static inline void core_loop_reset(void)
 {
-    pi_reset(&core->PI_vel);
-    pi_reset(&core->PI_weakmag);
-    pid_reset(&core->PID_pos);
+    pi_reset(&core.PI_vel);
+    pi_reset(&core.PI_weakmag);
+    pid_reset(&core.PID_pos);
 
-    memset(&core->pidtag, 0, sizeof(tPIDtarget));
-    memset(&core->mittag, 0, sizeof(tMITtarget));
+    memset(&core.pidtag, 0, sizeof(tPIDtarget));
+    memset(&core.mittag, 0, sizeof(tMITtarget));
 }
 
-// 默认 PLL 增益与错误判定
+// 编码器pll初始化
+static inline void enc_pll_init(void)
+{
+
 #define ENCODER_PLL_KP 80.0f
 #define ENCODER_PLL_KI 2000.0f
 #define ENCODER_PLL_INTEG_LIMIT 0.1745f // 积分限值  ±10°
 #define ENCODER_VEL_PHYS_LIMIT 1046.0f  // rad/s 物理上限（≈10k rpm）
 
+    pll_init(&enc_pll, ENCODER_PLL_KP, ENCODER_PLL_KI,
+             ENCODER_PLL_INTEG_LIMIT, ENCODER_VEL_PHYS_LIMIT);
+}
+// 内置轨迹规划器初始化
+static inline void core_traj_init(void)
+{
+    tTraj_Config cfg = {
+        .limit_d1 = g_param.traj_limit_d1,
+        .limit_d2 = g_param.traj_limit_d2,
+        .limit_d3 = g_param.traj_limit_d3,
+        .tolerance = g_param.traj_tolerance,
+        .type = g_param.traj_type,
+    };
+    traj_init(&traj, cfg);
+}
 bool core_init(void)
 {
     core.enable = false;
@@ -62,16 +80,13 @@ bool core_init(void)
     core.enc_enable = g_param.enc_active;
     core.ctrl_mode = g_param.ctrl_mode;
 
-    // 5、初始化保护服务
+    // 初始化保护服务
     pro_manager_init(&g_param);
-    // 6、配置编码器设备驱动
+    // 配置编码器设备驱动
     core_init_ok = bsp_enc_init((eEncoderMode)g_param.ienc_mode,
                                 (eEncoderMode)g_param.eenc_mode, (eEncoderChip)g_param.eenc_chip);
-    // 7、启动主总线通信
+    // 启动主总线通信
     core_init_ok = bus_start(&g_can, g_param.can_id);
-    // 6、初始化时间槽服务
-    slot_con_init(F_CON);
-    // 7、初始化core、启动时间槽服务
 
     // 控制内环 foc初始化
     core.val.udc = sense_get_vbus(&g_sense);
@@ -79,32 +94,28 @@ bool core_init(void)
     foc_init(&foc, &g_param, T_CON, core.val.vmax);
 
     // 控制外环 pid mit 初始化
-    core_loop_init(&core, &g_param, g_slotcon.t_med, g_slotcon.t_low);
+    core_loop_init(g_slotcon.t_med, g_slotcon.t_low);
     // 初始化编码器pll
     if (core.enc_enable)
-        pll_init(&enc_pll, ENCODER_PLL_KP, ENCODER_PLL_KI,
-                 ENCODER_PLL_INTEG_LIMIT, ENCODER_VEL_PHYS_LIMIT);
+        enc_pll_init();
 
-    // TODO: 初始化观测器
+    // 初始化观测器
     if (core.obs_enable)
     {
+        // TODO:添加观测器初始化
     }
 
     // 初始化svpwm
-    svpwm_init(&svpwm, );
+    svpwm_init(&svpwm, TIC_PWM, core.val.udc, T_PWM, T_SAMPLE, T_NOISE, T_DIED);
 
     // 初始化 内置轨迹规划
-    tTraj_Config cfg = {
-        .limit_d1 = g_param.traj_limit_d1,
-        .limit_d2 = g_param.traj_limit_d2,
-        .limit_d3 = g_param.traj_limit_d3,
-        .tolerance = g_param.traj_tolerance,
-        .type = g_param.traj_type,
-    };
-    traj_init(&traj, cfg);
+    core_traj_init();
 
+    slot_con_init(F_PWM);
     // 将solt槽任务注册到pwm下溢中断 以 启动solt槽任务
     pwm_register_callback(NULL, slot_con_update);
+
+    return core_init_ok;
 }
 void core_reset(void)
 {
@@ -141,9 +152,10 @@ void high_schedule_task0(float ts)
     }
     else if (core.enc_enable)
     {
+        // TODO:20khz pll跟随1khz角度变化 需要1khz的角度突变处理
         pll_update(&enc_pll, core.val.theta_enc, ts);
         core.val.theta_mech = enc_pll.theta;
-        foc.val.theta_elec = (core.val.theta_mech - param.theta_offset) * param.motor_polepairs * (param.positive_dir ? 1 : -1);
+        foc.val.theta_elec = (core.val.theta_mech - g_param.theta_offset) * g_param.motor_polepairs * (g_param.positive_dir ? 1 : -1);
         foc.val.theta_elec = normalize_angle_2pi(foc.val.theta_elec);
         core.val.vel = enc_pll.vel;
     }
@@ -164,6 +176,11 @@ void high_schedule_task0(float ts)
     {
         // foc更新
         foc_update(&foc);
+        foc.val.ud += foc.tag.ud_hfi;
+
+        inv_park_transform(foc.val.ud, foc.val.uq, foc.val.sin_e, foc.val.cos_e,
+                           &foc.val.ualpha, &foc.val.ubeta);
+
         // svpwm 调制生成脉冲
         svpwm_update(&svpwm, foc.val.ualpha, foc.val.ubeta);
         // 门极驱动输出
@@ -179,7 +196,6 @@ void high_schedule_task0(float ts)
 // 位置累加 更新位置
 void medium_schedule_task0(float ts)
 {
-
     pos_accumulate(&pos_acc, core.val.theta_mech);
 }
 
@@ -189,7 +205,7 @@ void medium_schedule_task5(float ts)
     if (core.enable)
     {
         // 电流模式不需要轨迹规划
-        if (core.run_mode == CURRENT_MODE)
+        if (core.ctrl_mode == CURRENT_MODE)
             return;
         traj_Update(&traj, ts);
     }
@@ -199,16 +215,16 @@ void medium_schedule_task6(float ts)
 {
     if (core.enable)
     {
-        if (core.run_mode == MIT_MODE)
+        if (core.ctrl_mode == MIT_MODE)
         {
             // 使用内置轨迹规划器 输出轨迹信息
             core.mittag.pos = traj.out.value;
             core.mittag.vel = traj.out.rate_d1;
-            core.mittag.tau_ff = param.motor_j * traj.out.rate_d2 + param.motor_b * traj.out.rate_d1;
+            core.mittag.tau_ff = g_param.motor_j * traj.out.rate_d2 + g_param.motor_b * traj.out.rate_d1;
         }
-        else if (core.run_mode == PID_SPEED)
+        else if (core.ctrl_mode == PID_SPEED)
             core.pidtag.vel = traj.out.value;
-        else if (core.run_mode == PID_POSITION)
+        else if (core.ctrl_mode == PID_POSITION)
             core.pidtag.pos = traj.out.value;
     }
 }
@@ -218,17 +234,17 @@ void medium_schedule_task7(float ts)
 {
     if (core.enable)
     {
-        if (core.run_mode == PID_SPEED)
+        if (core.ctrl_mode == PID_SPEED)
         { // 速度环pid控制
             core.pidtag.vel = traj.out.value;
             foc.tag.iq = pi_update(&core.PI_vel, core.pidtag.vel, core.val.vel);
         }
-        else if (core.run_mode == MIT_MODE)
+        else if (core.ctrl_mode == MIT_MODE)
         {
 
             foc.tag.tua = mit_update(&core.mit, core.mittag.tau_ff,
                                      core.mittag.pos, core.val.pos, core.mittag.vel, core.val.vel);
-            foc.tag.iq = foc.tag.tua / param.motor_ke;
+            foc.tag.iq = foc.tag.tua / g_param.motor_ke;
         }
     }
 }
@@ -257,7 +273,7 @@ void low_schedule_task1(float ts)
 {
     if (core.enable)
     {
-        if (core.run_mode == PID_POSITION)
+        if (core.ctrl_mode == PID_POSITION)
         { // 位置环pid控制
             core.pidtag.pos = traj.out.value;
             core.pidtag.vel = pid_update(&core.PID_pos, core.pidtag.pos, core.val.pos);
@@ -267,5 +283,13 @@ void low_schedule_task1(float ts)
 const tSlotTask high_schedule[FREQ_HIGH_LOOP] = {
     {0, high_schedule_task0} // 内环只有一个 foc核心任务
 };
-const tSlotTask medium_schedule[FREQ_MEDIUM_LOOP];
-const tSlotTask low_schedule[FREQ_LOW_LOOP];
+const tSlotTask medium_schedule[FREQ_MEDIUM_LOOP] = {
+    {0, medium_schedule_task0},
+    {5, medium_schedule_task5},
+    {6, medium_schedule_task6},
+    {7, medium_schedule_task7},
+    {9, medium_schedule_task9},
+};
+const tSlotTask low_schedule[FREQ_LOW_LOOP] = {
+    {1, low_schedule_task1},
+};

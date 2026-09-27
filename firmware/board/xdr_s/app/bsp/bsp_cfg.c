@@ -25,6 +25,15 @@
 #include "uart_mcu.h"
 #include "uart_usb_cdc.h"
 
+const uint32_t TIC_PWM = GATE_TIC_PWM;
+const float F_PWM = GATE_F_PWM;          // PWM频率
+const float T_PWM = 1 / F_PWM;           // PWM周期
+const float F_CON = F_PWM;               // 控制基频 (Hz)
+const float T_CON = T_PWM;               // 控制周期 (s)
+const float T_SAMPLE = ADC_T_SAMPLE_CUR; // 采样时间
+const float T_NOISE = GATE_T_NOISE;      // 开关噪声时间
+const float T_DIED = GATE_T_DIED;        // 死区时间
+
 // ---- 存储 ----
 tFlash g_flash = {
     .ops = &fla_mcu_ops,
@@ -33,7 +42,7 @@ tFlash g_flash = {
 tIAP g_iap = {
     .flash_ops = &fla_mcu_ops, // 复用同一介质
     .flash_handle = &g_fla_mcu,
-    .parts = &g_app_parts,   // 分区表
+    .parts = &g_bl_parts,    // 目标分区表
     .jump = mcu_iap_jump_bl, // app 跳转到 BL
 };
 
@@ -140,7 +149,7 @@ bool bsp_base_init(void)
     sense_set_sample_point(&g_sense, g_gate.pwm_period - 1U);
 
     // 状态反馈（见 led_gpio.c）
-    if (!led_init(&g_led_0))
+    if (!led_init(&g_led))
         return false;
 
     // 通讯（见 bus_can.c / uart_mcu.c / uart_usb_cdc.c）

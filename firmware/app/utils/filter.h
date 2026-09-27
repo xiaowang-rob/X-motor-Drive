@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include "bsp_math.h"
 
 // 中位值滤波和防脉冲滤波的最大窗口大小（可根据需要调整）
 #ifndef MAX_MEDIAN_FILTER_SIZE
@@ -103,7 +104,7 @@ uint16_t filter_pulse(tPulseInterferenceFilter *filter, uint16_t new_value);
 int filter_arithmetic_mean(const int *data_buf, int size);
 
 // 巴特沃斯低通滤波（需CMSIS-DSP）
-#ifdef ARM_MATH_H
+#ifdef _ARM_MATH_H
 typedef struct
 {
     arm_biquad_casd_df1_inst_f32 inst;

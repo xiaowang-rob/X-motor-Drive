@@ -14,6 +14,7 @@
 
 #include "tim.h"
 
+#include "bsp_irq.h"
 // ---------- 实例 ----------
 struct tFd6288q
 {
@@ -35,12 +36,34 @@ tFd6288q g_fd6288q = {
     .pwr_pin = POWER12V_GPIO_PIN,
     .tic_pwm = GATE_TIC_PWM,
 };
+// PWM 节拍回调（由 pwm_register_callback 注入）
+static void (*pwm_up_callback)(void) = NULL;
+static void (*pwm_down_callback)(void) = NULL;
 
-// ---------- 事件源判定（供 bsp_irq.c 的 HAL 回调过滤） ----------
-bool fd6288q_owns_tim(const TIM_HandleTypeDef *htim)
+// ---------- 功率级节拍中断 ----------
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-    return (htim != NULL) && (g_fd6288q.htim != NULL) &&
-           (htim->Instance == g_fd6288q.htim->Instance);
+    if (g_fd6288q.htim == htim)
+    {
+        // 中心对齐：CR1.DIR=1 表示当前向下计数（下溢事件），否则向上（上溢）
+        if (htim->Instance->CR1 & TIM_CR1_DIR)
+        {
+            if (pwm_down_callback)
+                pwm_down_callback();
+        }
+        else
+        {
+            if (pwm_up_callback)
+                pwm_up_callback();
+        }
+    }
+}
+
+void pwm_register_callback(void (*up_cb)(void), void (*down_cb)(void))
+{
+    pwm_up_callback = up_cb;
+    pwm_down_callback = down_cb;
 }
 
 // ---------- 驱动接口（tGateOps） ----------

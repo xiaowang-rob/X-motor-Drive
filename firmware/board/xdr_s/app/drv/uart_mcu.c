@@ -35,26 +35,27 @@ tUartMcu g_uart0 = {
 // 半传输(HT) 不代表一帧结束，过滤掉；IDLE / TC 均表示"一块数据到齐"。
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
-    if (huart != g_uart1.huart)
-        return;
+    if (huart == g_uart0.huart)
+    {
+        HAL_UART_RxEventTypeTypeDef ev = HAL_UARTEx_GetRxEventType(huart);
+        if (ev == HAL_UART_RXEVENT_HT)
+            return;
 
-    HAL_UART_RxEventTypeTypeDef ev = HAL_UARTEx_GetRxEventType(huart);
-    if (ev == HAL_UART_RXEVENT_HT)
-        return;
+        if (g_uart0.rx_cb)
+            g_uart0.rx_cb(g_uart0.rx_ctx, g_uart0.rx_buffer, Size);
 
-    if (g_uart1.rx_cb)
-        g_uart1.rx_cb(g_uart1.rx_ctx, g_uart1.rx_buffer, Size);
-
-    // 重新挂起接收，继续收下一块
-    HAL_UARTEx_ReceiveToIdle_DMA(g_uart1.huart, g_uart1.rx_buffer, g_uart1.rx_buffer_size);
+        // 重新挂起接收，继续收下一块
+        HAL_UARTEx_ReceiveToIdle_DMA(g_uart0.huart, g_uart0.rx_buffer, g_uart0.rx_buffer_size);
+    }
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-    if (huart != g_uart1.huart)
-        return;
-    // 出错后重新挂起接收，保证链路可用（错误后 RxState 未必是 READY）
-    HAL_UARTEx_ReceiveToIdle_DMA(g_uart1.huart, g_uart1.rx_buffer, g_uart1.rx_buffer_size);
+    if (huart == g_uart0.huart)
+    {
+        // 出错后重新挂起接收，保证链路可用（错误后 RxState 未必是 READY）
+        HAL_UARTEx_ReceiveToIdle_DMA(g_uart0.huart, g_uart0.rx_buffer, g_uart0.rx_buffer_size);
+    }
 }
 
 // ---- 驱动接口（tUartOps） ----

@@ -3,17 +3,15 @@
 
 #include "protocol.h"
 #include "pid.h"
-#include "mit.h"
-#include "svpwm.h"
 #include "filter.h"
 
 #include "parameters.h"
-#include "trajectory.h"
 
 typedef struct
 {
     float vel_elec; // 电角速度 rad/s
     float iq, id;
+    float ud_hfi;
     float tua;
 } tFOCtarget;
 

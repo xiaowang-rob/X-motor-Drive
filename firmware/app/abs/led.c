@@ -134,7 +134,7 @@ static int8_t blink_step(tBlinkCtx *ctx)
     if (!ctx || !ctx->pat || ctx->pat->count == 0U)
         return -1;
 
-    uint32_t now = time_get_ms();
+    uint32_t now = bsp_time_ms();
 
     // 待启动：点亮首段（set_state 后由首个 task 生效，不在 set_state 里碰硬件）
     if (*ctx->phase == LED_PHASE_IDLE)
@@ -286,7 +286,7 @@ void rgb_task(tRgb *rgb)
         break;
     case RGB_BREATHE:
     {
-        uint32_t now = time_get_ms();
+        uint32_t now = bsp_time_ms();
         if (!phase_elapsed(now, rgb->next_change_ms))
             break;
         rgb_apply_brightness(rgb, SINE_TABLE[rgb->breath_idx & 63U]);

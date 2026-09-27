@@ -72,8 +72,12 @@ set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
 # ── 应用侧头文件搜索路径 ──
-# 注：应用侧源码使用扁平 include（如 "device.h" / "math_fast.h" / "encoder_drivers.h"），
-#     因此各分层目录与板级 drv 目录都需进入搜索路径。
+# 注：应用侧源码使用扁平 include（如 "device.h" / "bsp_math.h" / "encoder_drivers.h"），
+#     因此各分层目录、板级 bsp/ 与 drv/ 目录都需进入搜索路径。
+#
+# 板级 bsp/ 必须在此列出：应用侧各层只链接 stm32_hal / board_dsp（见 fw_add_layer），
+# 拿不到 board_drv 的 PUBLIC include 传播，而 app/ 下确实直接引用板级地基头
+# （bsp_cfg.h / bsp_math.h / bsp_time.h / bsp_irq.h）。
 set(APP_INCLUDE_DIRS
     ${FW_ROOT}/app/abs
     ${FW_ROOT}/app/app
@@ -81,6 +85,7 @@ set(APP_INCLUDE_DIRS
     ${FW_ROOT}/app/srv
     ${FW_ROOT}/app/utils
     ${BOARD_DIR}
+    ${BOARD_DIR}/bsp
     ${BOARD_DIR}/drv
     ${PROTOCOL_DIR}
 )

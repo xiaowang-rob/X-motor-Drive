@@ -4,6 +4,7 @@
 #include "protocol.h"
 #include "field.h"
 #include "protection.h"
+#include "flash.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -44,7 +45,7 @@ extern tLog g_log;
 // 日志字段描述符表（[eLogList] 索引；协议按 id 读写单字段用）
 extern const tField g_log_fields[LOG_NUM];
 
-bool log_init(void);                                 // 注册存储单元并回读最后一条日志
+bool log_init(tFlash *flash);                        // 注册存储单元并回读最后一条日志
 void log_data_save(tProtectionManager *pro_manager); // 采集当前运行量填入 g_log
 void log_data_write(void);                           // 把 g_log 作为一条记录追加进 flash
 

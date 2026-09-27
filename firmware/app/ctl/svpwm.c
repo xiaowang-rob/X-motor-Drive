@@ -2,16 +2,16 @@
 #include "bsp_math.h"
 
 void svpwm_init(tSvpwm *sv, uint16_t tic_pwm, float Vbus,
-                float tpwm, float ts_us, float tn_us, float td_us)
+                float tpwm, float ts, float tn, float td)
 {
     memset(sv, 0, sizeof(tSvpwm));
     sv->tic_pwm = tic_pwm;
     sv->vbus = Vbus;
     sv->k = MATH_SQRT3 * (float)sv->tic_pwm / Vbus;
 
-    sv->ticTs = ts_us * sv->tic_pwm / (tpwm * 1000000); // 采样时间提前量（计数值）
-    sv->ticTn = tn_us * sv->tic_pwm / (tpwm * 1000000); // 噪声时间（计数值）
-    sv->ticTd = td_us * sv->tic_pwm / (tpwm * 1000000); // 死区时间（计数值）
+    sv->ticTs = ts * sv->tic_pwm / (tpwm); // 采样时间提前量（计数值）
+    sv->ticTn = tn * sv->tic_pwm / (tpwm); // 噪声时间（计数值）
+    sv->ticTd = td * sv->tic_pwm / (tpwm); // 死区时间（计数值）
 }
 
 void svpwm_update(tSvpwm *sv, float ua, float ub)
@@ -144,8 +144,8 @@ uint16_t svpwm_sp_calibration(tSvpwm *sv)
 {
     uint16_t tic_ref; // 当前扇区的参考相计数
     uint16_t tic_out; // 目标点ccr
-    const ticall = sv->ticTd + sv->ticTn + sv->ticTs;
-    const tic_td_tn = sv->ticTd + sv->ticTn;
+    const uint16_t ticall = sv->ticTd + sv->ticTn + sv->ticTs;
+    const uint16_t tic_td_tn = sv->ticTd + sv->ticTn;
     // 根据扇区确定参考相，并保存tic值
     switch (sv->sector)
     {

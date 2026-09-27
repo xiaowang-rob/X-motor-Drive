@@ -9,7 +9,10 @@
 
 // ---------- 本板配置 ----------
 #define GATE_TIC_PWM 4249U // 定时器周期计数值（ARR，对应 F_PWM=20kHz）
+#define GATE_F_PWM 20000U
 
+#define GATE_T_NOISE (12 / 1000000000) // 开关噪声时间
+#define GATE_T_DIED (200 / 1000000000) // 硬件死区时间
 // 相 → 通道映射（与硬件相序一致）
 #define GATE_PWM_CH_A TIM_CHANNEL_3
 #define GATE_PWM_CH_B TIM_CHANNEL_2
@@ -21,8 +24,6 @@
 // 驱动实例（布局私有：只暴露符号，装配层仅取地址）
 typedef struct tFd6288q tFd6288q;
 extern tFd6288q g_fd6288q;
-
-bool fd6288q_owns_tim(const TIM_HandleTypeDef *htim);
 
 // 驱动 ops（abs/gate_drv.h 的 tGateOps）
 extern const tGateOps fd6288q_ops;

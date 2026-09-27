@@ -27,12 +27,9 @@ typedef struct
 {
     const tFlashOps *flash_ops; // 复用的介质 ops
     void *flash_handle;         // 复用的介质实例
-    const tIAPPartition *parts; // 分区表，按 eIAPtype 索引
+    const tIAPPartition *parts; // 目标分区表 app绑定bl bl绑定app
     bool (*jump)(void);         // 平台跳转（板级注入）
 } tIAP;
-
-// 启动对象：cfg 须已由装配层填好（parts / flash_ops 为空返回 false）
-bool iap_init(tIAP *iap);
 
 // ---- 分区操作（以 iap->cfg.type 为默认分区） ----
 bool iap_erase(tIAP *iap);

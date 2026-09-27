@@ -1,6 +1,7 @@
 #ifndef __SVPWM_H
 #define __SVPWM_H
 
+#include <stdint.h>
 typedef struct
 {
     uint16_t tic_pwm; // pwm arr
@@ -19,7 +20,7 @@ typedef struct
 
 // SVPWM 核心接口
 void svpwm_init(tSvpwm *sv, uint16_t tic_pwm, float Vbus,
-                float tpwm, float ts_us, float tn_us, float td_us);
+                float tpwm, float ts, float tn, float td);
 void svpwm_update(tSvpwm *sv, float ua, float ub);
 void svpwm_vbus_calibration(tSvpwm *sv, float Vbus);
 uint16_t svpwm_sp_calibration(tSvpwm *sv);

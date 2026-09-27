@@ -3,6 +3,8 @@
 
 #include <stdbool.h>
 
+#include "protocol.h"
+
 #include "pid.h"
 #include "mit.h"
 

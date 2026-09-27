@@ -104,21 +104,7 @@ typedef enum
     LOG_POS_TAG, // 位置目标
     LOG_NUM
 } eLogList;
-/*编码器模式*/
-typedef enum
-{
-    ENC_OFF, // 禁用
-    ENC_ON,  // 实时角度
-    ENC_PLL, // pll跟踪角度
-} eENCmode;  // 编码器模式
-/*编码器型号*/
-typedef enum
-{
-    ENC_NONE, /* 无 */
-    MT6816,   /* MT6816 */
-    MT6835,   /* MT6835 */
-    AS5047,   /* AS5047 */
-} eEncoderChip;
+
 /*观测模式*/
 typedef enum
 {

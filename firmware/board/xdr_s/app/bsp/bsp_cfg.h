@@ -24,6 +24,15 @@
 #define MIN_VOLTAGE 20
 #define MAX_TEMPERATURE 80
 
+extern const uint32_t TIC_PWM; // PWM计数值
+extern const float F_PWM;      // PWM频率
+extern const float T_PWM;      // PWM周期
+extern const float F_CON;      // 控制基频 (Hz)
+extern const float T_CON;      // 控制周期 (s)
+extern const float T_SAMPLE;   // 采样时间
+extern const float T_NOISE;    // 开关噪声时间
+extern const float T_DIED;     // 死区时间
+
 // ============================================================
 // bsp_cfg.h — 本板装配层：全板设备对象与启动入口
 //

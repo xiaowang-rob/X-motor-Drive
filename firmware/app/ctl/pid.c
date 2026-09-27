@@ -1,6 +1,6 @@
 #include "pid.h"
 
-#include "math_fast.h"
+#include "bsp_math.h"
 
 // PI初始化
 void pi_init(tPI *pi, float kp, float ki, float output_limit, float dt)

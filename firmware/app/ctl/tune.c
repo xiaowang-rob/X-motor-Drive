@@ -1,18 +1,17 @@
 #include "tune.h"
-#include "math_fast.h"
-#include "bsp_adc.h"
+#include "bsp_math.h"
 
-#include "device.h"
-#include "data_manager.h"
-#include "filter.h"
+// 1、电气参数层辨识 （Ld Lq（高频注入） Rs/Psif （RLS/MRAS））
+// 2、编码器校准 （偏移值 极对数 方向）
+// 3、机械参数辨识（J TL EKO+MRAS）
+
 // ================================= 全局变量定义 =================================
 static tTuneParams temp_params = {0};
 static tTuneContext tune_ctx = {0};
 
-static tFirstOrderLagFilter rs_i_filter;
 // ================================= 辅助函数 =================================
 // sum型线性拟合
-static void _fit_from_sums(float sum_x, float sum_y, float sum_xy, float sum_xx, u16 n,
+static void _fit_from_sums(float sum_x, float sum_y, float sum_xy, float sum_xx, uint16_t n,
                            float *k, float *b, float *mse)
 {
     if (n < 10)
@@ -40,17 +39,17 @@ static void _fit_from_sums(float sum_x, float sum_y, float sum_xy, float sum_xx,
     // 为简化，此处返回 0，实际调试时可补充 Σy² 累加
     *mse = 0.0f;
 }
-// 控制带宽、滤波系数与PID参数的经验公式
-static void calculate_control_params()
+// 控制带宽、滤波系数与PID参数的经验公式 fc-电流环频率
+static inline void calculate_control_params(tParameter *p, float fc)
 {
-    // TODO:添加电流环软硬调节
+    // TODO:添加电流环带宽调节
     float fn_d = 1 / (MATH_2PI * temp_params.ld / temp_params.rs);
-    float wc_d = MATH_2PI * 0.5f * (2 * fn_d < F_CURRENT / 10 ? 2 * fn_d : F_CURRENT / 10);
+    float wc_d = MATH_2PI * 0.5f * (2 * fn_d < fc / 10 ? 2 * fn_d : fc / 10);
     temp_params.id_kp = wc_d * temp_params.ld;
     temp_params.id_ki = wc_d * temp_params.rs;
 
     float fn_q = 1 / (MATH_2PI * temp_params.lq / temp_params.rs);
-    float wc_q = MATH_2PI * 0.6f * (2 * fn_q < F_CURRENT / 10 ? 2 * fn_q : F_CURRENT / 10);
+    float wc_q = MATH_2PI * 0.6f * (2 * fn_q < fc / 10 ? 2 * fn_q : fc / 10);
     temp_params.iq_kp = wc_q * temp_params.lq;
     temp_params.iq_ki = wc_q * temp_params.rs;
 
@@ -61,7 +60,7 @@ static void calculate_control_params()
     float f_filter = 4.0f * f_c_open;
 
     // 上下限约束
-    float f_sw = (float)F_PWM;     // ADC采样频率 = PWM频率
+    float f_sw = fc;               // 这里和电流环同频
     float f_max = f_sw / 8.0f;     // 最大允许滤波截止频率（保证滤除开关纹波）
     float f_min = 2.0f * f_c_open; // 最小允许值（避免影响环路）
 
@@ -116,42 +115,37 @@ static void dft_reset_accumulator(float *sum_re, float *sum_im, uint16_t *cnt)
 }
 
 // ================================= 参数访问实现 =================================
-void motor_param_tune_force_save(void)
+void motor_param_tune_force_save(tParameter *p)
 {
     //  这里是集中写入参数flash中转站
-    g_Param.motor_rs = temp_params.rs;
-    g_Param.motor_ld = temp_params.ld;
-    g_Param.motor_lq = temp_params.lq;
-    g_Param.motor_psif = temp_params.psi_f;
-    g_Param.motor_ke = temp_params.ke;
-    g_Param.motor_j = temp_params.j;
-    g_Param.motor_b = temp_params.b;
-    g_Param.motor_polepairs = temp_params.pole_pairs;
-    g_Param.theta_offset = temp_params.theta_offset;
-    g_Param.theta_elec_offset = temp_params.theta_elec_need_180;
-    g_Param.forward_dir = temp_params.direction;
+    p->motor_rs = temp_params.rs;
+    p->motor_ld = temp_params.ld;
+    p->motor_lq = temp_params.lq;
+    p->motor_psif = temp_params.psi_f;
+    p->motor_ke = temp_params.ke;
+    p->motor_j = temp_params.j;
+    p->motor_b = temp_params.b;
+    p->motor_polepairs = temp_params.pole_pairs;
+    p->theta_offset = temp_params.theta_offset;
+    p->theta_elec_offset = temp_params.theta_elec_need_180;
+    p->positive_dir = temp_params.direction;
 
-    g_Param.kp_Q = temp_params.iq_kp;
-    g_Param.ki_Q = temp_params.iq_ki;
-    g_Param.kp_D = temp_params.id_kp;
-    g_Param.ki_D = temp_params.id_ki;
+    p->qclkp = temp_params.iq_kp;
+    p->qclki = temp_params.iq_ki;
+    p->dclkp = temp_params.id_kp;
+    p->dclki = temp_params.id_ki;
 
-    g_Param.cur_filter_alpha = temp_params.cur_filter_alpha;
-    g_Param.adc_U_zero_offset = temp_params.uadc_offset;
-    g_Param.adc_V_zero_offset = temp_params.vadc_offset;
-    g_Param.adc_W_zero_offset = temp_params.wadc_offset;
+    p->cfalpha = temp_params.cur_filter_alpha;
 }
 
 // ================================= 初始化与重置 =================================
-// todo:后续添加无感整定，根据选择的感应模式校准，无感只校准电机，有感校准电机和编码器，直接校准电机，直接用HFI、SMO做精准的控制
-void motor_param_tune_init()
+// TODO:后续添加无感整定，根据选择的感应模式校准，无感只校准电机，有感校准电机和编码器，直接校准电机，直接用HFI、SMO做精准的控制
+void motor_param_tune_init(tParameter *p)
 {
     memset(&tune_ctx, 0, sizeof(tTuneContext));
     memset(&temp_params, 0, sizeof(tTuneParams));
-    temp_params.kv = g_Param.motor_kv;
-    temp_params.dt = T_CON;
-    temp_params.tune_cur_limit = g_Param.tune_current; // 从用户配置获取校准电流锚点
-    filter_first_order_lag_init(&rs_i_filter, 0.04f, 0);
+    temp_params.kv = p->motor_kv;
+    temp_params.tune_cur_limit = p->tune_current; // 从用户配置获取校准电流锚点
 }
 
 void motor_param_tune_reset()
@@ -162,17 +156,18 @@ void motor_param_tune_reset()
 // ================================= 电阻整定 (开环 + 滤波 + 差分) =================================
 
 // 开环电压测电阻
+
 static bool _tune_rs_ol_vol(float i_alpha)
 {
     tTuneContext *ctx = &tune_ctx;
-    float i_a = filter_first_order_lag(&rs_i_filter, i_alpha);
+    ctx->rs_ctx.ia = i_alpha * 0.04f + ctx->rs_ctx.ia * 0.96f;
 
     if (ctx->freq_tick++ < RS_FREQ_F)
         return false; // 跳过不整定
     ctx->freq_tick = 0;
 
     //===滞环电流控制=== (阈值在 TUNE_IDLE 时已预计算至 rs_ctx)
-    float err = ctx->rs_ctx.i_target - i_a;
+    float err = ctx->rs_ctx.i_target - ctx->rs_ctx.ia;
     if (FABSF(err) > ctx->rs_ctx.hyst_band)
     {
         ctx->rs_ctx.v_cmd += (err > 0) ? 10 * RS_V_STEP_MIN : -10 * RS_V_STEP_MIN;
@@ -189,13 +184,13 @@ static bool _tune_rs_ol_vol(float i_alpha)
         }
     }
     //===死区前馈===
-    float v_dead_comp = (i_a > 0) ? RS_DEADTIME_VCOMP : -RS_DEADTIME_VCOMP;
+    float v_dead_comp = (ctx->rs_ctx.ia > 0) ? RS_DEADTIME_VCOMP : -RS_DEADTIME_VCOMP;
     float v_out_ab[2] = {0};
     v_out_ab[0] = CLAMP(ctx->rs_ctx.v_cmd + v_dead_comp, -ctx->rs_ctx.v_limit, ctx->rs_ctx.v_limit);
     v_out_ab[1] = 0;
 
     // 稳态判断
-    float i_err = FABSF(i_a - ctx->rs_ctx.i_target);
+    float i_err = FABSF(ctx->rs_ctx.ia - ctx->rs_ctx.i_target);
     if (i_err < ctx->rs_ctx.steady_err)
     {
         if (ctx->steady_tick >= RS_STEADY_TICKS)
@@ -204,7 +199,7 @@ static bool _tune_rs_ol_vol(float i_alpha)
             if (ctx->rs_ctx.step == 0)
             {
                 // 记录第一点
-                ctx->rs_ctx.i_meas[0] = i_a;
+                ctx->rs_ctx.i_meas[0] = ctx->rs_ctx.ia;
                 ctx->rs_ctx.v_meas[0] = v_out_ab[0]; // 记录实际输出电压
 
                 // 切换到第二点
@@ -222,7 +217,7 @@ static bool _tune_rs_ol_vol(float i_alpha)
             else
             {
                 // 记录第二点
-                ctx->rs_ctx.i_meas[1] = i_a;
+                ctx->rs_ctx.i_meas[1] = ctx->rs_ctx.ia;
                 ctx->rs_ctx.v_meas[1] = v_out_ab[0]; // 记录实际输出电压
 
                 // === 5. 差分计算电阻 ===
@@ -267,7 +262,8 @@ static bool _tune_rs_ol_vol(float i_alpha)
 // 在 OPEN_CUR 模式下，施加固定电角度 + q 轴电流，用 αβ 电压幅值计算 Rs
 // 三个电角度 (270°, 30°, 150°) 各 120° 间隔，分别以 U / V / W 相为主载流相
 // 每个角度做两点差分：I₁ = tune_cur × 0.2, I₂ = tune_cur × 0.6
-static bool _tune_rs_ol_cur(tFOC_val *foc_val)
+static bool _tune_rs_ol_cur(float ia, float ia_ref, float ib, float ib_ref,
+                            float ua, float ub)
 {
     tTuneContext *ctx = &tune_ctx;
 
@@ -275,7 +271,7 @@ static bool _tune_rs_ol_cur(tFOC_val *foc_val)
     static const float angles[3] = {4.7124f, 0.5236f, 2.6180f};
 
     // ol_stage: 0=I₁@U, 1=I₂@U; 2=I₁@V, 3=I₂@V; 4=I₁@W, 5=I₂@W; 6=done
-    u8 stage = ctx->rs_ctx.ol_stage;
+    uint8_t stage = ctx->rs_ctx.ol_stage;
 
     if (stage >= 6)
     {
@@ -291,8 +287,8 @@ static bool _tune_rs_ol_cur(tFOC_val *foc_val)
         return true;
     }
 
-    u8 angle_idx = stage / 2; // 0,1,2
-    u8 cur_idx = stage % 2;   // 0=I₁, 1=I₂
+    uint8_t angle_idx = stage / 2; // 0,1,2
+    uint8_t cur_idx = stage % 2;   // 0=I₁, 1=I₂
     float cur_lim = temp_params.tune_cur_limit;
 
     float i_target = (cur_idx == 0) ? (cur_lim * RS_I_TARGET_1_COEF)
@@ -302,8 +298,8 @@ static bool _tune_rs_ol_cur(tFOC_val *foc_val)
     foc_set_ol_theta_cur(theta, i_target);
 
     // 稳态判断：实际电流 vs 参考电流
-    float i_err_a = FABSF(foc_val->ialpha - foc_val->ialpha_ref);
-    float i_err_b = FABSF(foc_val->ibeta - foc_val->ibeta_ref);
+    float i_err_a = FABSF(ia - ia_ref);
+    float i_err_b = FABSF(ib - ib_ref);
     float i_err = (i_err_a > i_err_b) ? i_err_a : i_err_b;
     float steady_thr = cur_lim * RS_STEADY_ERR_THR_COEF;
 
@@ -311,7 +307,7 @@ static bool _tune_rs_ol_cur(tFOC_val *foc_val)
     {
         if (ctx->steady_tick >= RS_STEADY_TICKS)
         {
-            float u_mag = sqrtf(foc_val->ualpha * foc_val->ualpha + foc_val->ubeta * foc_val->ubeta);
+            float u_mag = sqrtf(ua * ua + ub * ub);
 
             if (cur_idx == 0)
             {
@@ -348,12 +344,12 @@ static bool _tune_rs_ol_cur(tFOC_val *foc_val)
 }
 // ================================= 电感整定（alpha beta轴方波注入） =================================
 
-static bool _TuneLs(float v_alpha, float v_beta, float i_alpha, float i_beta)
+static bool _TuneLs(float i_alpha, float i_beta, float ts)
 {
 
     tTuneContext *ctx = &tune_ctx;
     const float omega_inj = MATH_2PI * LS_INJECT_FREQ_HZ; // 注入角频率 (rad/s)
-    const float omega_dt = omega_inj * temp_params.dt;    // 每步相位增量 (°)
+    const float omega_dt = omega_inj * ts;                // 每步相位增量 (°)
 
     static float inj_angle = 0.0f; // 当前注入电压相位
     float v_cmd_ab[2] = {0};
@@ -714,7 +710,7 @@ bool _tune_encoder(float theta_m)
         if (FABSF(ctx->encoder_ctx.theta_e_acc - ctx->encoder_ctx.theta_e_raw) >= 0.1745f)
         {
             ctx->encoder_ctx.theta_e_raw = ctx->encoder_ctx.theta_e_acc;
-            u8 i = ctx->encoder_ctx.step - 2;
+            uint8_t i = ctx->encoder_ctx.step - 2;
             ctx->encoder_ctx.sum_m[i] += ctx->encoder_ctx.theta_m_unwrap;
             ctx->encoder_ctx.sum_e[i] += ctx->encoder_ctx.theta_e_acc;
             ctx->encoder_ctx.sum_me[i] += ctx->encoder_ctx.theta_m_unwrap * ctx->encoder_ctx.theta_e_acc;
@@ -769,14 +765,14 @@ bool _tune_encoder(float theta_m)
             return true;
         }
         float p_est = (fabsf(ctx->encoder_ctx.k[0]) + fabsf(ctx->encoder_ctx.k[1])) * 0.5f;
-        temp_params.pole_pairs = (u8)(p_est + 0.5f);
+        temp_params.pole_pairs = (uint8_t)(p_est + 0.5f);
         if (temp_params.pole_pairs < EC_MIN_POLE_PAIRS || temp_params.pole_pairs > EC_MAX_POLE_PAIRS)
         {
             ctx->fault = FAULT_ENCODER_CAL_FAIL;
             ctx->state = TUNE_FAILED;
             return true;
         }
-        if (temp_params.pole_pairs != g_Param.motor_polepairs)
+        if (temp_params.pole_pairs != p->motor_polepairs)
         {
             ctx->fault = FAULT_POLE_PAIR_MISMATCH;
             ctx->state = TUNE_FAILED;
@@ -823,7 +819,7 @@ static bool _tune_jb()
 }
 
 // ================================= 整定主循环 (状态切换时初始化) =================================
-eTuneState tune_main_loop(tFOC_val *foc_val)
+eTuneState tune_main_loop(tFOC_val *foc_val, float ts)
 {
     tTuneContext *ctx = &tune_ctx;
     ctx->steady_tick++; // 作为全局稳态计时器

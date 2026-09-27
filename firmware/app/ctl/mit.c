@@ -1,6 +1,6 @@
 
 #include "mit.h"
-#include "math_fast.h"
+#include "bsp_math.h"
 
 // MIT模式初始化函数，输入参数：Kp (比例增益)，Kd (微分增益)，tau_ff_sta (静态补偿扭矩)， tau_max (最大控制扭矩)
 void mit_init(tMIT *mit, float Kp, float Kd, float tau_ff_sta, float tau_max)

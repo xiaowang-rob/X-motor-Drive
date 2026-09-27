@@ -6,7 +6,7 @@
 // ============================================================
 // sen_mcu.h — 板载 ADC 采样驱动
 // ============================================================
-
+#define ADC_T_SAMPLE_CUR (1 / 1000000) // 采样时间
 // 驱动实例
 typedef struct tSenseAdc tSenseAdc;
 extern tSenseAdc g_sen_mcu;

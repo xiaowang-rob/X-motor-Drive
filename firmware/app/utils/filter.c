@@ -243,8 +243,7 @@ int filter_arithmetic_mean(const int *data_buf, int size)
 }
 
 // 巴特沃斯滤波（条件编译）
-#ifdef ARM_MATH_H
-#include "arm_math.h" // 确保 CMSIS-DSP 头文件已包含
+#ifdef _ARM_MATH_H
 
 void filter_butterworth_init(tBW_FilterInstance *f, float32_t *coeffs)
 {

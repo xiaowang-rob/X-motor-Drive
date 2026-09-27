@@ -18,10 +18,7 @@ uint8_t field_read_raw(const tField *f, uint8_t *dst)
     if (!f || !f->ptr || !dst)
         return 0U;
 
-    uint8_t n = field_size(f->type);
-    if (n == 0U)
-        return 0U;
-
+    uint8_t n = TYPE_SIZE[f->type];
     memcpy(dst, f->ptr, n);
     return n;
 }
@@ -30,10 +27,6 @@ bool field_write_raw(const tField *f, const uint8_t *src)
 {
     if (!f || !f->ptr || !src)
         return false;
-
-    uint8_t n = field_size(f->type);
-    if (n == 0U)
-        return false; // 长度不符
 
     memcpy(f->ptr, src, TYPE_SIZE[f->type]);
     return true;
