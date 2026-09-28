@@ -3,6 +3,62 @@
 
 #include "bsp_math.h"
 
+#include <stdbool.h>
+#include <stdint.h>
+
+// 单项整定状态
+typedef enum
+{
+    TO_RUNNING, // 运行中
+    TO_DONE,
+    TO_DATA_NOISE,     // 数据噪声大
+    TO_DATA_INVALID,   // 数据不合理
+    TO_DATA_IMBALANCE, // 数据不平衡
+    TO_TIMEOUT,        // 整定超时
+} eTuneOneState;
+
+// 开环电流三点差分测电阻上下文
+typedef struct
+{
+    eTuneOneState state;
+    struct
+    {
+        float cur_1;                  // 差分电流 1 (A)
+        float cur_2;                  // 差分电流 2 (A)
+        float rs_min;                 // 最小值
+        float rs_max;                 // 最大值
+        float rs_phase_diff_thr_coef; // 三相电阻最大相对偏差 例如 0.15f
+    } cfg;
+
+    float id;
+
+    // float i_target;    // 当前点目标电流 (A)
+    // float i_target_2;  // 第二点目标电流 (A)
+    // float hyst_band;   // 滞环带宽 (A)
+    // float v_limit;     // 电压限幅 (V)
+    // float steady_err;  // 稳态误差阈值 (A)
+    // float min_delta_i; // 最小电流变化量 (A)
+    // float v_meas[2];
+    // float i_meas[2];
+    // float v_cmd;
+    float rs_meas[3];
+    // float ol_u[3];
+    // uint16_t hold_cnt;
+    // uint16_t step_ticks;
+    // uint8_t step;
+    uint8_t ol_stage;
+
+    struct
+    {
+        theta_e;
+        id;
+    } cmd;
+    struct
+    {
+        float rs;
+    } out;
+} tTune_rs_oc_ctx;
+
 /* ============================================================
  * 高频信号注入法 — dq轴电感在线辨识
  * 注入方式：d轴高频方波电压，同步解调提取电流幅值
