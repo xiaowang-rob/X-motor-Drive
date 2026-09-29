@@ -2,17 +2,23 @@
 
 /* --- 开环电流三点差分测电阻--- */
 
-// 开环电流测三相电阻 (双点差分 × 3角度)
-// 在 OPEN_CUR 模式下，施加固定电角度 + q 轴电流，用 αβ 电压幅值计算 Rs
-// 三个电角度 (270°, 30°, 150°) 各 120° 间隔，分别以 U / V / W 相为主载流相
-// 每个角度做两点差分：I₁ = tune_cur × 0.2, I₂ = tune_cur × 0.6
+// 开环角度闭环电流测三相电阻 (双点差分 × 3角度)
+// 施加固定电角度 + d轴电流，用 d 电压幅值计算 Rs
+// 三个电角度 (0°, 120°, 240°) 各 120° 间隔，分别以 U / V / W 相为主载流相
+// 每个角度做两点差分
+
+void tune_rs_ol_cur_init(tTune_rs_oc_ctx *ctx, tTune_rs_oc_cfg *cfg)
+{
+    memset(ctx, 0, sizeof(tTune_rs_oc_ctx));
+    ctx->cfg = cfg;
+}
+
 eTuneOneState tune_rs_ol_cur(tTune_rs_oc_ctx *ctx,
                              float id, float ud)
 {
-    // stage: 0=Id1@U, 1=Id2@U; 2=Id1@V, 3=Id2@V; 4=Id1@W, 5=Id2@W; 6=done
-    uint8_t stage = ctx->ol_stage;
+    ctx->state = TO_RUNNING;
 
-    if (stage >= 6)
+    if (ctx->stage >= 6)
     {
         float rs0 = ctx->rs_meas[0];
         float rs1 = ctx->rs_meas[1];
@@ -29,66 +35,55 @@ eTuneOneState tune_rs_ol_cur(tTune_rs_oc_ctx *ctx,
         ctx->state = TO_DONE;
 
         // 合理性检查
-        if (rs_avg < ctx->cfg.rs_min || rs_avg > ctx->cfg.rs_max)
+        if (rs_avg < ctx->cfg->rs_min || rs_avg > ctx->cfg->rs_max)
             ctx->state = TO_DATA_INVALID;
 
         // 三相电阻差异检查
         float diff_ratio = (rs_max - rs_min) / rs_avg;
-        if (diff_ratio > ctx->cfg.rs_phase_diff_thr_coef)
+        if (diff_ratio > ctx->cfg->rs_phase_diff_thr_coef)
             ctx->state = TO_DATA_IMBALANCE;
 
         // 复位
-        ctx->ol_stage = 0;
+        ctx->stage = 0;
         ctx->cmd.id = 0.0f;
         ctx->cmd.theta_e = 0.0f;
 
         return ctx->state;
     }
 
-    uint8_t angle_idx = stage / 2; // 0,1,2
-    uint8_t cur_idx = stage % 2;   // 0=I1, 1=I2
+    uint8_t angle_idx = ctx->stage / 2; // 0,1,2
+    uint8_t cur_idx = ctx->stage % 2;   // 0=I1, 1=I2
 
-    float id_ref = (cur_idx == 0) ? (ctx->cfg.cur_1)
-                                  : (ctx->cfg.cur_2);
-
-    // 注意：这里必须是 d 轴电流给定，iq_ref = 0
-    ctx->cmd.id = id_ref;
+    // 控制指令
+    ctx->cmd.id = (cur_idx == 0) ? (ctx->cfg->cur_1)
+                                 : (ctx->cfg->cur_2);
     ctx->cmd.theta_e = angle_idx * MATH_2PI / 3.0f;
 
     // 稳态判断：实际 id 反馈 vs id_ref
-    float i_err = FABSF(id - id_ref);
-    float steady_thr = ctx->cfg.cur_2 * 0.02f;
+    float i_err = FABSF(id - ctx->cmd.id);
+    float steady_thr = ctx->cfg->cur_2 * 0.02f;
 
-    if (i_err < 0.2f)
+    if (i_err < steady_thr)
     {
-        if (ctx->steady_tick >= RS_STEADY_TICKS)
+        if (ctx->steady_tick >= ctx->cfg->steady_ticks)
         {
             if (cur_idx == 0)
             {
                 // 记录第一点 ud
-                ctx->rs_ctx.ol_u[0] = ud;
-                ctx->rs_ctx.ol_stage++;
+                ctx->ud_meas[0] = ud;
+                ctx->stage++;
             }
             else
             {
                 // 记录第二点 ud
-                ctx->rs_ctx.ol_u[1] = ud;
+                ctx->ud_meas[1] = ud;
 
-                float I1 = cur_lim * RS_I_TARGET_1_COEF;
-                float I2 = cur_lim * RS_I_TARGET_2_COEF;
-                float delta_i = I2 - I1;
-                float delta_u = ctx->rs_ctx.ol_u[1] - ctx->rs_ctx.ol_u[0];
-
-                // 信噪比检查
-                if (FABSF(delta_i) < cur_lim * RS_MIN_DELTA_I_COEF)
-                {
-                    ctx->fault = FAULT_TUNE_CURRENT_VIBRATION;
-                    return true;
-                }
+                float delta_i = ctx->cfg->cur_2 - ctx->cfg->cur_1;
+                float delta_u = ctx->ud_meas[1] - ctx->ud_meas[0];
 
                 // 当前角度电阻：Δud / Δid
-                ctx->rs_ctx.ol_rs[angle_idx] = delta_u / (delta_i + 1e-6f);
-                ctx->rs_ctx.ol_stage++;
+                ctx->rs_meas[angle_idx] = delta_u / (delta_i + 1e-6f);
+                ctx->stage++;
             }
 
             ctx->steady_tick = 0;
@@ -100,7 +95,7 @@ eTuneOneState tune_rs_ol_cur(tTune_rs_oc_ctx *ctx,
         ctx->steady_tick = 0;
     }
 
-    return false;
+    return ctx->state;
 }
 /* ---- 初始化 ---- */
 void HFInjection_Init(HFInjection_t *hf)

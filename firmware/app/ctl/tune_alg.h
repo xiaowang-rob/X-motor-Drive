@@ -17,36 +17,29 @@ typedef enum
     TO_TIMEOUT,        // 整定超时
 } eTuneOneState;
 
+typedef struct
+{
+    float cur_1;                  // 差分电流 1 (A)
+    float cur_2;                  // 差分电流 2 (A)
+    uint32_t steady_ticks;        // 稳态保持时间
+    float rs_min;                 // 最小值
+    float rs_max;                 // 最大值
+    float rs_phase_diff_thr_coef; // 三相电阻最大相对偏差 例如 0.15f
+} tTune_rs_oc_cfg;
 // 开环电流三点差分测电阻上下文
 typedef struct
 {
     eTuneOneState state;
-    struct
-    {
-        float cur_1;                  // 差分电流 1 (A)
-        float cur_2;                  // 差分电流 2 (A)
-        float rs_min;                 // 最小值
-        float rs_max;                 // 最大值
-        float rs_phase_diff_thr_coef; // 三相电阻最大相对偏差 例如 0.15f
-    } cfg;
+
+    const tTune_rs_oc_cfg *cfg;
 
     float id;
 
-    // float i_target;    // 当前点目标电流 (A)
-    // float i_target_2;  // 第二点目标电流 (A)
-    // float hyst_band;   // 滞环带宽 (A)
-    // float v_limit;     // 电压限幅 (V)
-    // float steady_err;  // 稳态误差阈值 (A)
-    // float min_delta_i; // 最小电流变化量 (A)
-    // float v_meas[2];
-    // float i_meas[2];
-    // float v_cmd;
-    float rs_meas[3];
-    // float ol_u[3];
-    // uint16_t hold_cnt;
-    // uint16_t step_ticks;
-    // uint8_t step;
-    uint8_t ol_stage;
+    float rs_meas[3]; // 电阻测量值（R）
+    float ud_meas[2]; // 目标点电压值（V）
+
+    uint32_t steady_tick;
+    uint8_t stage;
 
     struct
     {
