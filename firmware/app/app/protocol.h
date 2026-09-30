@@ -138,7 +138,6 @@ typedef enum
 typedef enum
 {
     TUNE_INIT,       /* INIT */
-    TUNE_IDLE,       /* IDLE */
     TUNE_RESISTANCE, /* 电阻校准 */
     TUNE_INDUCTANCE, /* 电感校准 */
     TUNE_ENCODER,    /* 编码器校准 */

@@ -9,19 +9,24 @@
 // 单项整定状态
 typedef enum
 {
-    TO_RUNNING, // 运行中
-    TO_DONE,
+    TO_RUNNING,        // 运行中
+    TO_DONE,           // 完成
     TO_DATA_NOISE,     // 数据噪声大
     TO_DATA_INVALID,   // 数据不合理
     TO_DATA_IMBALANCE, // 数据不平衡
     TO_TIMEOUT,        // 整定超时
 } eTuneOneState;
 
+/* ============================================================
+ * 开环电流三点差分测电阻
+ * ============================================================ */
+
 typedef struct
 {
-    float cur_1;                  // 差分电流 1 (A)
-    float cur_2;                  // 差分电流 2 (A)
-    uint32_t steady_ticks;        // 稳态保持时间
+    float cur_1;                  // 差分电流 1 系数
+    float cur_2;                  // 差分电流 2 系数
+    float cur_steady_err;         // 稳态电流 误差系数
+    float steady_ticks;           // 稳态保持时间
     float rs_min;                 // 最小值
     float rs_max;                 // 最大值
     float rs_phase_diff_thr_coef; // 三相电阻最大相对偏差 例如 0.15f
@@ -31,7 +36,7 @@ typedef struct
 {
     eTuneOneState state;
 
-    const tTune_rs_oc_cfg *cfg;
+    tTune_rs_oc_cfg cfg;
 
     float id;
 
@@ -46,155 +51,158 @@ typedef struct
         theta_e;
         id;
     } cmd;
-    struct
-    {
-        float rs;
-    } out;
+
+    float rs_out;
+
 } tTune_rs_oc_ctx;
 
+void tune_rs_ol_cur_init(tTune_rs_oc_ctx *ctx, tTune_rs_oc_cfg cfg);
+eTuneOneState tune_rs_ol_cur(tTune_rs_oc_ctx *ctx,
+                             float id, float ud);
 /* ============================================================
  * 高频信号注入法 — dq轴电感在线辨识
  * 注入方式：d轴高频方波电压，同步解调提取电流幅值
  * ============================================================ */
 
-/* ---- 参数配置 ---- */
-#define HF_INJ_FREQ_HZ 500.0f /* 注入频率 (Hz) */
-#define HF_INJ_AMP_V 15.0f    /* 注入电压幅值 (V) */
-#define CTRL_FREQ_HZ 10000.0f /* 控制频率 (Hz) */
-#define LPF_CUTOFF_HZ 100.0f  /* 低通滤波器截止频率 */
-
-/* ---- 状态变量 ---- */
 typedef struct
 {
-    /* 注入信号发生器 */
-    float phase;     /* 注入相位累积 */
-    float phase_inc; /* 每周期相位增量 */
-    float inj_value; /* 当前注入值 */
+    float omega_h;  // 高频信号注入角频率 ω_h (rad/s)
+    float omega_dt; // 高频信号注入周期
 
-    /* 低通滤波器 (一阶IIR) */
-    float lpf_alpha;    /* 滤波系数 */
-    float id_base_filt; /* d轴基波电流滤波值 */
-    float iq_base_filt; /* q轴基波电流滤波值 */
+    uint16_t n_per_cycle; // 每个注入周期计数
+    uint32_t align_ticks; /* 对齐保持时长 tick */
 
-    /* 同步解调 */
-    float id_hf_sum;      /* d轴高频电流累加 */
-    float iq_hf_sum;      /* q轴高频电流累加 */
-    uint16_t demod_count; /* 解调累加计数 */
+    float v_inj_start;  /* 注入电压起始幅值 V */
+    float v_inj_max;    /* 注入电压上限 V */
+    float v_inj_step;   /* 自适应步长 V */
+    float i_hyst_lo;    /* 电流自适应下限 A */
+    float i_hyst_hi;    /* 电流自适应上限 A */
+    float ls_min;       // 电感最小值 H
+    float ls_max;       // 电感最大值 H
+    uint8_t avg_cycles; /* DFT 平均周期数，建议 4~8 */
 
-    /* 辨识结果 */
-    float Ld_hat;  /* d轴电感估计值 (H) */
-    float Lq_hat;  /* q轴电感估计值 (H) */
-    float Ld_filt; /* 滤波后的Ld */
-    float Lq_filt; /* 滤波后的Lq */
+} tTune_Ldq_hfi_cfg;
 
-    /* 死区补偿 */
-    float deadtime_comp; /* 死区补偿电压 */
-} HFInjection_t;
+typedef struct
+{
+    eTuneOneState state;
+    tTune_Ldq_hfi_cfg cfg;
+
+    uint8_t step;
+    uint8_t uidx; // 0-d 1-q
+    struct
+    {
+        float theta; /* 当前给定电角度 rad */
+        float udq[2];
+    } cmd;
+
+    uint32_t tick_cnt;
+
+    float inj_angle; /* 注入相位 rad */
+    float v_inj;     /* 当前注入电压幅值 V */
+
+    float sum_re, sum_im; /* DFT 累加器 */
+    uint16_t dft_cnt;
+
+    float amp_sum;
+    uint16_t cycle_cnt;
+    float ldq_out[2];
+
+} tune_Ldq_hfi_ctx;
 
 /* ============================================================
- * 带遗忘因子的递推最小二乘法 (FF-RLS)
- * 辨识目标：定子电阻 Rs 和永磁体磁链 Psi_f
- * 辨识模型：基于q轴电压方程 y = phi^T * theta
- *   y     = uq - omega_e * Ld * id
- *   phi   = [-iq, -omega_e]^T
- *   theta = [Rs, Psi_f]^T
+ * sum线型拟合 — 编码器参数校准
  * ============================================================ */
 
-#define RLS_DIM 2        /* 待辨识参数个数 */
-#define RLS_LAMBDA 0.98f /* 遗忘因子，典型范围0.95~0.99 */
+/* 1D 最小二乘 */
+typedef struct
+{
+    float sum_x, sum_y, sum_xx, sum_xy, sum_yy;
+    uint16_t n;
+} tLS1D;
+
+void ls1d_reset(tLS1D *a);
+void ls1d_accum(tLS1D *a, float x, float y);
+bool ls1d_fit(const tLS1D *a, float *k, float *b, float *mse);
 
 typedef struct
 {
-    float theta[RLS_DIM];      /* 参数估计向量 [Rs, Psi_f] */
-    float P[RLS_DIM][RLS_DIM]; /* 协方差矩阵 */
-    float phi[RLS_DIM];        /* 回归向量 */
-    float y;                   /* 当前观测值 */
-    float K[RLS_DIM];          /* 增益向量 */
-    float lambda;              /* 遗忘因子 */
-    float lambda_min;          /* 遗忘因子下界 */
-    uint32_t update_count;
-} FFRLS_t;
-/* ---- 获取辨识结果 ---- */
-float FFRLS_GetRs(const FFRLS_t *rls) { return rls->theta[0]; }
-float FFRLS_GetPsiF(const FFRLS_t *rls) { return rls->theta[1]; }
+    float i_tune; /* 校准电流 A */
 
-/* ============================================================
- * 扩展卡尔曼观测器 (EKO) — 负载转矩在线辨识
- * 状态向量: x = [omega_m, T_L]^T
- *   机械运动方程: J*d(omega_m)/dt = Te - T_L - B*omega_m
- *   负载转矩模型: d(T_L)/dt = 0 (缓变假设)
- * ============================================================ */
+    uint32_t align_ticks;        /* 对齐保持 tick */
+    float delta_e;               /* 每次调用电角度增量 rad */
+    float sample_step_e;         /* 采样步长 rad 电角度，建议 0.1745 */
+    float travel_pos;            /* 拖动行程 rad 机械角度，建议 6.3 */
+    uint8_t pole_pairs_expected; /* 期望极对数，用于校验 */
+    float fit_max_mse;           /* 拟合质量阈值 */
 
-#include <math.h>
-
-#define EKO_STATE_DIM 2 /* 状态维数: [omega_m, T_L] */
+} tEncCal_cfg;
 
 typedef struct
 {
-    float x[EKO_STATE_DIM];                /* 状态估计 [omega_hat, TL_hat] */
-    float P[EKO_STATE_DIM][EKO_STATE_DIM]; /* 误差协方差矩阵 */
-    float Q[EKO_STATE_DIM][EKO_STATE_DIM]; /* 过程噪声协方差 */
-    float R;                               /* 测量噪声方差 (转速测量) */
-    float J_hat;                           /* 转动惯量估计值 (由MRAS提供) */
-    float B;                               /* 粘滞摩擦系数 */
-    float Te;                              /* 电磁转矩 (由电流计算) */
-    float omega_meas;                      /* 转速测量值 */
-    float dt;                              /* 采样周期 */
-    /* 自适应Q矩阵参数 */
-    float q_adapt_gain;
-    float innovation_prev;
-} EKO_t;
+    eTuneOneState state;
 
-/* ---- 获取负载转矩估计 ---- */
-float EKO_GetLoadTorque(const EKO_t *eko) { return eko->x[1]; }
-float EKO_GetSpeed(const EKO_t *eko) { return eko->x[0]; }
+    tEncCal_cfg cfg;
 
-/* ============================================================
- * 模型参考自适应系统 (MRAS) — 转动惯量在线辨识
- * 参考模型: 基于机械运动方程
- *   d(omega_r)/dt = (Te - TL) / J
- * 可调模型: 用估计惯量 J_hat 重构转速
- * 自适应律: 基于Popov超稳定性理论或Lyapunov方法
- * ============================================================ */
+    struct
+    {
+        float theta_e;
+        float id;
+    } cmd;
 
-#define MRAS_GAIN_MIN 0.1f
-#define MRAS_GAIN_MAX 100.0f
+    uint8_t step;
+
+    uint32_t tick_cnt;
+
+    float pos_start;
+    float theta_e_acc;
+    float theta_e_raw;
+
+    bool forward_done;
+    bool backward_done;
+
+    tLS1D ls_fwd;
+    tLS1D ls_bwd;
+
+    uint8_t pole_pairs;
+    bool direction;
+    float theta_offset;
+
+} tEncCal_ctx;
+
+void enc_cal_init(tEncCal_ctx *ctx, tEncCal_cfg cfg);
 
 typedef struct
 {
-    /* 可调模型状态 */
-    float omega_adj; /* 可调模型转速估计 */
-    float J_hat;     /* 转动惯量估计值 */
+    float rs_known;        /* 已知相电阻 Ω */
+    float vel_low;         /* 最低机械转速 rad/s */
+    float vel_high;        /* 最高机械转速 rad/s */
+    uint8_t num_points;    /* 转速点数量，建议 4~6 */
+    uint32_t steady_ticks; /* 每点稳态等待 tick */
+    uint32_t sample_ticks; /* 每点采样 tick */
+    float vel_band;        /* 转速到位判定带宽 rad/s */
+    uint8_t pole_pairs;    /* 极对数（编码器校准输出） */
+} tPsif_cfg;
 
-    /* 参考模型 */
-    float omega_ref;  /* 参考模型转速 (来自实际测量或理想模型) */
-    float omega_meas; /* 实际转速测量值 */
+typedef struct
+{
+    eTuneOneState state;
+    tPsif_cfg cfg;
 
-    /* 自适应律参数 */
-    float gamma;         /* 自适应增益 */
-    float gamma_min;     /* 增益下界 */
-    float gamma_max;     /* 增益上界 */
-    float integral_term; /* 积分项累积 */
+    struct
+    {
+        float vel;
+    } cmd;
 
-    /* 输入 */
-    float Te;     /* 电磁转矩 */
-    float TL_hat; /* 负载转矩估计 (来自EKO) */
-    float dt;     /* 采样周期 */
+    uint8_t step; /* 0=加速 1=采样 2=切点 3=拟合 4=完成 */
+    uint8_t point_idx;
+    float vel_target;
 
-    /* 输出滤波 */
-    float J_filt;     /* 滤波后的惯量估计 */
-    float output_lpf; /* 输出低通滤波系数 */
+    uint32_t tick_cnt;
+    tLS1D ls;
 
-    /* 收敛状态 */
-    float error;
-    float error_prev;
-    uint32_t converge_count;
-    uint8_t converged;
-} MRAS_t;
-
-/* ---- 获取辨识结果 ---- */
-float MRAS_GetInertia(const MRAS_t *mras) { return mras->J_filt; }
-float MRAS_GetInertiaRaw(const MRAS_t *mras) { return mras->J_hat; }
-uint8_t MRAS_IsConverged(const MRAS_t *mras) { return mras->converged; }
+    float psi_f;
+    float ke;
+} tPsif_ctx;
 
 #endif

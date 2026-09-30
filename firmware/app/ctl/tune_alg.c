@@ -6,8 +6,9 @@
 // 施加固定电角度 + d轴电流，用 d 电压幅值计算 Rs
 // 三个电角度 (0°, 120°, 240°) 各 120° 间隔，分别以 U / V / W 相为主载流相
 // 每个角度做两点差分
+// ================== 电阻整定系数 ==================
 
-void tune_rs_ol_cur_init(tTune_rs_oc_ctx *ctx, tTune_rs_oc_cfg *cfg)
+void tune_rs_ol_cur_init(tTune_rs_oc_ctx *ctx, tTune_rs_oc_cfg cfg)
 {
     memset(ctx, 0, sizeof(tTune_rs_oc_ctx));
     ctx->cfg = cfg;
@@ -31,16 +32,16 @@ eTuneOneState tune_rs_ol_cur(tTune_rs_oc_ctx *ctx,
         float rs_avg = (rs0 + rs1 + rs2) / 3.0f;
 
         // 三相平均作为最终 Rs
-        ctx->out.rs = rs_avg;
+        ctx->rs_out = rs_avg;
         ctx->state = TO_DONE;
 
         // 合理性检查
-        if (rs_avg < ctx->cfg->rs_min || rs_avg > ctx->cfg->rs_max)
+        if (rs_avg < ctx->cfg.rs_min || rs_avg > ctx->cfg.rs_max)
             ctx->state = TO_DATA_INVALID;
 
         // 三相电阻差异检查
         float diff_ratio = (rs_max - rs_min) / rs_avg;
-        if (diff_ratio > ctx->cfg->rs_phase_diff_thr_coef)
+        if (diff_ratio > ctx->cfg.rs_phase_diff_thr_coef)
             ctx->state = TO_DATA_IMBALANCE;
 
         // 复位
@@ -55,17 +56,16 @@ eTuneOneState tune_rs_ol_cur(tTune_rs_oc_ctx *ctx,
     uint8_t cur_idx = ctx->stage % 2;   // 0=I1, 1=I2
 
     // 控制指令
-    ctx->cmd.id = (cur_idx == 0) ? (ctx->cfg->cur_1)
-                                 : (ctx->cfg->cur_2);
+    ctx->cmd.id = (cur_idx == 0) ? (ctx->cfg.cur_1)
+                                 : (ctx->cfg.cur_2);
     ctx->cmd.theta_e = angle_idx * MATH_2PI / 3.0f;
 
     // 稳态判断：实际 id 反馈 vs id_ref
     float i_err = FABSF(id - ctx->cmd.id);
-    float steady_thr = ctx->cfg->cur_2 * 0.02f;
 
-    if (i_err < steady_thr)
+    if (i_err < ctx->cfg.cur_steady_err)
     {
-        if (ctx->steady_tick >= ctx->cfg->steady_ticks)
+        if (ctx->steady_tick >= ctx->cfg.steady_ticks)
         {
             if (cur_idx == 0)
             {
@@ -78,7 +78,7 @@ eTuneOneState tune_rs_ol_cur(tTune_rs_oc_ctx *ctx,
                 // 记录第二点 ud
                 ctx->ud_meas[1] = ud;
 
-                float delta_i = ctx->cfg->cur_2 - ctx->cfg->cur_1;
+                float delta_i = ctx->cfg.cur_2 - ctx->cfg.cur_1;
                 float delta_u = ctx->ud_meas[1] - ctx->ud_meas[0];
 
                 // 当前角度电阻：Δud / Δid
@@ -97,508 +97,404 @@ eTuneOneState tune_rs_ol_cur(tTune_rs_oc_ctx *ctx,
 
     return ctx->state;
 }
-/* ---- 初始化 ---- */
-void HFInjection_Init(HFInjection_t *hf)
-{
-    hf->phase = 0.0f;
-    hf->phase_inc = MATH_2PI * HF_INJ_FREQ_HZ / CTRL_FREQ_HZ;
-    hf->inj_value = 0.0f;
-    /* 一阶IIR低通滤波系数: alpha = 2*pi*fc*Ts / (1 + 2*pi*fc*Ts) */
-    float rc = 1.0f / (MATH_2PI * LPF_CUTOFF_HZ);
-    hf->lpf_alpha = (1.0f / CTRL_FREQ_HZ) / (rc + 1.0f / CTRL_FREQ_HZ);
+// 电感校准
 
-    hf->id_base_filt = 0.0f;
-    hf->iq_base_filt = 0.0f;
-    hf->id_hf_sum = 0.0f;
-    hf->iq_hf_sum = 0.0f;
-    hf->demod_count = 0;
-    hf->Ld_hat = 0.001f; /* 初始值：1mH，根据电机实际设置 */
-    hf->Lq_hat = 0.001f;
-    hf->Ld_filt = hf->Ld_hat;
-    hf->Lq_filt = hf->Lq_hat;
-    hf->deadtime_comp = 0.0f;
+void tune_ldq_hfi_init(tune_Ldq_hfi_ctx *ctx, tTune_Ldq_hfi_cfg cfg)
+{
+    memset(ctx, 0, sizeof(tune_Ldq_hfi_ctx));
+    ctx->cfg = cfg;
+    if (ctx->cfg.n_per_cycle <= 0)
+        ctx->cfg.n_per_cycle = 1;
 }
 
-/* ---- 死区补偿 (基于电流极性) ---- */
-float DeadtimeCompensation(float i_phase, float Vdc, float T_dead, float Ts)
+/* DFT 单频点幅值: 2/N · sqrt(re² + im²) */
+static inline float dft_mag(float sum_re, float sum_im, uint16_t n)
 {
-    float V_loss = T_dead * Vdc / (2.0f * Ts);
-    if (i_phase > 0.1f)
-        return V_loss;
-    else if (i_phase < -0.1f)
-        return -V_loss;
-    else
-        return 0.0f; /* 零电流钳位区 */
+    if (n == 0)
+        return 0.0f;
+    float s = 2.0f / (float)n;
+    float re = sum_re * s;
+    float im = sum_im * s;
+    return SQRTF(re * re + im * im);
 }
 
-/* ---- 主更新函数：每个控制周期调用 ---- */
-void HFInjection_Update(HFInjection_t *hf,
-                        float id_meas, float iq_meas,
-                        float ud_base, float uq_base,
-                        float Vdc, float T_dead, float Ts,
-                        float i_phase_a)
+/* 电压自适应: 电流小于下限 → 增大电压; 大于上限 → 减小电压
+ * 返回 true=已进入目标区间(锁定), false=继续自适应 */
+static inline bool v_adapt(tune_Ldq_hfi_ctx *ctx, float i_avg)
 {
-    /* 1. 生成高频注入信号 */
-    hf->phase += hf->phase_inc;
-    if (hf->phase > MATH_2PI)
-        hf->phase -= MATH_2PI;
-    hf->inj_value = HF_INJ_AMP_V * sinf(hf->phase);
-
-    /* 2. 死区补偿 */
-    hf->deadtime_comp = DeadtimeCompensation(i_phase_a, Vdc, T_dead, Ts);
-
-    /* 3. 低通滤波提取基波电流分量 */
-    hf->id_base_filt += hf->lpf_alpha * (id_meas - hf->id_base_filt);
-    hf->iq_base_filt += hf->lpf_alpha * (iq_meas - hf->iq_base_filt);
-
-    /* 4. 提取高频电流分量 (原始 - 基波) */
-    float id_hf = id_meas - hf->id_base_filt;
-    float iq_hf = iq_meas - hf->iq_base_filt;
-
-    /* 5. 同步解调：用注入信号极性提取同相分量 */
-    float sign = (hf->inj_value >= 0.0f) ? 1.0f : -1.0f;
-    hf->id_hf_sum += id_hf * sign;
-    hf->iq_hf_sum += iq_hf * sign;
-    hf->demod_count++;
-
-    /* 6. 每完成一个完整注入周期后计算电感 */
-    if (hf->demod_count >= (uint16_t)(CTRL_FREQ_HZ / HF_INJ_FREQ_HZ))
+    if (i_avg < ctx->cfg.i_hyst_lo &&
+        ctx->v_inj < ctx->cfg.v_inj_max - ctx->cfg.v_inj_step)
     {
-        float id_hf_amp = hf->id_hf_sum / (float)hf->demod_count;
-        float iq_hf_amp = hf->iq_hf_sum / (float)hf->demod_count;
-        float omega_h = MATH_2PI * HF_INJ_FREQ_HZ;
-
-        /* Ld = U_inj / (omega_h * I_dh_amplitude) */
-        if (fabsf(id_hf_amp) > 1e-6f)
-        {
-            hf->Ld_hat = HF_INJ_AMP_V / (omega_h * fabsf(id_hf_amp));
-        }
-        if (fabsf(iq_hf_amp) > 1e-6f)
-        {
-            hf->Lq_hat = HF_INJ_AMP_V / (omega_h * fabsf(iq_hf_amp));
-        }
-
-        /* 对辨识结果做一阶低通滤波，抑制周期间波动 */
-        hf->Ld_filt += 0.1f * (hf->Ld_hat - hf->Ld_filt);
-        hf->Lq_filt += 0.1f * (hf->Lq_hat - hf->Lq_filt);
-
-        /* 复位累加器 */
-        hf->id_hf_sum = 0.0f;
-        hf->iq_hf_sum = 0.0f;
-        hf->demod_count = 0;
+        ctx->v_inj += ctx->cfg.v_inj_step;
+        return false;
     }
-}
-
-/* ---- 初始化 ---- */
-void FFRLS_Init(FFRLS_t *rls,
-                float Rs_init, float Psi_f_init,
-                float P0, float lambda)
-{
-    /* 参数初始猜测 */
-    rls->theta[0] = Rs_init;    /* Rs */
-    rls->theta[1] = Psi_f_init; /* Psi_f */
-
-    /* 协方差矩阵初始化为 alpha * I, alpha 取大值 */
-    memset(rls->P, 0, sizeof(rls->P));
-    rls->P[0][0] = P0;
-    rls->P[1][1] = P0;
-
-    rls->lambda = lambda;
-    rls->lambda_min = 0.95f;
-    rls->update_count = 0;
-}
-
-/* ---- 矩阵辅助运算 (2x2) ---- */
-static void MatVec2x2(const float A[RLS_DIM][RLS_DIM],
-                      const float x[RLS_DIM],
-                      float out[RLS_DIM])
-{
-    for (int i = 0; i < RLS_DIM; i++)
+    if (i_avg > ctx->cfg.i_hyst_hi &&
+        ctx->v_inj > ctx->cfg.v_inj_step)
     {
-        out[i] = 0.0f;
-        for (int j = 0; j < RLS_DIM; j++)
-        {
-            out[i] += A[i][j] * x[j];
-        }
+        ctx->v_inj -= ctx->cfg.v_inj_step;
+        return false;
     }
+    return true;
 }
-
-static float VecDot(const float a[RLS_DIM], const float b[RLS_DIM])
+// 对齐d 等 注入d 计算 对齐q 等 注入q 计算 结束
+eTuneOneState tune_ldq_hfi(tune_Ldq_hfi_ctx *ctx,
+                           float id, float iq, float ud, float uq)
 {
-    float s = 0.0f;
-    for (int i = 0; i < RLS_DIM; i++)
-        s += a[i] * b[i];
-    return s;
-}
+    ctx->state = TO_RUNNING;
 
-/* ---- 核心更新：每个控制周期调用 ---- */
-void FFRLS_Update(FFRLS_t *rls,
-                  float uq, float iq,
-                  float id, float omega_e,
-                  float Ld_known)
-{
-    /* 1. 构建回归向量和观测值 */
-    /* y = uq - omega_e * Ld * id */
-    rls->y = uq - omega_e * Ld_known * id;
+    // 角度 一直为0 注入ud或uq
+    ctx->cmd.theta = 0.0f;
 
-    /* phi = [-iq, -omega_e]^T */
-    rls->phi[0] = -iq;
-    rls->phi[1] = -omega_e;
-
-    /* 2. 计算增益向量 K = P*phi / (lambda + phi^T*P*phi) */
-    float P_phi[RLS_DIM];
-    MatVec2x2((const float (*)[RLS_DIM])rls->P, rls->phi, P_phi);
-
-    float denom = rls->lambda + VecDot(rls->phi, P_phi);
-    if (fabsf(denom) < 1e-12f)
-        return; /* 防止除零 */
-
-    for (int i = 0; i < RLS_DIM; i++)
+    switch (ctx->step)
     {
-        rls->K[i] = P_phi[i] / denom;
-    }
-
-    /* 3. 计算预测误差 */
-    float phi_T_theta = VecDot(rls->phi, rls->theta);
-    float error = rls->y - phi_T_theta;
-
-    /* 4. 更新参数估计 theta(k) = theta(k-1) + K * error */
-    for (int i = 0; i < RLS_DIM; i++)
+    /* ============ 0: 对齐+自适应电压============ */
+    case 0:
     {
-        rls->theta[i] += rls->K[i] * error;
-    }
-
-    /* 5. 更新协方差矩阵 P(k) = (I - K*phi^T) * P(k-1) / lambda */
-    float P_new[RLS_DIM][RLS_DIM];
-    for (int i = 0; i < RLS_DIM; i++)
-    {
-        for (int j = 0; j < RLS_DIM; j++)
-        {
-            float Kphi = rls->K[i] * rls->phi[j];
-            if (i == j)
+        ctx->cmd.udq[0] = 0.0f;
+        ctx->cmd.udq[1] = 0.0f;
+        if (v_adapt(ctx, id))
+        { // 电压锁定
+            if (++ctx->tick_cnt > ctx->cfg.align_ticks)
             {
-                P_new[i][j] = (1.0f - Kphi) * rls->P[i][j] / rls->lambda;
+                ctx->step = 1;
+                ctx->tick_cnt = 0;
+            }
+        }
+        else
+        { // 自适应调节电压
+            ctx->cmd.udq[ctx->uidx] = ctx->v_inj;
+        }
+
+        return ctx->state;
+    }
+
+    /* ============ 1: 断电等待，让电流衰减 ============ */
+    case 1:
+        ctx->cmd.udq[0] = 0.0f;
+        ctx->cmd.udq[1] = 0.0f;
+
+        if (++ctx->tick_cnt > ctx->cfg.align_ticks)
+        {
+            ctx->step = 2;
+            ctx->tick_cnt = 0;
+            ctx->inj_angle = 0.0f;
+            ctx->sum_re = ctx->sum_im = 0.0f;
+            ctx->dft_cnt = 0;
+            ctx->amp_sum = 0.0f;
+            ctx->cycle_cnt = 0;
+            ctx->v_inj = ctx->cfg.v_inj_start;
+        }
+        return ctx->state;
+
+    /* ============ 2:注入 ============ */
+    case 2:
+    {
+        ctx->cmd.udq[0] = 0.0f;
+        ctx->cmd.udq[1] = 0.0f;
+        ctx->cmd.udq[ctx->uidx] = ctx->v_inj * FAST_SIN(ctx->inj_angle);
+
+        /* DFT 累加 id */
+        float ang = ctx->cfg.omega_h * (float)ctx->dft_cnt;
+        float i_meas = ctx->uidx == 0 ? id : iq;
+        ctx->sum_re += i_meas * FAST_COS(ang);
+        ctx->sum_im += i_meas * FAST_SIN(ang);
+        ctx->dft_cnt++;
+
+        ctx->inj_angle += ctx->cfg.omega_h;
+        if (ctx->inj_angle > MATH_2PI)
+            ctx->inj_angle -= MATH_2PI;
+
+        if (ctx->dft_cnt >= ctx->cfg.n_per_cycle)
+        {
+            float I_mag = dft_mag(ctx->sum_re, ctx->sum_im, ctx->cfg.n_per_cycle);
+            ctx->amp_sum += I_mag;
+            ctx->cycle_cnt++;
+            ctx->sum_re = ctx->sum_im = 0.0f;
+            ctx->dft_cnt = 0;
+
+            if (ctx->cycle_cnt >= ctx->cfg.avg_cycles)
+            {
+                float I_avg = ctx->amp_sum / (float)ctx->cycle_cnt;
+
+                if (v_adapt(ctx, I_avg))
+                {
+                    /* 电压锁定，计算 Ld = V / (ω·I) */
+                    if (I_avg < 1e-6f)
+                    {
+                        ctx->state = TO_DATA_NOISE;
+                        return ctx->state;
+                    }
+                    ctx->ldq_out[ctx->uidx] = ctx->v_inj / (ctx->cfg.omega_h * I_avg);
+
+                    if (ctx->uidx == 0)
+                    { // 重置测试lq
+                        ctx->step = 0;
+                        ctx->uidx = 1;
+                    }
+                    else
+                    { // 结束
+                        ctx->step = 3;
+                        ctx->uidx = 0;
+                    }
+                    ctx->tick_cnt = 0;
+                    ctx->amp_sum = 0.0f;
+                    ctx->cycle_cnt = 0;
+                    return ctx->state;
+                }
+                ctx->amp_sum = 0.0f;
+                ctx->cycle_cnt = 0;
+            }
+        }
+        return ctx->state;
+    }
+        // ============ 3: 结束 ============ */
+    case 3:
+        ctx->state = TO_DONE;
+        /* 合理性检查 */
+        if (ctx->ldq_out[0] < ctx->cfg.ls_min || ctx->ldq_out[0] > ctx->cfg.ls_max ||
+            ctx->ldq_out[1] < ctx->cfg.ls_min || ctx->ldq_out[1] > ctx->cfg.ls_max)
+        {
+            ctx->state = TO_DATA_INVALID;
+        }
+        ctx->cmd.udq[0] = 0.0f;
+        ctx->cmd.udq[1] = 0.0f;
+
+        return ctx->state;
+    }
+
+    return ctx->state;
+}
+
+// 编码器校准
+
+void enc_cal_init(tEncCal_ctx *ctx, tEncCal_cfg cfg)
+{
+    memset(ctx, 0, sizeof(*ctx));
+    ctx->cfg = cfg;
+    ls1d_reset(&ctx->ls_fwd);
+    ls1d_reset(&ctx->ls_bwd);
+}
+
+eTuneOneState enc_cal_update(tEncCal_ctx *ctx, float pos)
+{
+    ctx->state = TO_RUNNING;
+    switch (ctx->step)
+    {
+
+    /* ========== 状态 0: 对齐电角度0  ========== */
+    case 0:
+    {
+        ctx->cmd.theta_e = 0.0f;
+        ctx->cmd.id = ctx->cfg.i_tune;
+        if (++ctx->tick_cnt >= ctx->cfg.align_ticks)
+        {
+            ctx->tick_cnt = 0;
+
+            ctx->pos_start = pos;
+            ctx->theta_e_acc = ctx->cmd.theta_e;
+            ctx->theta_e_raw = ctx->theta_e_acc;
+            if (!ctx->forward_done)
+            {
+                ctx->step = 1; // 正转
+            }
+            else if (!ctx->backward_done)
+            {
+                ctx->step = 2; // 反转
             }
             else
             {
-                P_new[i][j] = -Kphi * rls->P[i][j] / rls->lambda;
+                ctx->step = 3; // 拟合
             }
         }
+        break;
     }
-    /* 修正：P_new 的对角线应用完整公式 */
-    for (int i = 0; i < RLS_DIM; i++)
+    /* ========== 状态 1: 正转扫描 ========== */
+    case 1:
     {
-        for (int j = 0; j < RLS_DIM; j++)
+        ctx->cmd.theta_e = ctx->theta_e_acc;
+        ctx->cmd.id = ctx->cfg.i_tune;
+
+        ctx->theta_e_acc += ctx->cfg.delta_e;
+        if (fabFABSFsf(ctx->theta_e_acc - ctx->theta_e_raw) >= ctx->cfg.sample_step_e)
         {
-            float sum = 0.0f;
-            for (int k = 0; k < RLS_DIM; k++)
-            {
-                float delta_ik = (i == k) ? 1.0f : 0.0f;
-                sum += (delta_ik - rls->K[i] * rls->phi[k]) * rls->P[k][j];
-            }
-            P_new[i][j] = sum / rls->lambda;
+            ctx->theta_e_raw = ctx->theta_e_acc;
+            ls1d_accum(&ctx->ls_fwd, pos, ctx->theta_e_acc);
         }
+        if (FABSF(pos - ctx->pos_start) > ctx->cfg.travel_pos)
+        {
+            ctx->forward_done = true;
+            ctx->step = 0;
+            ctx->tick_cnt = 0;
+        }
+        break;
     }
-    memcpy(rls->P, P_new, sizeof(rls->P));
+    /* ========== 状态 2: 反转扫描 ========== */
+    case 2:
+    {
+        ctx->cmd.theta_e = ctx->theta_e_acc;
+        ctx->cmd.id = ctx->cfg.i_tune;
+        ctx->theta_e_acc -= ctx->cfg.delta_e;
+        if (FABSF(ctx->theta_e_acc - ctx->theta_e_raw) >= ctx->cfg.sample_step_e)
+        {
+            ctx->theta_e_raw = ctx->theta_e_acc;
+            ls1d_accum(&ctx->ls_bwd, pos, ctx->theta_e_acc);
+        }
+        if (FABSF(pos - ctx->pos_start) > ctx->cfg.travel_pos)
+        {
+            ctx->backward_done = true;
+            ctx->step = 0;
+            ctx->tick_cnt = 0;
+        }
+        break;
+    }
+    /* ========== 状态 3: 拟合 ========== */
+    case 3:
+    {
+        float kf, bf, msef, kb, bb, mseb;
+        ls1d_fit(&ctx->ls_fwd, &kf, &bf, &msef);
+        ls1d_fit(&ctx->ls_bwd, &kb, &bb, &mseb);
 
-    rls->update_count++;
+        if (msef > ctx->cfg.fit_max_mse || mseb > ctx->cfg.fit_max_mse)
+        {
+            ctx->state = TO_DATA_INVALID; // 无效数据
+            return ctx->state;
+        }
 
-    /* 6. 参数约束：防止物理上不合理的值 */
-    if (rls->theta[0] < 0.0f)
-        rls->theta[0] = 0.0f; /* Rs >= 0 */
-    if (rls->theta[1] < 0.0f)
-        rls->theta[1] = 0.0f; /* Psi_f >= 0 */
+        float p_est = 0.5f * (FABSF(kf) + FABSF(kb));
+        ctx->pole_pairs = (uint8_t)(p_est + 0.5f);
+
+        if (ctx->pole_pairs != ctx->cfg.pole_pairs_expected)
+        {
+            ctx->state = TO_DATA_IMBALANCE; // 极对数不匹配
+
+            return ctx->state;
+        }
+        if ((kf > 0) != (kb > 0))
+        {
+            ctx->state = TO_DATA_INVALID;
+            return ctx->state;
+        }
+
+        ctx->direction = (kf > 0);
+
+        float o_est_f = -bf / kf;
+        float o_est_b = -bb / kb;
+        ctx->theta_offset = normalize_angle_2pi(0.5f * (o_est_f + o_est_b));
+
+        ctx->step = 4;
+        break;
+    }
+        /* ========== 状态 4: 对齐到 0 判定 180° ========== */
+    case 4:
+    {
+        ctx->cmd.theta_e = MATH_PI;
+        ctx->cmd.id = ctx->cfg.i_tune;
+        if (++ctx->tick_cnt >= ctx->cfg.align_ticks)
+        {
+            ctx->tick_cnt = 0;
+            bool need_180 = false;
+            float diff = pos - ctx->pos_start;
+            float dead_zone_m = MATH_PI / ctx->pole_pairs * 0.8f;
+            if (FABSF(diff) > dead_zone_m)
+            {
+                need_180 = ((diff > 0) != ctx->direction);
+            }
+            else
+            {
+                ctx->state = TO_TIMEOUT;
+                return ctx->state;
+            }
+            // 融合
+            ctx->theta_offset -= need_180 ? MATH_PI / ctx->pole_pairs : 0.0f;
+            ctx->theta_offset = normalize_angle_2pi(ctx->theta_offset);
+            ctx->state = TO_DONE; // 完成
+            ctx->step = 0;
+        }
+        break;
+    }
+    }
+
+    return ctx->state;
 }
 
-/* ---- 初始化 ---- */
-void EKO_Init(EKO_t *eko, float omega_init, float TL_init,
-              float J_init, float B_fric, float dt,
-              float Q_omega, float Q_TL, float R_meas)
+//
+void psif_init(tPsif_ctx *ctx, tPsif_cfg cfg)
 {
-    eko->x[0] = omega_init; /* 转速估计初值 */
-    eko->x[1] = TL_init;    /* 负载转矩估计初值 */
+    memset(ctx, 0, sizeof(*ctx));
+    ctx->cfg = cfg;
+    if (ctx->cfg.num_points < 2)
+        ctx->cfg.num_points = 2;
 
-    /* 协方差矩阵初始化为对角阵 */
-    eko->P[0][0] = 0.1f;
-    eko->P[0][1] = 0.0f;
-    eko->P[1][0] = 0.0f;
-    eko->P[1][1] = 0.1f;
-
-    /* 过程噪声协方差 (对角) */
-    eko->Q[0][0] = Q_omega;
-    eko->Q[0][1] = 0.0f;
-    eko->Q[1][0] = 0.0f;
-    eko->Q[1][1] = Q_TL;
-
-    eko->R = R_meas;
-    eko->J_hat = J_init;
-    eko->B = B_fric;
-    eko->Te = 0.0f;
-    eko->dt = dt;
-    eko->q_adapt_gain = 0.01f;
-    eko->innovation_prev = 0.0f;
+    ls1d_reset(&ctx->ls);
 }
 
-/* ---- 主更新函数：每个速度环周期调用 ---- */
-void EKO_Update(EKO_t *eko, float omega_meas, float Te)
+bool psif_update(tPsif_ctx *ctx,
+                 float uq, float iq, float vel)
 {
-    float dt = eko->dt;
+    ctx->state = TO_RUNNING;
 
-    /* ====== 1. 预测步 (Predict) ====== */
-    /* 非线性状态转移:
-     * omega(k+1) = omega(k) + dt/J * (Te - TL - B*omega)
-     * TL(k+1)    = TL(k)  (假设负载转矩缓变)
-     */
-    float omega_hat = eko->x[0];
-    float TL_hat = eko->x[1];
-    float J = eko->J_hat;
+    uint8_t npts = ctx->cfg.num_points;
+    float t = (float)ctx->point_idx / (float)(npts - 1);
+    ctx->vel_target = ctx->cfg.vel_low + t * (ctx->cfg.vel_high - ctx->cfg.vel_low);
+    ctx->cmd.vel = ctx->vel_target;
 
-    /* 状态预测 */
-    float omega_pred = omega_hat + dt / J * (Te - TL_hat - eko->B * omega_hat);
-    float TL_pred = TL_hat;
-
-    /* 雅可比矩阵 F = df/dx (2x2)
-     * F[0][0] = 1 - dt*B/J
-     * F[0][1] = -dt/J
-     * F[1][0] = 0
-     * F[1][1] = 1
-     */
-    float F[EKO_STATE_DIM][EKO_STATE_DIM];
-    F[0][0] = 1.0f - dt * eko->B / J;
-    F[0][1] = -dt / J;
-    F[1][0] = 0.0f;
-    F[1][1] = 1.0f;
-
-    /* 协方差预测: P_pred = F*P*F^T + Q */
-    float FP[EKO_STATE_DIM][EKO_STATE_DIM];
-    for (int i = 0; i < EKO_STATE_DIM; i++)
+    switch (ctx->step)
     {
-        for (int j = 0; j < EKO_STATE_DIM; j++)
+
+    /* ========== 状态 0: 加速到目标转速 ========== */
+    case 0:
+        if (fabsf(vel - ctx->vel_target) < ctx->cfg.vel_band)
         {
-            FP[i][j] = 0.0f;
-            for (int k = 0; k < EKO_STATE_DIM; k++)
-            {
-                FP[i][j] += F[i][k] * eko->P[k][j];
+            ctx->step = 1;
+            ctx->tick_cnt = 0;
+        }
+        break;
+
+    /* ========== 状态 1: 稳态采样 ========== */
+    case 1:
+        if (++ctx->tick_cnt >= ctx->cfg.steady_ticks)
+        {
+            /* 稳态后开始采样 */
+            float vel_e = vel * ctx->cfg.pole_pairs;
+            if (fabsf(vel_e) > 1.0f)
+            { /* 避免低速除零 */
+                float y = uq - ctx->cfg.rs_known * iq;
+                ls_slope_accum(&ctx->ls, vel_e, y);
             }
         }
-    }
-
-    float P_pred[EKO_STATE_DIM][EKO_STATE_DIM];
-    for (int i = 0; i < EKO_STATE_DIM; i++)
-    {
-        for (int j = 0; j < EKO_STATE_DIM; j++)
+        if (ctx->tick_cnt >= ctx->cfg.steady_ticks + ctx->cfg.sample_ticks)
         {
-            P_pred[i][j] = eko->Q[i][j];
-            for (int k = 0; k < EKO_STATE_DIM; k++)
+            ctx->point_idx++;
+            ctx->tick_cnt = 0;
+            if (ctx->point_idx >= npts)
             {
-                P_pred[i][j] += FP[i][k] * F[j][k]; /* F^T 对应 F[j][k] */
+                ctx->step = 3;
+            }
+            else
+            {
+                ctx->step = 0;
             }
         }
-    }
+        break;
 
-    /* ====== 2. 自适应Q矩阵调整 ====== */
-    /* 根据新息大小动态调整Q，新息大表明工况变化 */
-    float innovation = omega_meas - omega_pred;
-    float innov_abs = fabsf(innovation);
-
-    if (innov_abs > 0.5f * fabsf(eko->innovation_prev) &&
-        eko->innovation_prev != 0.0f)
+    /* ========== 状态 3: 拟合 ========== */
+    case 3:
     {
-        /* 工况变化明显，增大Q以加快响应 */
-        eko->Q[0][0] *= (1.0f + eko->q_adapt_gain);
-        eko->Q[1][1] *= (1.0f + eko->q_adapt_gain);
-    }
-    else
-    {
-        /* 稳态，逐渐恢复Q到基础值 */
-        eko->Q[0][0] *= (1.0f - 0.1f * eko->q_adapt_gain);
-        eko->Q[1][1] *= (1.0f - 0.1f * eko->q_adapt_gain);
-    }
-
-    /* Q矩阵限幅 */
-    if (eko->Q[0][0] > 10.0f)
-        eko->Q[0][0] = 10.0f;
-    if (eko->Q[1][1] > 100.0f)
-        eko->Q[1][1] = 100.0f;
-    if (eko->Q[0][0] < 1e-6f)
-        eko->Q[0][0] = 1e-6f;
-    if (eko->Q[1][1] < 1e-6f)
-        eko->Q[1][1] = 1e-6f;
-
-    eko->innovation_prev = innovation;
-
-    /* 用调整后的Q重新计算P_pred */
-    P_pred[0][0] += (eko->Q[0][0] - eko->Q[0][0]); /* 已在上面加入Q，此处仅示意 */
-    /* 实际实现中应将自适应Q在预测步之前完成更新 */
-
-    /* ====== 3. 更新步 (Update) ====== */
-    /* 测量方程: z = H*x + v, H = [1, 0] */
-    float H[EKO_STATE_DIM] = {1.0f, 0.0f};
-
-    /* 新息协方差 S = H*P_pred*H^T + R */
-    float S = eko->R;
-    for (int i = 0; i < EKO_STATE_DIM; i++)
-    {
-        for (int j = 0; j < EKO_STATE_DIM; j++)
+        float k;
+        if (!ls_slope_fit(&ctx->ls, &k) || k < 1e-6f || k > 1.0f)
         {
-            S += H[i] * P_pred[i][j] * H[j];
+            ctx->state = TO_DATA_INVALID;
+
+            return ctx->state;
         }
+        ctx->psi_f = k;
+        /* Ke: 反电动势常数，单位 V/(rad/s mech) */
+        ctx->ke = k * (float)ctx->cfg.pole_pairs;
+
+        ctx->cmd.vel = 0;
+        return ctx->state;
+    }
     }
 
-    /* 卡尔曼增益 K = P_pred * H^T / S */
-    float K[EKO_STATE_DIM];
-    for (int i = 0; i < EKO_STATE_DIM; i++)
-    {
-        float PH = 0.0f;
-        for (int j = 0; j < EKO_STATE_DIM; j++)
-        {
-            PH += P_pred[i][j] * H[j];
-        }
-        K[i] = PH / S;
-    }
-
-    /* 状态更新 */
-    eko->x[0] = omega_pred + K[0] * innovation;
-    eko->x[1] = TL_pred + K[1] * innovation;
-
-    /* 协方差更新: P = (I - K*H) * P_pred */
-    for (int i = 0; i < EKO_STATE_DIM; i++)
-    {
-        for (int j = 0; j < EKO_STATE_DIM; j++)
-        {
-            float sum = 0.0f;
-            for (int k = 0; k < EKO_STATE_DIM; k++)
-            {
-                float delta_ik = (i == k) ? 1.0f : 0.0f;
-                sum += (delta_ik - K[i] * H[k]) * P_pred[k][j];
-            }
-            eko->P[i][j] = sum;
-        }
-    }
-
-    /* 存储电磁转矩供参考 */
-    eko->Te = Te;
-}
-
-/* ---- 初始化 ---- */
-void MRAS_Init(MRAS_t *mras, float J_init, float gamma,
-               float dt, float omega_init)
-{
-    mras->omega_adj = omega_init;
-    mras->J_hat = J_init;
-    mras->omega_ref = omega_init;
-    mras->omega_meas = omega_init;
-    mras->gamma = gamma;
-    mras->gamma_min = MRAS_GAIN_MIN;
-    mras->gamma_max = MRAS_GAIN_MAX;
-    mras->integral_term = 0.0f;
-    mras->Te = 0.0f;
-    mras->TL_hat = 0.0f;
-    mras->dt = dt;
-    mras->J_filt = J_init;
-    mras->output_lpf = 0.01f; /* 输出滤波系数，越小越平滑但滞后越大 */
-    mras->error = 0.0f;
-    mras->error_prev = 0.0f;
-    mras->converge_count = 0;
-    mras->converged = 0;
-}
-
-/* ---- 主更新函数：每个速度环周期调用 ---- */
-void MRAS_Update(MRAS_t *mras,
-                 float omega_meas,
-                 float Te,
-                 float TL_hat)
-{
-    float dt = mras->dt;
-    mras->omega_meas = omega_meas;
-    mras->Te = Te;
-    mras->TL_hat = TL_hat;
-
-    /* ====== 1. 计算参考模型输出 ======
-     * 参考模型直接使用实际测量的转速作为参考
-     */
-    mras->omega_ref = omega_meas;
-
-    /* ====== 2. 可调模型：用 J_hat 重构转速 ======
-     * omega_adj(k+1) = omega_adj(k) + dt/J_hat * (Te - TL_hat)
-     */
-    float J = mras->J_hat;
-    if (J < 1e-6f)
-        J = 1e-6f; /* 防止除零 */
-
-    mras->omega_adj += dt / J * (Te - TL_hat);
-
-    /* ====== 3. 计算跟踪误差 ====== */
-    mras->error = mras->omega_ref - mras->omega_adj;
-
-    /* ====== 4. 变增益策略 ======
-     * 根据误差大小动态调整自适应增益：
-     * 误差大时增大增益加快收敛，误差小时减小增益抑制振荡
-     */
-    float error_abs = fabsf(mras->error);
-    float gamma_adaptive;
-
-    if (error_abs > 0.1f)
-    {
-        /* 大误差：增大增益 */
-        gamma_adaptive = mras->gamma * (1.0f + 2.0f * error_abs);
-    }
-    else if (error_abs > 0.01f)
-    {
-        /* 中等误差：保持基本增益 */
-        gamma_adaptive = mras->gamma;
-    }
-    else
-    {
-        /* 小误差：减小增益，提高稳态精度 */
-        gamma_adaptive = mras->gamma * 0.5f;
-    }
-
-    /* 增益限幅 */
-    if (gamma_adaptive > mras->gamma_max)
-        gamma_adaptive = mras->gamma_max;
-    if (gamma_adaptive < mras->gamma_min)
-        gamma_adaptive = mras->gamma_min;
-
-    /* ====== 5. 自适应律：更新 J_hat ======
-     * 基于Lyapunov稳定性理论推导的自适应律：
-     * d(1/J_hat)/dt = -gamma * error * (Te - TL_hat) / J_hat
-     * 等价于:
-     * d(J_hat)/dt = gamma * error * (Te - TL_hat)
-     *
-     * 离散化实现:
-     * J_hat(k+1) = J_hat(k) + gamma * dt * error * (Te - TL_hat)
-     */
-    float driving_term = Te - TL_hat;
-    float J_dot = gamma_adaptive * mras->error * driving_term;
-
-    /* 积分更新，带约束防止发散 */
-    float J_new = mras->J_hat + dt * J_dot;
-
-    /* 物理约束：转动惯量必须为正且在一定范围内 */
-    if (J_new > 1e-4f && J_new < 100.0f)
-    {
-        mras->J_hat = J_new;
-    }
-
-    /* ====== 6. 输出滤波 ====== */
-    mras->J_filt += mras->output_lpf * (mras->J_hat - mras->J_filt);
-
-    /* ====== 7. 收敛检测 ====== */
-    if (fabsf(mras->error) < 0.001f &&
-        fabsf(mras->error - mras->error_prev) < 1e-5f)
-    {
-        mras->converge_count++;
-        if (mras->converge_count > 100)
-        {
-            mras->converged = 1;
-        }
-    }
-    else
-    {
-        mras->converge_count = 0;
-        mras->converged = 0;
-    }
-
-    mras->error_prev = mras->error;
+    return ctx->state;
 }

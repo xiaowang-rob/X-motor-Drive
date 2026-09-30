@@ -33,10 +33,11 @@ static inline float FABSF(float x)
 {
     return __builtin_fabsf(x);
 }
+
 // 快速开方（CMSIS-DSP 单精度）
 static inline float SQRTF(float x)
 {
-    float r = 0.0f;
+    float r;
     arm_sqrt_f32(x, &r);
     return r;
 }
@@ -51,6 +52,17 @@ static inline uint32_t FROUNDF(float x)
     return (uint32_t)(x + 0.5f);
 }
 
+// 快速sin
+static inline float FAST_SIN(float x)
+{
+    return arm_sin_f32(x);
+}
+
+// 快速cos
+static inline float FAST_COS(float x)
+{
+    return arm_cos_f32(x);
+}
 // 将角度标准化到 [0, 2π) 范围
 //
 // 性能：不用 fmodf —— 后者在 Cortex-M4 上是库调用（几十~上百周期），

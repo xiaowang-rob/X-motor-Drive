@@ -59,13 +59,6 @@
 #define LS_RANGE_MAX 300e-6f // 电感合理上限 (H)
 
 // ================== 编码器校准系数 ==================
-#define EC_FREQ_F 10                // 编码器校准分频系数
-#define EC_ALIGN_ms MS_TO_TICK(300) // 编码器校准等待时间
-#define EC_OPEN_LOOP_OMEGA 17.4533f // 开环角速度 (rad/s), 原 1000°/s
-
-#define EC_FIT_MAX_ERROR 100.0f // 最大拟合误差
-#define EC_MIN_POLE_PAIRS 1     // 最小极对数
-#define EC_MAX_POLE_PAIRS 16    // 最大极对数
 
 // ================== 角度偏移 (开环强励磁) ==================
 
