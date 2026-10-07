@@ -36,7 +36,7 @@ typedef struct
     // 控制参数
     uint32_t can_id;
     uint8_t can_mode;
-    float clbw;
+    float clbw_coef;
     float qclkp;
     float qclki;
     float dclkp;

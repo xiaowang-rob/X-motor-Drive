@@ -1,0 +1,28 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "调试",
+            "type": "cortex-debug",
+            "request": "launch",
+            "executable": "${workspaceFolder}/build/current.elf",
+            "servertype": "openocd",
+            "gdbPath": "gdb-multiarch",
+            "runToEntryPoint": "main",
+            "showDevDebugOutput": "raw",
+            "armToolchainPath": "/usr/bin",
+            "preLaunchCommands": [],
+            "preLaunchTask": "编译",
+            "configFiles": [
+                "interface/stlink.cfg",
+                "target/stm32f4x.cfg"
+            ],
+            "liveWatch": {
+                "enabled": true,
+                "samples": 100,
+                "period": 500
+            },
+            "svdFile": "${workspaceFolder}/platform/stm32f4xx/STM32F405.svd"
+        }
+    ]
+}

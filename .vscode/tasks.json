@@ -1,0 +1,98 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "编译",
+            "type": "shell",
+            "command": "python3 firmware/tools/build.py build",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "icon": {
+                "id": "gear",
+                "tooltip": "编译（板卡/类型取 project.json）"
+            }
+        },
+        {
+            "label": "重编译",
+            "type": "shell",
+            "command": "python3 firmware/tools/build.py clean && python3 firmware/tools/build.py build",
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "icon": {
+                "id": "debug-rerun",
+                "tooltip": "清理并重新编译"
+            }
+        },
+        {
+            "label": "烧录",
+            "type": "shell",
+            "command": "python3 firmware/tools/build.py flash",
+            "group": "test",
+            "problemMatcher": [],
+            "icon": {
+                "id": "zap",
+                "tooltip": "烧录当前固件"
+            }
+        },
+        {
+            "label": "编译并烧录",
+            "type": "shell",
+            "command": "python3 firmware/tools/build.py bf",
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "icon": {
+                "id": "rocket",
+                "tooltip": "编译并烧录"
+            }
+        },
+        {
+            "label": "擦除",
+            "type": "shell",
+            "command": "python3 firmware/tools/build.py erase",
+            "problemMatcher": [],
+            "icon": {
+                "id": "trash",
+                "tooltip": "擦除芯片"
+            }
+        },
+        {
+            "label": "清理",
+            "type": "shell",
+            "command": "python3 firmware/tools/build.py clean",
+            "problemMatcher": []
+        },
+        {
+            "label": "CheckAndFlash",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/firmware/tools/check_flash.py"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "上位机",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/Software/start.py"
+            ],
+            "group": "build",
+            "problemMatcher": [],
+            "icon": {
+                "id": "play",
+                "tooltip": "启动上位机"
+            }
+        }
+    ]
+}

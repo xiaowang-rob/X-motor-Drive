@@ -32,7 +32,7 @@ tFlashUnit param_unit;
     X(MOTOR_B, motor_b, F32, 1e-3f)                           \
     X(CAN_ID, can_id, U32, 1u)                                \
     X(CAN_MODE, can_mode, U8, 0u)                             \
-    X(CLBW, clbw, F32, 0.0f)                                  \
+    X(CLBW_COEF, clbw_coef, F32, 0.0f)                        \
     X(QCLKP, qclkp, F32, 0.0f)                                \
     X(QCLKI, qclki, F32, 0.0f)                                \
     X(DCLKP, dclkp, F32, 0.0f)                                \

@@ -6,7 +6,7 @@
 /*
 轨迹规划算法
 1、 可以对输入的阶跃位置、速度指令 做平滑处理
-TODO：2、作为位置模式下 PV、PT、PVT模式 的解析器
+//TODO：2、作为位置模式下 PV、PT模式 的解析器
 */
 typedef enum
 {
@@ -15,7 +15,6 @@ typedef enum
     TRAJ_S_CURVE = 2,   /* S形 */
     TRAJ_PV = 3,        /* PV模式 */
     TRAJ_PT = 4,        /* PT模式 */
-    TRAJ_PVT = 5,       /* PVT模式 */
 } eTrajType;
 
 //  配置参数

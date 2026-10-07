@@ -17,6 +17,30 @@ typedef enum
     TO_TIMEOUT,        // 整定超时
 } eTuneOneState;
 
+/* 1D 最小二乘 */
+typedef struct
+{
+    float sum_x, sum_y, sum_xx, sum_xy, sum_yy;
+    uint16_t n;
+} tLS1D;
+
+void ls1d_reset(tLS1D *a);
+void ls1d_accum(tLS1D *a, float x, float y);
+bool ls1d_fit(const tLS1D *a, float *k, float *b, float *mse);
+
+typedef struct
+{
+    float sum_x1x1, sum_x1x2, sum_x1;
+    float sum_x2x2, sum_x2;
+    float sum_n;
+    float sum_x1y, sum_x2y, sum_y;
+    uint16_t n;
+} tLS3D;
+
+void ls3d_reset(tLS3D *a);
+void ls3d_accum(tLS3D *a, float x1, float x2, float y);
+bool ls3d_fit(const tLS3D *a, float *k1, float *k2, float *k3);
+
 /* ============================================================
  * 开环电流三点差分测电阻
  * ============================================================ */
@@ -56,9 +80,9 @@ typedef struct
 
 } tTune_rs_oc_ctx;
 
-void tune_rs_ol_cur_init(tTune_rs_oc_ctx *ctx, tTune_rs_oc_cfg cfg);
-eTuneOneState tune_rs_ol_cur(tTune_rs_oc_ctx *ctx,
-                             float id, float ud);
+void tune_rs_oc_init(tTune_rs_oc_ctx *ctx, tTune_rs_oc_cfg cfg);
+eTuneOneState tune_rs_oc_update(tTune_rs_oc_ctx *ctx,
+                                float id, float ud);
 /* ============================================================
  * 高频信号注入法 — dq轴电感在线辨识
  * 注入方式：d轴高频方波电压，同步解调提取电流幅值
@@ -81,12 +105,12 @@ typedef struct
     float ls_max;       // 电感最大值 H
     uint8_t avg_cycles; /* DFT 平均周期数，建议 4~8 */
 
-} tTune_Ldq_hfi_cfg;
+} tTune_ls_hfi_cfg;
 
 typedef struct
 {
     eTuneOneState state;
-    tTune_Ldq_hfi_cfg cfg;
+    tTune_ls_hfi_cfg cfg;
 
     uint8_t step;
     uint8_t uidx; // 0-d 1-q
@@ -108,22 +132,14 @@ typedef struct
     uint16_t cycle_cnt;
     float ldq_out[2];
 
-} tune_Ldq_hfi_ctx;
+} tTune_ls_hfi_ctx;
 
+void tune_ls_hfi_init(tTune_ls_hfi_ctx *ctx, tTune_ls_hfi_cfg cfg);
+eTuneOneState tune_ls_hfi_update(tTune_ls_hfi_ctx *ctx,
+                                 float id, float iq, float ud, float uq);
 /* ============================================================
  * sum线型拟合 — 编码器参数校准
  * ============================================================ */
-
-/* 1D 最小二乘 */
-typedef struct
-{
-    float sum_x, sum_y, sum_xx, sum_xy, sum_yy;
-    uint16_t n;
-} tLS1D;
-
-void ls1d_reset(tLS1D *a);
-void ls1d_accum(tLS1D *a, float x, float y);
-bool ls1d_fit(const tLS1D *a, float *k, float *b, float *mse);
 
 typedef struct
 {
@@ -171,6 +187,11 @@ typedef struct
 } tEncCal_ctx;
 
 void enc_cal_init(tEncCal_ctx *ctx, tEncCal_cfg cfg);
+eTuneOneState enc_cal_update(tEncCal_ctx *ctx, float pos);
+
+/* ============================================================
+ * sum线型拟合 — 磁链参数辨识
+ * ============================================================ */
 
 typedef struct
 {
@@ -182,12 +203,12 @@ typedef struct
     uint32_t sample_ticks; /* 每点采样 tick */
     float vel_band;        /* 转速到位判定带宽 rad/s */
     uint8_t pole_pairs;    /* 极对数（编码器校准输出） */
-} tPsif_cfg;
+} tTune_psif_cfg;
 
 typedef struct
 {
     eTuneOneState state;
-    tPsif_cfg cfg;
+    tTune_psif_cfg cfg;
 
     struct
     {
@@ -200,9 +221,57 @@ typedef struct
 
     uint32_t tick_cnt;
     tLS1D ls;
+    struct
+    {
+        float psi_f;
+        float ke;
+    } out;
+} tTune_psif_ctx;
 
-    float psi_f;
-    float ke;
-} tPsif_ctx;
+void tune_psif_init(tTune_psif_ctx *ctx, tTune_psif_cfg cfg);
+eTuneOneState tune_psif_update(tTune_psif_ctx *ctx,
+                               float uq, float iq, float vel);
+
+/* ============================================================
+ * 转矩阶跃 + 3D 最小二乘 — J/B 辨识
+ * J · dω/dt = Te − TL − B·ω
+ * ============================================================ */
+
+typedef struct
+{
+    float psi_f;          /* 已知永磁磁链 Wb */
+    uint8_t pole_pairs;   // 已知极对数
+    float iq_high;        /* 阶跃电流幅值 A */
+    float vel_max;        /* 加速终止机械角速度 rad/s */
+    float vel_settle;     /* 减速终止判定阈值 rad/s */
+    float alpha_lpf;      /* 加速度低通滤波系数，建议 0.2~0.4 */
+    uint32_t skip_ticks;  /* 阶跃后跳过周期（电流环上升） */
+    uint32_t min_samples; /* 最少采样点数 */
+} tTune_JB_cfg;
+
+typedef struct
+{
+    eTuneOneState state;
+    tTune_JB_cfg cfg;
+    uint8_t step; /* 0=静止 1=加速 2=减速 3=拟合 4=完成 */
+
+    struct
+    {
+        float iq;
+    } cmd;
+
+    uint32_t tick_cnt;
+    float vel_prev;
+    float alpha_filt;
+    tLS3D ls;
+    struct
+    {
+        float j, b, tl;
+    } out;
+
+} tTune_JB_ctx;
+
+void tune_jb_init(tTune_JB_ctx *ctx, tTune_JB_cfg cfg);
+eTuneOneState tune_jb_update(tTune_JB_ctx *ctx, float vel, float iq, float ts);
 
 #endif

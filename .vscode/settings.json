@@ -1,0 +1,5 @@
+{
+    "cortex-debug.variableUseNaturalFormat": true,
+    "cmake.sourceDirectory": "/home/wxd/github/X-motor-Drive/firmware",
+    "C_Cpp.errorSquiggles": "enabled"
+}

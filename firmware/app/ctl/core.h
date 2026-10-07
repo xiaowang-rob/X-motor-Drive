@@ -43,6 +43,7 @@ typedef struct
     volatile bool obs_enable; // 观测器使能标记
     volatile bool enc_enable; // 编码器使能标记
 
+    eObsList obs;        // 观测器
     eCtrlMode ctrl_mode; // 控制模式
 
     tPI PI_weakmag;

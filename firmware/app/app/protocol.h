@@ -26,26 +26,26 @@ typedef enum
     MOTOR_J,         /* 转动惯量 */
     MOTOR_B,         /* 摩擦系数 */
 
-    CAN_ID,   /* CAN ID */
-    CAN_MODE, /* CAN模式 */
-    CLBW,     // 电流环带宽
-    QCLKP,    // q轴电流环比例
-    QCLKI,    // q轴电流环积分
-    DCLKP,    // d轴电流环比例
-    DCLKI,    // d轴电流环积分
-    CFALPHA,  // 电流滤波系数
-    VLKP,     /* 速度环比例 */
-    VLKI,     /* 速度环积分 */
-    WLKP,     // 弱磁环比例
-    WLKI,     /* 弱磁环积分 */
-    PLKP,     /* 位置环比例 */
-    PLKI,     /* 位置环积分 */
-    PLKD,     /* 位置环微分 */
-    PLALPHA,  /* 位置环滤波系数 */
-    MIT_KP,   /* MIT刚度 */
-    MIT_KD,   /* MIT阻尼 */
-    MIT_TSTA, // MIT静态扭矩补偿
-    MIT_TMAX, /* MIT最大扭矩 */
+    CAN_ID,    /* CAN ID */
+    CAN_MODE,  /* CAN模式 */
+    CLBW_COEF, // 电流环带宽系数 0.1-0.9f
+    QCLKP,     // q轴电流环比例
+    QCLKI,     // q轴电流环积分
+    DCLKP,     // d轴电流环比例
+    DCLKI,     // d轴电流环积分
+    CFALPHA,   // 电流滤波系数
+    VLKP,      /* 速度环比例 */
+    VLKI,      /* 速度环积分 */
+    WLKP,      // 弱磁环比例
+    WLKI,      /* 弱磁环积分 */
+    PLKP,      /* 位置环比例 */
+    PLKI,      /* 位置环积分 */
+    PLKD,      /* 位置环微分 */
+    PLALPHA,   /* 位置环滤波系数 */
+    MIT_KP,    /* MIT刚度 */
+    MIT_KD,    /* MIT阻尼 */
+    MIT_TSTA,  // MIT静态扭矩补偿
+    MIT_TMAX,  /* MIT最大扭矩 */
 
     TUNE_CURRENT,       /* 校准电流 */
     LIMIT_CURRENT,      /* 电流限幅 */
@@ -105,14 +105,15 @@ typedef enum
     LOG_NUM
 } eLogList;
 
-/*观测模式*/
+/*观测器*/
 typedef enum
 {
-    OPENLOOP_MODE, /* 无感开环 */
-    ENCODER_MODE,  /* 编码反馈 */
-    OBSERVER_MODE, /* 无感观测器 */
-    MERGE_MODE,    /* 融合模式 */
-} eObsMode;
+    NONE_OBS,       /* 无观测开环 */
+    ENCODER_SPI,    /* SPI编码器 */
+    ENCODER_ABZ,    // ABZ编码器
+    ENCODER_SINCOS, /* 正余弦编码器 */
+    HFI_SMO,        /* HFI+SMO观测器 */
+} eObsList;
 /*运行模式*/
 typedef enum
 {

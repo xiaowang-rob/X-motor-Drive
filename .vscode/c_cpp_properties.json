@@ -1,0 +1,29 @@
+{
+    // IntelliSense 走 CMake 生成的 compile_commands.json，而不是让扩展自己猜 includePath。
+    // 注意：该文件在 .gitignore 里（.vscode/ 被忽略），属本地配置。
+    // 切换板卡/固件类型时，把下面的 compileCommands 换成对应构建目录即可：
+    //   xdr_s-app → firmware/build/xdr_s-app/compile_commands.json
+    //   xdr_p-app → firmware/build/xdr_p-app/compile_commands.json
+    "version": 4,
+    "configurations": [
+        {
+            "name": "XDr-S (xdr_s-app)",
+            "compileCommands": "${workspaceFolder}/firmware/build/xdr_s-app/compile_commands.json",
+            "compilerPath": "/usr/local/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi/bin/arm-none-eabi-gcc",
+            "cStandard": "gnu11",
+            "intelliSenseMode": "linux-gcc-arm",
+            // 冗余但无害：compileCommands 解析失败时的兜底搜索路径
+            "includePath": [
+                "${workspaceFolder}/firmware/app/abs",
+                "${workspaceFolder}/firmware/app/app",
+                "${workspaceFolder}/firmware/app/ctl",
+                "${workspaceFolder}/firmware/app/srv",
+                "${workspaceFolder}/firmware/app/utils",
+                "${workspaceFolder}/firmware/board/xdr_s/app",
+                "${workspaceFolder}/firmware/board/xdr_s/app/bsp",
+                "${workspaceFolder}/firmware/board/xdr_s/app/drv",
+                "${workspaceFolder}/protocol"
+            ]
+        }
+    ]
+}

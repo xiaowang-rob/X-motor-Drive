@@ -1,5 +1,129 @@
 #include "tune_alg.h"
 
+/* ========== 最小二乘 ========== */
+
+void ls1d_reset(tLS1D *a) { memset(a, 0, sizeof(*a)); }
+
+void ls1d_accum(tLS1D *a, float x, float y)
+{
+    a->sum_x += x;
+    a->sum_y += y;
+    a->sum_xx += x * x;
+    a->sum_xy += x * y;
+    a->sum_yy += y * y;
+    a->n++;
+}
+
+bool ls1d_fit(const tLS1D *a, float *k, float *b, float *mse)
+{
+    if (a->n < 10)
+    {
+        *k = 0;
+        *b = 0;
+        *mse = 1e9f;
+        return false;
+    }
+    float den = a->n * a->sum_xx - a->sum_x * a->sum_x;
+    if (fabsf(den) < 1e-9f)
+    {
+        *k = 0;
+        *b = 0;
+        *mse = 1e9f;
+        return false;
+    }
+    *k = (a->n * a->sum_xy - a->sum_x * a->sum_y) / den;
+    *b = (a->sum_y - (*k) * a->sum_x) / a->n;
+    float n = (float)a->n;
+    *mse = (a->sum_yy - 2 * (*k) * a->sum_xy - 2 * (*b) * a->sum_y + (*k) * (*k) * a->sum_xx + 2 * (*k) * (*b) * a->sum_x + (*b) * (*b) * n) / n;
+    return true;
+}
+
+void ls3d_reset(tLS3D *a) { memset(a, 0, sizeof(*a)); }
+
+void ls3d_accum(tLS3D *a, float x1, float x2, float y)
+{
+    a->sum_x1x1 += x1 * x1;
+    a->sum_x1x2 += x1 * x2;
+    a->sum_x1 += x1;
+    a->sum_x2x2 += x2 * x2;
+    a->sum_x2 += x2;
+    a->sum_n += 1.0f;
+    a->sum_x1y += x1 * y;
+    a->sum_x2y += x2 * y;
+    a->sum_y += y;
+    a->n++;
+}
+
+/* 高斯消元解 3x3 线性方程组 */
+static bool solve3x3(float A[3][3], float b[3], float x[3])
+{
+    float m[3][4];
+    for (int i = 0; i < 3; i++)
+    {
+        for (int j = 0; j < 3; j++)
+            m[i][j] = A[i][j];
+        m[i][3] = b[i];
+    }
+    for (int k = 0; k < 3; k++)
+    {
+        int piv = k;
+        for (int i = k + 1; i < 3; i++)
+            if (fabsf(m[i][k]) > fabsf(m[piv][k]))
+                piv = i;
+        if (fabsf(m[piv][k]) < 1e-9f)
+            return false;
+        if (piv != k)
+        {
+            for (int j = 0; j < 4; j++)
+            {
+                float tmp = m[k][j];
+                m[k][j] = m[piv][j];
+                m[piv][j] = tmp;
+            }
+        }
+        for (int i = k + 1; i < 3; i++)
+        {
+            float f = m[i][k] / m[k][k];
+            for (int j = k; j < 4; j++)
+                m[i][j] -= f * m[k][j];
+        }
+    }
+    for (int i = 2; i >= 0; i--)
+    {
+        float s = m[i][3];
+        for (int j = i + 1; j < 3; j++)
+            s -= m[i][j] * x[j];
+        x[i] = s / m[i][i];
+    }
+    return true;
+}
+
+bool ls3d_fit(const tLS3D *a, float *k1, float *k2, float *k3)
+{
+    if (a->n < 10)
+    {
+        *k1 = *k2 = *k3 = 0;
+        return false;
+    }
+
+    float A[3][3] = {
+        {a->sum_x1x1, a->sum_x1x2, a->sum_x1},
+        {a->sum_x1x2, a->sum_x2x2, a->sum_x2},
+        {a->sum_x1, a->sum_x2, a->sum_n}};
+    float b[3] = {a->sum_x1y, a->sum_x2y, a->sum_y};
+    float x[3];
+
+    if (!solve3x3(A, b, x))
+    {
+        *k1 = *k2 = *k3 = 0;
+        return false;
+    }
+    *k1 = x[0];
+    *k2 = x[1];
+    *k3 = x[2];
+    return true;
+}
+
 /* --- 开环电流三点差分测电阻--- */
 
 // 开环角度闭环电流测三相电阻 (双点差分 × 3角度)
@@ -8,14 +132,14 @@
 // 每个角度做两点差分
 // ================== 电阻整定系数 ==================
 
-void tune_rs_ol_cur_init(tTune_rs_oc_ctx *ctx, tTune_rs_oc_cfg cfg)
+void tune_rs_oc_init(tTune_rs_oc_ctx *ctx, tTune_rs_oc_cfg cfg)
 {
     memset(ctx, 0, sizeof(tTune_rs_oc_ctx));
     ctx->cfg = cfg;
 }
 
-eTuneOneState tune_rs_ol_cur(tTune_rs_oc_ctx *ctx,
-                             float id, float ud)
+eTuneOneState tune_rs_oc_update(tTune_rs_oc_ctx *ctx,
+                                float id, float ud)
 {
     ctx->state = TO_RUNNING;
 
@@ -99,9 +223,9 @@ eTuneOneState tune_rs_ol_cur(tTune_rs_oc_ctx *ctx,
 }
 // 电感校准
 
-void tune_ldq_hfi_init(tune_Ldq_hfi_ctx *ctx, tTune_Ldq_hfi_cfg cfg)
+void tune_ls_hfi_init(tTune_ls_hfi_ctx *ctx, tTune_ls_hfi_cfg cfg)
 {
-    memset(ctx, 0, sizeof(tune_Ldq_hfi_ctx));
+    memset(ctx, 0, sizeof(tTune_ls_hfi_ctx));
     ctx->cfg = cfg;
     if (ctx->cfg.n_per_cycle <= 0)
         ctx->cfg.n_per_cycle = 1;
@@ -120,7 +244,7 @@ static inline float dft_mag(float sum_re, float sum_im, uint16_t n)
 
 /* 电压自适应: 电流小于下限 → 增大电压; 大于上限 → 减小电压
  * 返回 true=已进入目标区间(锁定), false=继续自适应 */
-static inline bool v_adapt(tune_Ldq_hfi_ctx *ctx, float i_avg)
+static inline bool v_adapt(tTune_ls_hfi_ctx *ctx, float i_avg)
 {
     if (i_avg < ctx->cfg.i_hyst_lo &&
         ctx->v_inj < ctx->cfg.v_inj_max - ctx->cfg.v_inj_step)
@@ -137,8 +261,8 @@ static inline bool v_adapt(tune_Ldq_hfi_ctx *ctx, float i_avg)
     return true;
 }
 // 对齐d 等 注入d 计算 对齐q 等 注入q 计算 结束
-eTuneOneState tune_ldq_hfi(tune_Ldq_hfi_ctx *ctx,
-                           float id, float iq, float ud, float uq)
+eTuneOneState tune_ls_hfi_update(tTune_ls_hfi_ctx *ctx,
+                                 float id, float iq, float ud, float uq)
 {
     ctx->state = TO_RUNNING;
 
@@ -417,8 +541,8 @@ eTuneOneState enc_cal_update(tEncCal_ctx *ctx, float pos)
     return ctx->state;
 }
 
-//
-void psif_init(tPsif_ctx *ctx, tPsif_cfg cfg)
+// 磁链参数辨识
+void tune_psif_init(tTune_psif_ctx *ctx, tTune_psif_cfg cfg)
 {
     memset(ctx, 0, sizeof(*ctx));
     ctx->cfg = cfg;
@@ -428,8 +552,8 @@ void psif_init(tPsif_ctx *ctx, tPsif_cfg cfg)
     ls1d_reset(&ctx->ls);
 }
 
-bool psif_update(tPsif_ctx *ctx,
-                 float uq, float iq, float vel)
+eTuneOneState tune_psif_update(tTune_psif_ctx *ctx,
+                               float uq, float iq, float vel)
 {
     ctx->state = TO_RUNNING;
 
@@ -487,11 +611,140 @@ bool psif_update(tPsif_ctx *ctx,
 
             return ctx->state;
         }
-        ctx->psi_f = k;
+        ctx->out.psi_f = k;
         /* Ke: 反电动势常数，单位 V/(rad/s mech) */
-        ctx->ke = k * (float)ctx->cfg.pole_pairs;
+        ctx->out.ke = k * (float)ctx->cfg.pole_pairs;
 
         ctx->cmd.vel = 0;
+        return ctx->state;
+    }
+    }
+
+    return ctx->state;
+}
+
+/* ========== J/B 辨识主模块 ========== */
+
+void tune_jb_init(tTune_JB_ctx *ctx, tTune_JB_cfg cfg)
+{
+    memset(ctx, 0, sizeof(*ctx));
+    ctx->cfg = cfg;
+    ls3d_reset(&ctx->ls);
+}
+
+eTuneOneState tune_jb_update(tTune_JB_ctx *ctx, float vel, float iq, float ts)
+{
+    ctx->state = TO_RUNNING;
+    ctx->cmd.iq = 0.0f;
+
+    /* 计算加速度（低通滤波） */
+    float alpha_raw = (vel - ctx->vel_prev) / ts;
+    ctx->vel_prev = vel;
+    ctx->alpha_filt += ctx->cfg.alpha_lpf * (alpha_raw - ctx->alpha_filt);
+
+    /* 电磁转矩 */
+    float Te = 1.5f * (float)ctx->cfg.pole_pairs * ctx->cfg.psi_f * iq;
+
+    switch (ctx->step)
+    {
+
+    /* ========== 状态 0: 静止等待 ========== */
+    case 0:
+        ctx->cmd.iq = 0.0f;
+        if (fabsf(vel) < ctx->cfg.vel_settle)
+        {
+            if (++ctx->tick_cnt >= 500)
+            { /* 约 50 ms 静止 */
+                ctx->step = 1;
+                ctx->tick_cnt = 0;
+                ctx->vel_prev = vel;
+                ctx->alpha_filt = 0.0f;
+            }
+        }
+        else
+        {
+            ctx->tick_cnt = 0;
+        }
+        break;
+
+    /* ========== 状态 1: 正向加速 ========== */
+    case 1:
+        ctx->cmd.iq = ctx->cfg.iq_high;
+        ctx->tick_cnt++;
+
+        if (ctx->tick_cnt > ctx->cfg.skip_ticks)
+        {
+            ls3d_accum(&ctx->ls, ctx->alpha_filt, vel, Te);
+        }
+
+        if (vel > ctx->cfg.vel_max)
+        {
+            ctx->step = 2;
+            ctx->tick_cnt = 0;
+        }
+
+        /* 电机不动 → 异常 */
+        if (ctx->tick_cnt > 20000 && fabsf(vel) < ctx->cfg.vel_settle)
+        {
+            ctx->state = TO_TIMEOUT;
+
+            return ctx->state;
+        }
+        break;
+
+    /* ========== 状态 2: 反向减速 ========== */
+    case 2:
+        ctx->cmd.iq = -ctx->cfg.iq_high;
+        ctx->tick_cnt++;
+
+        if (ctx->tick_cnt > ctx->cfg.skip_ticks)
+        {
+            ls3d_accum(&ctx->ls, ctx->alpha_filt, vel, Te);
+        }
+
+        if (fabsf(vel) < ctx->cfg.vel_settle &&
+            ctx->tick_cnt > ctx->cfg.skip_ticks + 200)
+        {
+            ctx->step = 3;
+        }
+        break;
+
+    /* ========== 状态 3: 拟合 ========== */
+    case 3:
+    {
+        ctx->cmd.iq = 0.0f;
+        ctx->state = TO_DONE;
+        if (ctx->ls.n < ctx->cfg.min_samples)
+        {
+            ctx->state = TO_DATA_NOISE;
+
+            return ctx->state;
+        }
+
+        float J, B, TL;
+        if (!ls3d_fit(&ctx->ls, &J, &B, &TL))
+        {
+            ctx->state = TO_DATA_INVALID;
+
+            return ctx->state;
+        }
+
+        /* 物理约束 */
+        if (J < 1e-7f || J > 100.0f)
+        {
+            ctx->state = TO_DATA_INVALID;
+
+            return ctx->state;
+        }
+        if (B < 0.0f)
+            B = 0.0f; /* 摩擦系数非负 */
+
+        ctx->out.j = J;
+        ctx->out.b = B;
+        ctx->out.tl = TL;
+
+        ctx->step = 4;
+
         return ctx->state;
     }
     }

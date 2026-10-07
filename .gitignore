@@ -16,7 +16,6 @@ __pycache__/
 .codegraph/
 
 # IDE
-.vscode/
 *.swp
 *.swo
 
