@@ -128,13 +128,7 @@ typedef enum
     CAN_SILENCE, /* 静默模式 */
     CAN_ANSWER,  /* 响应模式 */
 } eCanMode;
-/*PVT模式*/
-typedef enum
-{
-    PVT_DISABLE, /* 禁用 */
-    PVT_PV,      /* PV */
-    PVT_PT,      /* PT */
-} ePVTMode;
+
 /*参数校准状态*/
 typedef enum
 {

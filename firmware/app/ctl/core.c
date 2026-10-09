@@ -22,28 +22,10 @@ tCore core;
 tFOC foc;
 tSvpwm svpwm;
 
+static tFirstOrderLagFilter cf_u, cf_v, cf_w; // 电流滤波器
 static tPLL obs_pll;
 static tTraj traj;
 static tPosAcc pos_acc;
-
-// 控制外环初始化 PI速度环 pid位置环 mit控制环 t_vl:速度环周期 t_pl:位置环周期
-static inline void core_loop_init(float t_vl, float t_pl)
-{
-    pi_init(&core.PI_vel, g_param.vlkp, g_param.vlki, g_param.limit_current, t_vl);
-    pi_init(&core.PI_weakmag, g_param.vlkp / 2, g_param.vlki / 2, g_param.limit_current, t_vl);
-    pid_init(&core.PID_pos, g_param.plkp, g_param.plki, g_param.plkd, g_param.limit_vel, g_param.plalpha, t_pl);
-    mit_init(&core.mit, g_param.mit_kp, g_param.mit_kd, g_param.mit_tsta, g_param.mit_tmax);
-}
-// 控制外环复位 PI速度环 pid位置环复位 mit/pid指令值归零
-static inline void core_loop_reset(void)
-{
-    pi_reset(&core.PI_vel);
-    pi_reset(&core.PI_weakmag);
-    pid_reset(&core.PID_pos);
-
-    memset(&core.pidtag, 0, sizeof(tPIDtarget));
-    memset(&core.mittag, 0, sizeof(tMITtarget));
-}
 
 #define ENCODER_PLL_KP 80.0f
 #define ENCODER_PLL_KI 2000.0f
@@ -98,6 +80,9 @@ static inline void core_traj_init(void)
 }
 bool core_init(void)
 {
+    // 初始化slot槽服务
+    slot_con_init(F_PWM);
+
     core.enable = false;
     core.state = INIT;
     bool core_init_ok = false;
@@ -115,13 +100,13 @@ bool core_init(void)
     // 启动主总线通信
     core_init_ok = bus_start(&g_can, g_param.can_id);
 
-    core.val.udc = sense_get_vbus(&g_sense);
-    core.val.vmax = core.val.udc * MATH_INSQRT3;
+    core.fb.udc = sense_get_vbus(&g_sense);
+    core.fb.vmax = core.fb.udc * MATH_INSQRT3;
     // 初始化svpwm
-    svpwm_init(&svpwm, TIC_PWM, core.val.udc, T_PWM, T_SAMPLE, T_NOISE, T_DIED);
+    svpwm_init(&svpwm, TIC_PWM, core.fb.udc, T_PWM, T_SAMPLE, T_NOISE, T_DIED);
 
     // foc初始化
-    foc_init(&foc, &g_param, T_CON, core.val.vmax);
+    foc_init(&foc, &g_param, g_slotcon.t_high, g_slotcon.t_med, g_slotcon.t_low, core.fb.vmax);
 
     // 控制外环 pid mit 初始化
     core_loop_init(g_slotcon.t_med, g_slotcon.t_low);
@@ -132,7 +117,11 @@ bool core_init(void)
     // 初始化 内置轨迹规划
     core_traj_init();
 
-    slot_con_init(F_PWM);
+    // 电流滤波初始化
+    filter_first_order_lag_init(&cf_u, g_param.cfalpha, 0);
+    filter_first_order_lag_init(&cf_v, g_param.cfalpha, 0);
+    filter_first_order_lag_init(&cf_w, g_param.cfalpha, 0);
+
     // 将solt槽任务注册到pwm下溢中断 以 启动solt槽任务
     pwm_register_callback(NULL, slot_con_update);
 
@@ -140,6 +129,45 @@ bool core_init(void)
 }
 void core_reset(void)
 {
+
+    filter_first_order_lag_reset(&cf_u, 0);
+    filter_first_order_lag_reset(&cf_v, 0);
+    filter_first_order_lag_reset(&cf_w, 0);
+
+    memset(&core.ref, 0, sizeof(core.ref));
+    memset(&core.fb, 0, sizeof(core.fb));
+}
+
+static inline void current_process(uint8_t sec, float is_in[3], float is_out[3])
+{
+    if (sec == 1 || sec == 6)
+    { // 最短相=W
+        is_out[0] = is_in[1] + is_in[2];
+        is_out[1] = -is_in[1];
+        is_out[2] = -is_in[2];
+    }
+    else if (sec == 2 || sec == 3)
+    { // 最短相=U
+        is_out[0] = -is_in[0];
+        is_out[1] = is_in[0] + is_in[2];
+        is_out[2] = -is_in[2];
+    }
+    else if (sec == 4 || sec == 5)
+    { // 最短相=V
+        is_out[0] = -is_in[0];
+        is_out[1] = -is_in[1];
+        is_out[2] = is_in[0] + is_in[1];
+    }
+    else
+    { // sec 0/7: 零矢量
+        is_out[0] = is_in[0];
+        is_out[1] = is_in[1];
+        is_out[2] = is_in[2];
+    }
+
+    is_out[0] = filter_first_order_lag(&cf_u, is_out[0]);
+    is_out[1] = filter_first_order_lag(&cf_v, is_out[1]);
+    is_out[2] = filter_first_order_lag(&cf_w, is_out[2]);
 }
 
 // 核心主循环任务
@@ -152,7 +180,7 @@ void core_mainloop_tasks(void)
     case ENCODER_SPI:
         // TODO:这里暂时只是外部编码器 后续可以改
         encoder_task(&g_enc_ext);
-        core.val.theta_enc = encoder_get_angle_abs(&g_enc_ext);
+        core.fb.theta_enc = encoder_get_angle_abs(&g_enc_ext);
         break;
     case ENCODER_ABZ:
         break;
@@ -166,10 +194,10 @@ void core_mainloop_tasks(void)
 
     // 更新电流采集和读取电流值、电压值、温度值
     sense_update(&g_sense, !core.enable);
-    sense_get_current(&g_sense, &foc.val.imu, &foc.val.imv, &foc.val.imw);
-    core.val.udc = sense_get_vbus(&g_sense);
-    core.val.vmax = core.val.udc * MATH_INSQRT3;
-    core.val.temp = sense_get_temperature(&g_sense);
+    sense_get_current(&g_sense, core.fb.ims);
+    core.fb.udc = sense_get_vbus(&g_sense);
+    core.fb.vmax = core.fb.udc * MATH_INSQRT3;
+    core.fb.temp = sense_get_temperature(&g_sense);
 
     status_feedback_main_loop(core.state);
 }
@@ -181,11 +209,11 @@ void obs_foc_task(float ts)
     if (core.enc_enable)
     { // 这样写是优先编码器 如果无感观测器和编码器都使能了 也优先编码器
         // TODO:20khz pll跟随1khz角度变化 需要1khz的角度突变处理
-        pll_update(&obs_pll, core.val.theta_enc, ts);
-        core.val.theta_mech = obs_pll.theta;
-        foc.val.theta_elec = (core.val.theta_mech - g_param.theta_offset) * g_param.motor_polepairs * (g_param.positive_dir ? 1 : -1);
-        foc.val.theta_elec = normalize_angle_2pi(foc.val.theta_elec);
-        core.val.vel = obs_pll.vel;
+        pll_update(&obs_pll, core.fb.theta_enc, ts);
+        core.fb.theta_mech = obs_pll.theta;
+        core.fb.theta_elec = (core.fb.theta_mech - g_param.theta_offset) * g_param.motor_polepairs * (g_param.positive_dir ? 1 : -1);
+        core.fb.theta_elec = normalize_angle_2pi(core.fb.theta_elec);
+        core.fb.vel = obs_pll.vel;
     }
     else if (core.obs_enable)
     {
@@ -193,24 +221,25 @@ void obs_foc_task(float ts)
     }
     else
     { // 开环
-        foc.val.theta_elec += foc.tag.vel_elec * ts;
-        foc.val.theta_elec = normalize_angle_2pi(foc.val.theta_elec);
+        core.fb.theta_elec += core.ref.vel_elec * ts;
+        core.fb.theta_elec = normalize_angle_2pi(core.fb.theta_elec);
     }
 
     // foc 数据处理
+    current_process(svpwm.sector, core.fb.ims, core.fb.is);
     foc_process(&foc, svpwm.sector);
 
     if (core.enable)
     {
         // foc更新
-        foc_update(&foc);
-        foc.val.ud += foc.tag.ud_hfi;
+        if (!core.ov_enable)
+            foc_update(&foc);
 
-        inv_park_transform(foc.val.ud, foc.val.uq, foc.val.sin_e, foc.val.cos_e,
-                           &foc.val.ualpha, &foc.val.ubeta);
+        inv_park_transform(core.fb.ud, core.fb.uq, core.fb.sin_e, core.fb.cos_e,
+                           &core.fb.ualpha, &core.fb.ubeta);
 
         // svpwm 调制生成脉冲
-        svpwm_update(&svpwm, foc.val.ualpha, foc.val.ubeta);
+        svpwm_update(&svpwm, core.fb.ualpha, core.fb.ubeta);
         // 门极驱动输出
         gate_drv_set_compare(&g_gate, svpwm.ticA, svpwm.ticB, svpwm.ticC);
     }
@@ -221,7 +250,7 @@ void obs_foc_task(float ts)
 // 位置累加 更新位置
 void pos_acc_task(float ts)
 {
-    pos_accumulate(&pos_acc, core.val.theta_mech);
+    pos_accumulate(&pos_acc, core.fb.theta_mech);
 }
 
 // 运行轨迹规划器
@@ -255,14 +284,14 @@ void vl_pid_mit_task(float ts)
         if (core.ctrl_mode == PID_SPEED)
         { // 速度环pid控制
             core.pidtag.vel = traj.out.value;
-            foc.tag.iq = pi_update(&core.PI_vel, core.pidtag.vel, core.val.vel);
+            core.ref.iq = pi_update(&core.PI_vel, core.pidtag.vel, core.fb.vel);
         }
         else if (core.ctrl_mode == MIT_MODE)
         {
 
-            foc.tag.tua = mit_update(&core.mit, core.mittag.tau_ff,
-                                     core.mittag.pos, core.val.pos, core.mittag.vel, core.val.vel);
-            foc.tag.iq = foc.tag.tua / g_param.motor_ke;
+            core.ref.tau = mit_update(&core.mit, core.mittag.tau_ff,
+                                      core.mittag.pos, core.fb.pos, core.mittag.vel, core.fb.vel);
+            core.ref.iq = core.ref.tau / g_param.motor_ke;
         }
     }
 }
@@ -273,12 +302,12 @@ void weak_mag_task(float ts)
     {
 
         float vout;
-        arm_sqrt_f32((foc.val.ud * foc.val.ud + foc.val.uq * foc.val.uq), &vout);
-        float error = core.val.vmax - vout;
+        arm_sqrt_f32((core.fb.ud * core.fb.ud + core.fb.uq * core.fb.uq), &vout);
+        float error = core.fb.vmax - vout;
         if (error < 0)
-            foc.tag.id = pi_update(&core.PI_weakmag, core.val.vmax, vout);
+            core.ref.id = pi_update(&core.PI_weakmag, core.fb.vmax, vout);
         else
-            foc.tag.id = 0.0f;
+            core.ref.id = 0.0f;
     }
 }
 
@@ -290,10 +319,11 @@ void pl_pid_task(float ts)
         if (core.ctrl_mode == PID_POSITION)
         { // 位置环pid控制
             core.pidtag.pos = traj.out.value;
-            core.pidtag.vel = pid_update(&core.PID_pos, core.pidtag.pos, core.val.pos);
+            core.pidtag.vel = pid_update(&core.PID_pos, core.pidtag.pos, core.fb.pos);
         }
     }
 }
+
 const tSlotTask high_schedule[FREQ_HIGH_LOOP] = {
     {0, obs_foc_task} // 内环只有一个 foc核心任务
 };

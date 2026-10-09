@@ -77,19 +77,14 @@ void motor_param_tune_force_save(tParameter *p, tTuneParams *tp)
     p->cfalpha = tp->cur_filter_alpha;
 }
 
-eTuneState tune_update(tTune *tune,
+eTuneState tune_update(tTune *tune, tParameter *p,
                        float ts, tFOCval *foc_val, tCoreVal *core_val)
 {
     switch (tune->state)
     {
     case TUNE_INIT:
-        tune_init();
+        tune_init(tune, p->tune_current);
         // TODO: 后续添加无感整定 可以添加HFI 和 SMO 参数整定
-        foc_set_sensor_mode(ENCODER_CONTROL);
-        foc_set_run_mode(OPEN_VOL); // 先切开环电压
-        ctx->steady_tick = 0;
-        ctx->state = TUNE_IDLE;
-        break;
 
         tune->state = TUNE_RESISTANCE;
         break;
@@ -106,12 +101,14 @@ eTuneState tune_update(tTune *tune,
                 .rs_max = RS_RANGE_MAX,
                 .rs_phase_diff_thr_coef = RS_PHASE_DIFF_THR_COEF,
             };
-            tune_rs_ol_cur_init(&tune->rs_ctx, rs_oc_cfg);
+            tune_rs_oc_init(&tune->rs_ctx, rs_oc_cfg);
+
+            // TODO:切换为开环电压模式
             tune->TO_init = true;
         }
         else
         {
-            eTuneOneState sta = tune_rs_ol_cur(&tune->rs_ctx, foc_val->id, foc_val->ud); // 电阻参数辨识
+            eTuneOneState sta = tune_rs_oc_update(&tune->rs_ctx, foc_val->id, foc_val->ud); // 电阻参数辨识
             if (TO_DONE == sta)
             {
                 tune->state = TUNE_INDUCTANCE;

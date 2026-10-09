@@ -54,13 +54,13 @@ void sense_set_sample_point(tSense *s, uint32_t tic);
 void sense_update(tSense *s, bool motor_idle);
 
 // ---- 查询 ----
-static inline void sense_get_current(const tSense *s, float *iu, float *iv, float *iw)
+static inline void sense_get_current(const tSense *s, float is[3])
 {
     if (!s)
         return;
-    *iu = s->cur[0];
-    *iv = s->cur[1];
-    *iw = s->cur[2];
+    is[0] = s->cur[0];
+    is[1] = s->cur[1];
+    is[2] = s->cur[2];
 }
 static inline float sense_get_vbus(const tSense *s)
 {
