@@ -12,6 +12,10 @@ void slot_con_init(float f_con)
     g_slotcon.t_high = 1 / f_con;
     g_slotcon.t_med = g_slotcon.t_high * FREQ_MEDIUM_LOOP;
     g_slotcon.t_low = g_slotcon.t_med * FREQ_LOW_LOOP;
+
+    g_slotcon.f_high = f_con;
+    g_slotcon.f_med = g_slotcon.f_high * FREQ_MEDIUM_LOOP;
+    g_slotcon.f_low = g_slotcon.f_med * FREQ_LOW_LOOP;
 }
 
 // 在定时中断中调用

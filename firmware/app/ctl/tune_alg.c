@@ -1,5 +1,35 @@
 #include "tune_alg.h"
 
+/* DFT 单频点幅值: 2/N · sqrt(re² + im²) */
+static inline float dft_mag(float sum_re, float sum_im, uint16_t n)
+{
+    if (n == 0)
+        return 0.0f;
+    float s = 2.0f / (float)n;
+    float re = sum_re * s;
+    float im = sum_im * s;
+    return SQRTF(re * re + im * im);
+}
+
+/* 电压自适应: 电流小于下限 → 增大电压; 大于上限 → 减小电压
+ * 返回 true=已进入目标区间(锁定), false=继续自适应 */
+static inline bool v_adapt(tVADA *vada, float i_fb, float *vout)
+{
+    if (i_fb < vada->i_hyst_lo &&
+        *vout < vada->v_hyst_hi - vada->v_step)
+    {
+        *vout += vada->v_step;
+        return false;
+    }
+    if (i_fb > vada->i_hyst_hi &&
+        *vout > vada->v_step)
+    {
+        *vout -= vada->v_step;
+        return false;
+    }
+    return true;
+}
+
 /* ========== 最小二乘 ========== */
 
 void ls1d_reset(tLS1D *a) { memset(a, 0, sizeof(*a)); }
@@ -124,21 +154,21 @@ bool ls3d_fit(const tLS3D *a, float *k1, float *k2, float *k3)
     return true;
 }
 
-/* --- 开环电流三点差分测电阻--- */
+/* --- 开环电压三点差分测电阻--- */
 
-// 开环角度闭环电流测三相电阻 (双点差分 × 3角度)
-// 施加固定电角度 + d轴电流，用 d 电压幅值计算 Rs
+// 开环角度开环电压测三相电阻 (双点差分 × 3角度)
+// 施加固定电角度 + d轴电压，用 d 电压幅值计算 Rs
 // 三个电角度 (0°, 120°, 240°) 各 120° 间隔，分别以 U / V / W 相为主载流相
 // 每个角度做两点差分
 // ================== 电阻整定系数 ==================
 
-void tune_rs_oc_init(tTune_rs_oc_ctx *ctx, tTune_rs_oc_cfg cfg)
+void tune_rs_ov_init(tTune_rs_ov_ctx *ctx, tTune_rs_ov_cfg cfg)
 {
-    memset(ctx, 0, sizeof(tTune_rs_oc_ctx));
+    memset(ctx, 0, sizeof(tTune_rs_ov_ctx));
     ctx->cfg = cfg;
 }
 
-eTuneOneState tune_rs_oc_update(tTune_rs_oc_ctx *ctx,
+eTuneOneState tune_rs_ov_update(tTune_rs_ov_ctx *ctx,
                                 float id, float ud)
 {
     ctx->state = TO_RUNNING;
@@ -170,7 +200,7 @@ eTuneOneState tune_rs_oc_update(tTune_rs_oc_ctx *ctx,
 
         // 复位
         ctx->stage = 0;
-        ctx->cmd.id = 0.0f;
+        ctx->cmd.ud = 0.0f;
         ctx->cmd.theta_e = 0.0f;
 
         return ctx->state;
@@ -180,30 +210,31 @@ eTuneOneState tune_rs_oc_update(tTune_rs_oc_ctx *ctx,
     uint8_t cur_idx = ctx->stage % 2;   // 0=I1, 1=I2
 
     // 控制指令
-    ctx->cmd.id = (cur_idx == 0) ? (ctx->cfg.cur_1)
-                                 : (ctx->cfg.cur_2);
+    ctx->cmd.ud = ctx->ud_inj[cur_idx];
     ctx->cmd.theta_e = angle_idx * MATH_2PI / 3.0f;
 
     // 稳态判断：实际 id 反馈 vs id_ref
-    float i_err = FABSF(id - ctx->cmd.id);
+    float i_err = FABSF(id - ctx->id_last);
+    ctx->id_last = id;
 
-    if (i_err < ctx->cfg.cur_steady_err)
+    // 点呀锁定且电流波动小，进入稳态计数
+    if (i_err < ctx->cfg.cur_steady_err && v_adapt(&ctx->cfg.vada[cur_idx], id, &ctx->ud_inj[cur_idx]))
     {
         if (ctx->steady_tick >= ctx->cfg.steady_ticks)
         {
             if (cur_idx == 0)
             {
-                // 记录第一点 ud
-                ctx->ud_meas[0] = ud;
+                // 记录第一点
+                ctx->id_meas[0] = id;
                 ctx->stage++;
             }
             else
             {
-                // 记录第二点 ud
-                ctx->ud_meas[1] = ud;
+                // 记录第二点
+                ctx->id_meas[1] = id;
 
-                float delta_i = ctx->cfg.cur_2 - ctx->cfg.cur_1;
-                float delta_u = ctx->ud_meas[1] - ctx->ud_meas[0];
+                float delta_i = ctx->id_meas[1] - ctx->id_meas[0];
+                float delta_u = ctx->ud_inj[1] - ctx->ud_inj[0];
 
                 // 当前角度电阻：Δud / Δid
                 ctx->rs_meas[angle_idx] = delta_u / (delta_i + 1e-6f);
@@ -215,7 +246,7 @@ eTuneOneState tune_rs_oc_update(tTune_rs_oc_ctx *ctx,
     }
     else
     {
-        // 电流波动，重置稳态计数
+        // 电流波动 电压未锁定，重置稳态计数
         ctx->steady_tick = 0;
     }
 
@@ -231,35 +262,6 @@ void tune_ls_hfi_init(tTune_ls_hfi_ctx *ctx, tTune_ls_hfi_cfg cfg)
         ctx->cfg.n_per_cycle = 1;
 }
 
-/* DFT 单频点幅值: 2/N · sqrt(re² + im²) */
-static inline float dft_mag(float sum_re, float sum_im, uint16_t n)
-{
-    if (n == 0)
-        return 0.0f;
-    float s = 2.0f / (float)n;
-    float re = sum_re * s;
-    float im = sum_im * s;
-    return SQRTF(re * re + im * im);
-}
-
-/* 电压自适应: 电流小于下限 → 增大电压; 大于上限 → 减小电压
- * 返回 true=已进入目标区间(锁定), false=继续自适应 */
-static inline bool v_adapt(tTune_ls_hfi_ctx *ctx, float i_avg)
-{
-    if (i_avg < ctx->cfg.i_hyst_lo &&
-        ctx->v_inj < ctx->cfg.v_inj_max - ctx->cfg.v_inj_step)
-    {
-        ctx->v_inj += ctx->cfg.v_inj_step;
-        return false;
-    }
-    if (i_avg > ctx->cfg.i_hyst_hi &&
-        ctx->v_inj > ctx->cfg.v_inj_step)
-    {
-        ctx->v_inj -= ctx->cfg.v_inj_step;
-        return false;
-    }
-    return true;
-}
 // 对齐d 等 注入d 计算 对齐q 等 注入q 计算 结束
 eTuneOneState tune_ls_hfi_update(tTune_ls_hfi_ctx *ctx,
                                  float id, float iq, float ud, float uq)
@@ -276,7 +278,7 @@ eTuneOneState tune_ls_hfi_update(tTune_ls_hfi_ctx *ctx,
     {
         ctx->cmd.udq[0] = 0.0f;
         ctx->cmd.udq[1] = 0.0f;
-        if (v_adapt(ctx, id))
+        if (v_adapt(&ctx->cfg.vada, id, &ctx->v_inj))
         { // 电压锁定
             if (++ctx->tick_cnt > ctx->cfg.align_ticks)
             {
@@ -306,7 +308,6 @@ eTuneOneState tune_ls_hfi_update(tTune_ls_hfi_ctx *ctx,
             ctx->dft_cnt = 0;
             ctx->amp_sum = 0.0f;
             ctx->cycle_cnt = 0;
-            ctx->v_inj = ctx->cfg.v_inj_start;
         }
         return ctx->state;
 
@@ -340,33 +341,28 @@ eTuneOneState tune_ls_hfi_update(tTune_ls_hfi_ctx *ctx,
             {
                 float I_avg = ctx->amp_sum / (float)ctx->cycle_cnt;
 
-                if (v_adapt(ctx, I_avg))
+                /* 计算 Ld = V / (ω·I) */
+                if (I_avg < 1e-6f)
                 {
-                    /* 电压锁定，计算 Ld = V / (ω·I) */
-                    if (I_avg < 1e-6f)
-                    {
-                        ctx->state = TO_DATA_NOISE;
-                        return ctx->state;
-                    }
-                    ctx->ldq_out[ctx->uidx] = ctx->v_inj / (ctx->cfg.omega_h * I_avg);
-
-                    if (ctx->uidx == 0)
-                    { // 重置测试lq
-                        ctx->step = 0;
-                        ctx->uidx = 1;
-                    }
-                    else
-                    { // 结束
-                        ctx->step = 3;
-                        ctx->uidx = 0;
-                    }
-                    ctx->tick_cnt = 0;
-                    ctx->amp_sum = 0.0f;
-                    ctx->cycle_cnt = 0;
+                    ctx->state = TO_DATA_NOISE;
                     return ctx->state;
                 }
+                ctx->ldq_out[ctx->uidx] = ctx->v_inj / (ctx->cfg.omega_h * I_avg);
+
+                if (ctx->uidx == 0)
+                { // 重置测试lq
+                    ctx->step = 0;
+                    ctx->uidx = 1;
+                }
+                else
+                { // 结束
+                    ctx->step = 3;
+                    ctx->uidx = 0;
+                }
+                ctx->tick_cnt = 0;
                 ctx->amp_sum = 0.0f;
                 ctx->cycle_cnt = 0;
+                return ctx->state;
             }
         }
         return ctx->state;
@@ -485,9 +481,9 @@ eTuneOneState enc_cal_update(tEncCal_ctx *ctx, float pos)
         }
 
         float p_est = 0.5f * (FABSF(kf) + FABSF(kb));
-        ctx->pole_pairs = (uint8_t)(p_est + 0.5f);
+        ctx->out.pole_pairs = (uint8_t)(p_est + 0.5f);
 
-        if (ctx->pole_pairs != ctx->cfg.pole_pairs_expected)
+        if (ctx->out.pole_pairs != ctx->cfg.pole_pairs_expected)
         {
             ctx->state = TO_DATA_IMBALANCE; // 极对数不匹配
 
@@ -499,11 +495,11 @@ eTuneOneState enc_cal_update(tEncCal_ctx *ctx, float pos)
             return ctx->state;
         }
 
-        ctx->direction = (kf > 0);
+        ctx->out.direction = (kf > 0);
 
         float o_est_f = -bf / kf;
         float o_est_b = -bb / kb;
-        ctx->theta_offset = normalize_angle_2pi(0.5f * (o_est_f + o_est_b));
+        ctx->out.theta_offset = normalize_angle_2pi(0.5f * (o_est_f + o_est_b));
 
         ctx->step = 4;
         break;
@@ -518,10 +514,10 @@ eTuneOneState enc_cal_update(tEncCal_ctx *ctx, float pos)
             ctx->tick_cnt = 0;
             bool need_180 = false;
             float diff = pos - ctx->pos_start;
-            float dead_zone_m = MATH_PI / ctx->pole_pairs * 0.8f;
+            float dead_zone_m = MATH_PI / ctx->out.pole_pairs * 0.8f;
             if (FABSF(diff) > dead_zone_m)
             {
-                need_180 = ((diff > 0) != ctx->direction);
+                need_180 = ((diff > 0) != ctx->out.direction);
             }
             else
             {
@@ -529,8 +525,8 @@ eTuneOneState enc_cal_update(tEncCal_ctx *ctx, float pos)
                 return ctx->state;
             }
             // 融合
-            ctx->theta_offset -= need_180 ? MATH_PI / ctx->pole_pairs : 0.0f;
-            ctx->theta_offset = normalize_angle_2pi(ctx->theta_offset);
+            ctx->out.theta_offset -= need_180 ? MATH_PI / ctx->out.pole_pairs : 0.0f;
+            ctx->out.theta_offset = normalize_angle_2pi(ctx->out.theta_offset);
             ctx->state = TO_DONE; // 完成
             ctx->step = 0;
         }

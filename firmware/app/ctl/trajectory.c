@@ -33,8 +33,13 @@ void traj_set_target(tTraj *traj, float target)
     float tol = (traj->cfg.tolerance > 0.0f) ? traj->cfg.tolerance : TRAJ_TOL_DEFAULT;
     traj->busy = (err > tol);
 }
+// 追加pvt点
+void traj_pvt_add_target(tTraj *traj, float p, float v, float t)
+{
+}
 
 //  核心更新函数
+// TODO: 1、增加PV PT模式的轨迹规划器
 void traj_Update(tTraj *traj, float dt)
 {
 

@@ -10,14 +10,12 @@
 
 typedef struct
 {
-
     tPI PI_iq;
     tPI PI_id;
     tPI PI_weakmag;
     tPI PI_vel;
     tPID PID_pos;
     tMIT mit;
-
 } tFOC;
 
 void foc_init(tFOC *foc, tParameter *param,

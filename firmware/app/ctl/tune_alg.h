@@ -17,7 +17,17 @@ typedef enum
     TO_TIMEOUT,        // 整定超时
 } eTuneOneState;
 
-/* 1D 最小二乘 */
+/* 自适应滞环电压调节 */
+typedef struct
+{
+    float i_hyst_lo; // 电流自适应下限 A
+    float i_hyst_hi; // 电流自适应上限 A
+    float v_hyst_lo; // 电压自适应下限 V
+    float v_hyst_hi; // 电压自适应上限 V
+    float v_step;    // 电压步长 V
+
+} tVADA;
+/* 最小二乘 */
 typedef struct
 {
     float sum_x, sum_y, sum_xx, sum_xy, sum_yy;
@@ -42,46 +52,43 @@ void ls3d_accum(tLS3D *a, float x1, float x2, float y);
 bool ls3d_fit(const tLS3D *a, float *k1, float *k2, float *k3);
 
 /* ============================================================
- * 开环电流三点差分测电阻
+ * 开环电压三点差分测电阻
  * ============================================================ */
 
 typedef struct
 {
-    float cur_1;                  // 差分电流 1 系数
-    float cur_2;                  // 差分电流 2 系数
-    float cur_steady_err;         // 稳态电流 误差系数
+    tVADA vada[2];
+    float cur_steady_err;         // 稳态电流可接受误差
     float steady_ticks;           // 稳态保持时间
     float rs_min;                 // 最小值
     float rs_max;                 // 最大值
     float rs_phase_diff_thr_coef; // 三相电阻最大相对偏差 例如 0.15f
-} tTune_rs_oc_cfg;
-// 开环电流三点差分测电阻上下文
+} tTune_rs_ov_cfg;
+// 开环电压三点差分测电阻上下文
 typedef struct
 {
     eTuneOneState state;
 
-    tTune_rs_oc_cfg cfg;
-
-    float id;
-
+    tTune_rs_ov_cfg cfg;
+    float ud_inj[2];  // 目标点电压值（V）
+    float id_meas[2]; // 电流测量值（A）
     float rs_meas[3]; // 电阻测量值（R）
-    float ud_meas[2]; // 目标点电压值（V）
-
+    float id_last;
     uint32_t steady_tick;
     uint8_t stage;
 
     struct
     {
         theta_e;
-        id;
+        ud;
     } cmd;
 
     float rs_out;
 
-} tTune_rs_oc_ctx;
+} tTune_rs_ov_ctx;
 
-void tune_rs_oc_init(tTune_rs_oc_ctx *ctx, tTune_rs_oc_cfg cfg);
-eTuneOneState tune_rs_oc_update(tTune_rs_oc_ctx *ctx,
+void tune_rs_ov_init(tTune_rs_ov_ctx *ctx, tTune_rs_ov_cfg cfg);
+eTuneOneState tune_rs_ov_update(tTune_rs_ov_ctx *ctx,
                                 float id, float ud);
 /* ============================================================
  * 高频信号注入法 — dq轴电感在线辨识
@@ -90,17 +97,14 @@ eTuneOneState tune_rs_oc_update(tTune_rs_oc_ctx *ctx,
 
 typedef struct
 {
+    tVADA vada; // 电压自适应
+
     float omega_h;  // 高频信号注入角频率 ω_h (rad/s)
     float omega_dt; // 高频信号注入周期
 
     uint16_t n_per_cycle; // 每个注入周期计数
     uint32_t align_ticks; /* 对齐保持时长 tick */
 
-    float v_inj_start;  /* 注入电压起始幅值 V */
-    float v_inj_max;    /* 注入电压上限 V */
-    float v_inj_step;   /* 自适应步长 V */
-    float i_hyst_lo;    /* 电流自适应下限 A */
-    float i_hyst_hi;    /* 电流自适应上限 A */
     float ls_min;       // 电感最小值 H
     float ls_max;       // 电感最大值 H
     uint8_t avg_cycles; /* DFT 平均周期数，建议 4~8 */
@@ -179,10 +183,12 @@ typedef struct
 
     tLS1D ls_fwd;
     tLS1D ls_bwd;
-
-    uint8_t pole_pairs;
-    bool direction;
-    float theta_offset;
+    struct
+    {
+        uint8_t pole_pairs;
+        bool direction;
+        float theta_offset;
+    } out;
 
 } tEncCal_ctx;
 

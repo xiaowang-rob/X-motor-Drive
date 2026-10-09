@@ -83,7 +83,7 @@
         {
             "label": "上位机",
             "type": "shell",
-            "command": "python3",
+            "command": "python3.13",
             "args": [
                 "${workspaceFolder}/Software/start.py"
             ],

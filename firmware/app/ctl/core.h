@@ -5,21 +5,33 @@
 
 #include "protocol.h"
 
-#include "pid.h"
+typedef struct
+{
+    eCoreState mode;
+    float vel;      // 速度 (rad/s)
+    float pos;      // 位置 (rad)
+    float tp;       // pvt模式下时刻
+    float tau_ff;   // 转矩前馈
+    float vel_elec; // 电角速度 rad/s
+    float id;       // 电枢电流 A
+    float iq;       // 拖动电流 A
+    float tau;      // 转矩 N/m
+} tCmd;
 
 // 主要核心
 typedef struct
 {
     eCoreState state; // 状态
+    eFault fault;     // 故障
+    eWarning warning; // 警告
 
-    volatile bool enable;    // 使能标记
+    volatile bool enable; // 使能标记
+
     volatile bool ov_enable; // 开环电压使能标记
+    volatile bool ot_enable; // 开环角度使能标记
 
-    volatile bool obs_enable; // 观测器使能标记
-    volatile bool enc_enable; // 编码器使能标记
-
-    eObsList obs;        // 观测器
-    eCtrlMode ctrl_mode; // 控制模式
+    bool obs_running; // 观测器是否正常运行
+    bool com_running; // 通信是否正常运行
 
     struct
     {
@@ -39,23 +51,31 @@ typedef struct
         float is[3];         // 三相电流 A
         float ialpha, ibeta; // ab电流 A
         float iq, id;        // dq电流 A
-
-        float theta_elec;   // 电角度 rad
-        float sin_e, cos_e; // 电角度 sin cos
-
         float ud, uq;        // qd电压 V
         float ualpha, ubeta; // foc 输出电压 V
 
         float tau; // 转矩 N/m
 
-        float theta_enc;  // 编码器角度 rad
-        float theta_mech; // 机械角度 rad
+        float theta_elec;   // 电角度 rad
+        float sin_e, cos_e; // 电角度 sin cos
 
         float vel; // 转速 rad/s
         float pos; // 位置 rad
     } fb;
 } tCore;
 
-bool core_init(void);
+void core_init(void);
+void core_reset(void);
+void current_filter_init(float cfalpha);
+void core_disable(void);
+bool core_cmd_set(tCmd *cmd);
+void core_ov_cmd_set(float ud, float uq, float theta_e);
+void core_ot_cmd_set_theta(float theta_e);
+void core_ot_cmd_set_vel(float vel);
+
+void core_enter_fault(eFault fault);
+void core_enter_warning(eWarning warning);
+
+void core_mainloop_tasks(void);
 
 #endif

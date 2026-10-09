@@ -9,9 +9,7 @@ typedef enum
     INC_ENC_CHIP, // 板载编码器芯片
     EXT_ENC_MODE, /* 外接编码器 */
     EXT_ENC_CHIP, /* 外接编码器芯片 */
-    ENC_ACTIVE,   // 编码器
-    OBS_ACTIVE,   /* 无感观测 */
-    CTRL_MODE,    /* 控制模式 */
+    OBS_TYPE,     /* 观测器类型 */
     TRAJ_MODE,    /* 轨迹规划器 */
 
     MOTOR_POLEPAIRS, /* 电机极对数 */
@@ -29,6 +27,8 @@ typedef enum
     CAN_ID,    /* CAN ID */
     CAN_MODE,  /* CAN模式 */
     CLBW_COEF, // 电流环带宽系数 0.1-0.9f
+    QCLBW,     // q轴电流环带宽
+    DCLBW,     // d轴电流环带宽
     QCLKP,     // q轴电流环比例
     QCLKI,     // q轴电流环积分
     DCLKP,     // d轴电流环比例
@@ -55,9 +55,9 @@ typedef enum
     TOLERANCE_TIME,     /* 容忍时间 */
     TOLERANCE_LIMIT,    /* 超限容忍度 */
 
-    TRAJ_LIMIT_D1,  /* 一阶限幅 */
-    TRAJ_LIMIT_D2,  /* 二阶限幅 */
-    TRAJ_LIMIT_D3,  /* 三阶限幅 */
+    TRAJ_LIMIT_D1,  /* 一阶变化率限幅 */
+    TRAJ_LIMIT_D2,  /* 二阶变化率限幅 */
+    TRAJ_LIMIT_D3,  /* 三阶变化率限幅 */
     TRAJ_TOLERANCE, /* 轨迹规划容差 */
     PARAM_NUM,
 } eParameter;
@@ -114,14 +114,7 @@ typedef enum
     ENCODER_SINCOS, /* 正余弦编码器 */
     HFI_SMO,        /* HFI+SMO观测器 */
 } eObsList;
-/*运行模式*/
-typedef enum
-{
-    CURRENT_MODE, /* 电流模式 */
-    PID_SPEED,    /* PID速度模式 */
-    PID_POSITION, /* PID位置模式 */
-    MIT_MODE,     /* MIT模式 */
-} eCtrlMode;
+
 /*CAN模式*/
 typedef enum
 {
@@ -144,40 +137,44 @@ typedef enum
 // 核心状态
 typedef enum
 {
-    INIT,    // INIT
-    IDLE,    // IDLE
-    TUNING,  // TUNING
-    RUNNING, // RUNNING
-    FAULT,   // FAULT
-    WARNING, // WARNING
+    INIT,         // INIT
+    IDLE,         // IDLE
+    TUNING,       // TUNING
+    CURRENT_MODE, /* 电流模式 */
+    PID_SPEED,    /* PID速度模式 */
+    PID_POSITION, /* PID位置模式 */
+    MIT_MODE,     /* MIT模式 */
+    FAULT,        // FAULT
+    WARNING,      // WARNING
 } eCoreState;
 /*错误*/
 typedef enum
 {
-    FAULT_NONE,                   /* NONE */
-    FAULT_FLASH_OFFLINE,          /* FLASH离线 */
-    FAULT_TUNE_CURRENT_VIBRATION, /* 整定电流振荡 */
-    FAULT_POLE_PAIR_MISMATCH,     /* 极对数不匹配 */
-    FAULT_MOTOR_LOCK,             /* 电机堵转 */
-    FAULT_RS_LS_CAL_FAIL,         /* 内参校准失败 */
-    FAULT_ENCODER_CAL_FAIL,       /* 编码器校准失败 */
-    FAULT_ELEC_PARAM_FAIL,        /* 电气参数校准失败 */
-    FAULT_MECH_PARAM_FAIL,        /* 机械参数校准失败 */
-    FAULT_OVERVOLTAGE,            /* 过电压 */
-    FAULT_UNDERVOLTAGE0,          /* 低电压 */
-    FAULT_OVERCURRENT1,           /* 过电流 */
-    FAULT_CAN_INIT_FAIL2,         /* CAN初始化失败 */
-    FAULT_CAN_COMM_ERR3,          /* CAN通信异常 */
+    FAULT_NONE,               /* NONE */
+    FAULT_OBS_INIT,           /* 感测器初始化失败 */
+    FAULT_BUSCOM_INIT,        /* 总线通信初始化失败 */
+    FAULT_RS_TUNE,            /* 电阻整定失败 */
+    FAULT_RS_IMBALANCE,       /* 相电阻不平衡 */
+    FAULT_LS_TUNE,            /* 电感整定失败 */
+    FAULT_OBS_TUNE,           /* 观测器校准失败 */
+    FAULT_POLE_PAIR_MISMATCH, /* 极对数不匹配 */
+    FAULT_MOTOR_LOCK,         /* 电机堵转 */
+    FAULT_ELEC_PARAM_FAIL,    /* 电气参数校准失败 */
+    FAULT_MECH_PARAM_FAIL,    /* 机械参数校准失败 */
+    FAULT_OVERVOLTAGE,        /* 过电压 */
+    FAULT_UNDERVOLTAGE,       /* 低电压 */
+    FAULT_OVERCURRENT,        /* 过电流 */
+
 } eFault;
 /*警告*/
 typedef enum
 {
-    WARNING_NONE,             /* NONE */
-    WARNING_OVERTEMP,         /* 过温 */
-    WARNING_OVERSPEED,        /* 超速 */
-    WARNING_POSITION_LIMIT,   /* 位置超限 */
-    WARNING_ENCODER_OFFLINE,  /* 编码器无响应 */
-    WARNING_ENCODER_COMM_ERR, /* 编码器通信错误 */
+    WARNING_NONE,           /* NONE */
+    WARNING_OVERTEMP,       /* 过温 */
+    WARNING_OVERSPEED,      /* 超速 */
+    WARNING_POSITION_LIMIT, /* 位置超限 */
+    WARNING_BUSCOM_RUN,     /* 总线通讯异常 */
+    WARNING_OBS_RUN,        /* 观测器运行异常 */
 } eWarning;
 
 /*  CMD ID  */

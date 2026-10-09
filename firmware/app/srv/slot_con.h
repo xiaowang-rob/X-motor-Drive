@@ -29,6 +29,10 @@ typedef struct
     uint8_t high_tic;
     uint8_t medium_tic;
 
+    float f_high; // 高环频率
+    float f_med;  // 中环频率
+    float f_low;  // 低环频率
+
     float t_high; // 高环周期
     float t_med;  // 中环周期
     float t_low;  // 低环周期

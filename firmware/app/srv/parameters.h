@@ -15,9 +15,7 @@ typedef struct
     uint8_t eenc_mode;
     uint8_t eenc_chip;
 
-    bool enc_active;
-    bool obs_active;
-    uint8_t ctrl_mode;
+    uint8_t obs_type;
     uint8_t traj_type;
 
     // 电机参数
@@ -37,6 +35,8 @@ typedef struct
     uint32_t can_id;
     uint8_t can_mode;
     float clbw_coef;
+    float qclbw;
+    float dclbw;
     float qclkp;
     float qclki;
     float dclkp;

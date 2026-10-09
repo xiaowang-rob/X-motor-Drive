@@ -1,5 +1,6 @@
 #include "tune.h"
 
+#include "bsp_cfg.h"
 #include "bsp_math.h"
 
 void tune_init(tTune *tune, float cur_limit)
@@ -19,47 +20,11 @@ void tune_reset(tTune *tune)
     tune->state = TUNE_INIT;
 }
 
-// 内环参数经验公式 clbw_coef - 电流环带宽系数  fc - 电流环频率
-static void calculate_foc_params(tTuneParams *tp, float clbw_coef, float fc)
-{
-    float fn_d = 1 / (MATH_2PI * tp->ld / tp->rs);
-    float wc_d = MATH_2PI * clbw_coef * (2 * fn_d < fc / 10 ? 2 * fn_d : fc / 10);
-    tp->id_kp = wc_d * tp->ld;
-    tp->id_ki = wc_d * tp->rs;
-
-    float fn_q = 1 / (MATH_2PI * tp->lq / tp->rs);
-    float wc_q = MATH_2PI * clbw_coef * (2 * fn_q < fc / 10 ? 2 * fn_q : fc / 10);
-    tp->iq_kp = wc_q * tp->lq;
-    tp->iq_ki = wc_q * tp->rs;
-
-    // 取电流环开环截止频率 (Hz)
-    float f_c_open = fminf(wc_d, wc_q) / MATH_2PI;
-
-    // 设计滤波截止频率：取开环截止频率的 4倍
-    float f_filter = 4.0f * f_c_open;
-
-    // 上下限约束
-    float f_sw = fc;               // 这里和电流环同频
-    float f_max = f_sw / 8.0f;     // 最大允许滤波截止频率（保证滤除开关纹波）
-    float f_min = 2.0f * f_c_open; // 最小允许值（避免影响环路）
-
-    if (f_filter > f_max)
-        f_filter = f_max;
-    if (f_filter < f_min)
-        f_filter = f_min;
-
-    // 计算一阶低通滤波系数 alpha
-    tp->cur_filter_alpha = 1.0f - expf(-MATH_2PI * f_filter / f_sw);
-
-    // 直接写入
-    foc_set_cur_loop_param(tp->id_kp, tp->id_ki, tp->iq_kp, tp->iq_ki);
-}
-
 void motor_param_tune_force_save(tParameter *p, tTuneParams *tp)
 {
     //  这里是集中写入参数flash中转站
-    p->motor_rs = tp->rs;
-    p->motor_ld = tp->ld;
+    p->motor_rs = tune->rs_ctx.rs_out;
+    p->motor_ld = tune->ls_ctx.ldq_out[0];
     p->motor_lq = tp->lq;
     p->motor_psif = tp->psi_f;
     p->motor_ke = tp->ke;
@@ -78,7 +43,7 @@ void motor_param_tune_force_save(tParameter *p, tTuneParams *tp)
 }
 
 eTuneState tune_update(tTune *tune, tParameter *p,
-                       float ts, tFOCval *foc_val, tCoreVal *core_val)
+                       float ts, tCore *core, tFOC *foc)
 {
     switch (tune->state)
     {
@@ -92,35 +57,48 @@ eTuneState tune_update(tTune *tune, tParameter *p,
         if (!tune->TO_init)
         {
             // 电阻参数辨识
-            tTune_rs_oc_cfg rs_oc_cfg = {
-                .cur_1 = tune->cur_limit * RS_I_TARGET_1_COEF,
-                .cur_2 = tune->cur_limit * RS_I_TARGET_2_COEF,
+            tTune_rs_ov_cfg rs_ov_cfg = {
+                .vada[0].i_hyst_hi = tune->cur_limit * RS_I_TARGET_1_COEF * (1 + RS_I_TARGET_HYST),
+                .vada[0].i_hyst_lo = tune->cur_limit * RS_I_TARGET_1_COEF * (1 - RS_I_TARGET_HYST),
+                .vada[0].v_hyst_hi = RS_V_ADJ_MAX,
+                .vada[0].v_hyst_lo = RS_V_ADJ_START,
+                .vada[0].v_step = RS_V_ADJ_STEP,
+                .vada[1].i_hyst_hi = tune->cur_limit * RS_I_TARGET_2_COEF * (1 + RS_I_TARGET_HYST),
+                .vada[1].i_hyst_lo = tune->cur_limit * RS_I_TARGET_2_COEF * (1 - RS_I_TARGET_HYST),
+                .vada[1].v_hyst_hi = RS_V_ADJ_MAX,
+                .vada[1].v_hyst_lo = RS_V_ADJ_START,
+                .vada[1].v_step = RS_V_ADJ_STEP,
+
                 .cur_steady_err = tune->cur_limit * RS_STEADY_ERR_THR_COEF,
                 .steady_ticks = RS_STEADY_MS / 1000.0f / ts,
                 .rs_min = RS_RANGE_MIN,
                 .rs_max = RS_RANGE_MAX,
                 .rs_phase_diff_thr_coef = RS_PHASE_DIFF_THR_COEF,
             };
-            tune_rs_oc_init(&tune->rs_ctx, rs_oc_cfg);
+            tune_rs_ov_init(&tune->rs_ctx, rs_ov_cfg);
 
-            // TODO:切换为开环电压模式
             tune->TO_init = true;
         }
         else
         {
-            eTuneOneState sta = tune_rs_oc_update(&tune->rs_ctx, foc_val->id, foc_val->ud); // 电阻参数辨识
+            eTuneOneState sta = tune_rs_ov_update(&tune->rs_ctx, core->fb.id, core->fb.ud); // 电阻参数辨识
             if (TO_DONE == sta)
             {
                 tune->state = TUNE_INDUCTANCE;
                 tune->TO_init = false;
-                // TODO: 处理参数
             }
             else if (TO_RUNNING == sta)
             {
-                break;
+                core_ov_cmd_set(tune->rs_ctx.cmd.ud, 0.0f, tune->rs_ctx.cmd.theta_e);
             }
             else
             {
+                if (TO_DATA_INVALID == sta)
+                    tune->fault = FAULT_RS_TUNE;
+                else if (TO_DATA_IMBALANCE == sta)
+                    tune->fault = FAULT_RS_IMBALANCE;
+
+                tune->state = TUNE_FAILED;
             }
         }
         break;
@@ -128,16 +106,15 @@ eTuneState tune_update(tTune *tune, tParameter *p,
         if (!tune->TO_init)
         {
             tTune_ls_hfi_cfg ls_hfi_cfg = {
+                .vada.i_hyst_hi = tune->cur_limit * (1 + LS_I_TARGET_HYST) * LS_I_TARGET_COEF,
+                .vada.i_hyst_lo = tune->cur_limit * (1 - LS_I_TARGET_HYST) * LS_I_TARGET_COEF,
+                .vada.v_hyst_hi = LS_V_LIMIT,
+                .vada.v_hyst_lo = LS_V_START_MIN,
+                .vada.v_step = LS_V_ADJ_STEP,
                 .omega_h = MATH_2PI * LS_INJECT_FREQ_HZ,
                 .omega_dt = MATH_2PI * LS_INJECT_FREQ_HZ * ts,
                 .n_per_cycle = (uint16_t)(1.0f / (LS_INJECT_FREQ_HZ * ts) + 0.5f),
                 .align_ticks = LS_ALIGN_MS / 1000.0f / ts,
-                .v_inj_start = LS_V_START_MIN,
-                .v_inj_max = LS_V_LIMIT,
-                .v_inj_step = LS_V_ADJ_STEP,
-                .i_hyst_lo = tune->cur_limit * (1 - LS_I_TARGET_HYST) * LS_I_TARGET_COEF,
-                .i_hyst_hi = tune->cur_limit * (1 + LS_I_TARGET_HYST) * LS_I_TARGET_COEF,
-
                 .ls_min = LS_RANGE_MIN,
                 .ls_max = LS_RANGE_MAX,
                 .avg_cycles = LS_AVG_CYCLES,
@@ -147,19 +124,56 @@ eTuneState tune_update(tTune *tune, tParameter *p,
         }
         else
         {
-            eTuneOneState sta = tune_ldq_hfi(&tune->ls_ctx, foc_val->id, foc_val->iq, foc_val->ud, foc_val->ud); // 电感参数辨识
+            eTuneOneState sta = tune_ldq_hfi(&tune->ls_ctx, core->fb.id, core->fb.iq, core->fb.ud, core->fb.ud); // 电感参数辨识
             if (TO_DONE == sta)
             {
                 tune->state = TUNE_ENCODER;
                 tune->TO_init = false;
-                // TODO: 处理参数
+
+                // 内环参数经验公式  电流环带宽系数暂定为0.5服务后面的校准过程
+                float fn_d = 1 / (MATH_2PI * tune->ls_ctx.ldq_out[0] / tune->rs_ctx.rs_out);
+                tune->dclbw = MATH_2PI * (2 * fn_d < F_PWM / 10 ? 2 * fn_d : F_PWM / 10);
+                float id_kp = 0.5f * tune->dclbw * tune->ls_ctx.ldq_out[0];
+                float id_ki = 0.5f * tune->dclbw * tune->rs_ctx.rs_out;
+
+                float fn_q = 1 / (MATH_2PI * tune->ls_ctx.ldq_out[1] / tune->rs_ctx.rs_out);
+                tune->qclbw = MATH_2PI * (2 * fn_q < F_PWM / 10 ? 2 * fn_q : F_PWM / 10);
+                float iq_kp = 0.5f * tune->qclbw * tune->ls_ctx.ldq_out[1];
+                float iq_ki = 0.5f * tune->qclbw * tune->rs_ctx.rs_out;
+
+                // 取电流环开环截止频率 (Hz)
+                float f_c_open = fminf(tune->dclbw, tune->qclbw) / MATH_2PI;
+
+                // 设计滤波截止频率：取开环截止频率的 4倍
+                float f_filter = 4.0f * f_c_open;
+
+                // 上下限约束
+                float f_sw = F_PWM;            // 这里和电流环同频
+                float f_max = f_sw / 8.0f;     // 最大允许滤波截止频率（保证滤除开关纹波）
+                float f_min = 2.0f * f_c_open; // 最小允许值（避免影响环路）
+
+                if (f_filter > f_max)
+                    f_filter = f_max;
+                if (f_filter < f_min)
+                    f_filter = f_min;
+
+                // 计算一阶低通滤波系数 alpha
+                tune->cf_alpha = 1.0f - expf(-MATH_2PI * f_filter / f_sw);
+                current_filter_init(tune->cf_alpha);
+                // 直接写入
+                foc->PI_id.kp = id_kp;
+                foc->PI_id.ki = id_ki;
+                foc->PI_iq.kp = iq_kp;
+                foc->PI_iq.ki = iq_ki;
             }
             else if (TO_RUNNING == sta)
-            {
-                break;
+            { // 输出
+                core_ov_cmd_set(tune->ls_ctx.cmd.udq[0], tune->ls_ctx.cmd.udq[1], tune->ls_ctx.cmd.theta);
             }
             else
             {
+                tune->fault = FAULT_LS_TUNE;
+                tune->state = TUNE_FAILED;
             }
         }
         break;
@@ -172,16 +186,18 @@ eTuneState tune_update(tTune *tune, tParameter *p,
                 .delta_e = EC_OPEN_LOOP_OMEGA * ts,
                 .sample_step_e = EC_SAMPLE_STEP_E,
                 .travel_pos = EC_TRAVEL_POS,
-                .pole_pairs_expected = tune->params.pole_pairs,
+                .pole_pairs_expected = tune->pole_pairs,
                 .fit_max_mse = EC_FIT_MAX_MSE,
 
             };
             enc_cal_init(&tune->enc_ctx, enc_cal_cfg);
             tune->TO_init = true;
+            // 先失能 后面转为闭环电流 开环角度
+            core_disable();
         }
         else
         {
-            eTuneOneState sta = enc_cal_update(&tune->enc_ctx, core_val->pos); // 编码器校准
+            eTuneOneState sta = enc_cal_update(&tune->enc_ctx, core->fb.pos); // 编码器校准
             if (TO_DONE == sta)
             {
                 tune->state = TUNE_ELEC_PARAM;
@@ -190,10 +206,24 @@ eTuneState tune_update(tTune *tune, tParameter *p,
             }
             else if (TO_RUNNING == sta)
             {
-                break;
+                // 电角度开环
+                core_ot_cmd_set_theta(tune->enc_ctx.cmd.theta_e);
+                tCmd cmd = {
+                    .mode = CURRENT_MODE,
+                    .id = tune->enc_ctx.cmd.id,
+                    .iq = 0.0f,
+                };
+                core_cmd_set(&cmd);
             }
             else
             {
+                if (TO_DATA_INVALID == sta)
+                    tune->fault = FAULT_OBS_TUNE;
+                else if (TO_DATA_IMBALANCE == sta)
+                    tune->fault = FAULT_POLE_PAIR_MISMATCH;
+                else if (TO_TIMEOUT == sta)
+                    tune->fault = FAULT_MOTOR_LOCK;
+                tune->state = TUNE_FAILED;
             }
         }
         break;
@@ -201,21 +231,21 @@ eTuneState tune_update(tTune *tune, tParameter *p,
         if (!tune->TO_init)
         {
             tTune_psif_cfg psif_cfg = {
-                .rs_known = tune->params.rs,
+                .rs_known = tune->rs_ctx.rs_out,
                 .vel_low = PSIF_VEL_LOW,
                 .vel_high = PSIF_VEL_HIGH,
                 .num_points = PSIF_NUM_POINTS,
                 .steady_ticks = PSIF_STEADY_MS / 1000.0f / ts,
                 .sample_ticks = PSIF_SAMPLE_MS / 1000.0f / ts,
                 .vel_band = PSIF_VEL_BAND,
-                .pole_pairs = tune->params.pole_pairs,
+                .pole_pairs = tune->pole_pairs,
             };
             tune_psif_init(&tune->psif_ctx, psif_cfg);
             tune->TO_init = true;
         }
         else
         {
-            eTuneOneState sta = psif_update(&tune->psif_ctx, foc_val->uq, foc_val->iq, core_val->vel); // 电气参数辨识
+            eTuneOneState sta = tune_psif_update(&tune->psif_ctx, core->fb.uq, core->fb.iq, core->fb.vel); // 电气参数辨识
             if (TO_DONE == sta)
             {
                 tune->state = TUNE_MECH_PARAM;
@@ -236,8 +266,8 @@ eTuneState tune_update(tTune *tune, tParameter *p,
         if (!tune->TO_init)
         {
             tTune_JB_cfg jb_cfg = {
-                .psi_f = tune->params.psi_f,
-                .pole_pairs = tune->params.pole_pairs,
+                .psi_f = tune->psif_ctx.out.psi_f,
+                .pole_pairs = tune->enc_ctx.out.pole_pairs,
                 .iq_high = tune->cur_limit * JB_IQ_HIGH_COEF,
                 .vel_max = JB_VEL_MAX,
                 .vel_settle = JB_VEL_SETTLE,
@@ -245,12 +275,12 @@ eTuneState tune_update(tTune *tune, tParameter *p,
                 .skip_ticks = JB_SKIP_MS / 1000.0f / ts,
                 .min_samples = JB_MIN_SAMPLES,
             };
-            jb_init(&tune->jb_ctx, jb_cfg);
+            tune_jb_init(&tune->jb_ctx, jb_cfg);
             tune->TO_init = true;
         }
         else
         {
-            eTuneOneState sta = jb_update(&tune->jb_ctx, core_val->vel, foc_val->iq, ts); // 机械参数辨识
+            eTuneOneState sta = tune_jb_update(&tune->jb_ctx, core->fb.vel, core->fb.iq, ts); // 机械参数辨识
             if (TO_DONE == sta)
             {
                 tune->state = TUNE_DONE;
@@ -272,7 +302,7 @@ eTuneState tune_update(tTune *tune, tParameter *p,
         break;
 
     case TUNE_FAILED:
-
+        core_enter_fault(tune->fault);
         break;
     }
     return tune->state;
@@ -312,7 +342,7 @@ eTuneState tune_main_loop(tFOC_val *foc_val, float ts)
         // ========== 预计算：Rs 校准阶段所需阈值 (一次计算，整个阶段不变) ==========
         {
             float cur_lim = temp_params.cur_limit;
-            float bus_v = foc_val->udc;
+            float bus_v = core->fb.udc;
 
             ctx->rs_ctx.i_target = cur_lim * RS_I_TARGET_1_COEF;
             ctx->rs_ctx.i_target_2 = cur_lim * RS_I_TARGET_2_COEF;
@@ -339,7 +369,7 @@ eTuneState tune_main_loop(tFOC_val *foc_val, float ts)
         if (ctx->tune_round == 0)
         {
             // 第一轮：开环电压法测 Rs
-            if (_tune_rs_ol_vol(foc_val->ialpha))
+            if (_tune_rs_ol_vol(core->fb.ialpha))
             {
                 if (ctx->fault != FAULT_NONE)
                 {
@@ -351,7 +381,7 @@ eTuneState tune_main_loop(tFOC_val *foc_val, float ts)
                 {
                     float cur_lim = temp_params.cur_limit;
                     float rs_v_ref = temp_params.rs * cur_lim;
-                    float bus_v = foc_val->udc;
+                    float bus_v = core->fb.udc;
                     ctx->ls_ctx.v_inj = rs_v_ref * LS_V_START_COEF;
                     if (ctx->ls_ctx.v_inj < LS_V_START_MIN)
                         ctx->ls_ctx.v_inj = LS_V_START_MIN;
@@ -397,7 +427,7 @@ eTuneState tune_main_loop(tFOC_val *foc_val, float ts)
         break;
 
     case TUNE_INDUCTANCE:
-        if (_TuneLs(foc_val->ualpha, foc_val->ubeta, foc_val->ialpha, foc_val->ibeta))
+        if (_TuneLs(core->fb.ualpha, core->fb.ubeta, core->fb.ialpha, core->fb.ibeta))
         {
             ctx->rs_ctx.step_ticks = 0;
             if (ctx->fault != FAULT_NONE)
@@ -437,7 +467,7 @@ eTuneState tune_main_loop(tFOC_val *foc_val, float ts)
         break;
 
     case TUNE_ENCODER:
-        if (_tune_encoder(foc_val->theta_mech))
+        if (_tune_encoder(core->fb.theta_mech))
         {
             if (ctx->fault != FAULT_NONE)
             {

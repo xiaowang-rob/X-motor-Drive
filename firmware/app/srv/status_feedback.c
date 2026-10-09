@@ -34,7 +34,10 @@ void status_feedback_main_loop(eCoreState cstate)
         case TUNING:
             led_state = LED_BLINK_TRIPLE_SHORT;
             break;
-        case RUNNING:
+        case CURRENT_MODE:
+        case PID_SPEED:
+        case PID_POSITION:
+        case MIT_MODE:
             led_state = LED_BLINK_DOUBLE_SHORT;
             break;
         case FAULT:

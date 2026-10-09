@@ -15,9 +15,7 @@ tFlashUnit param_unit;
     X(INC_ENC_CHIP, ienc_chip, U8, 0u)                        \
     X(EXT_ENC_MODE, eenc_mode, U8, 0u)                        \
     X(EXT_ENC_CHIP, eenc_chip, U8, 0u)                        \
-    X(ENC_ACTIVE, enc_active, BOOL, true)                     \
-    X(OBS_ACTIVE, obs_active, BOOL, false)                    \
-    X(CTRL_MODE, ctrl_mode, U8, 0u)                           \
+    X(OBS_TYPE, obs_type, U8, 0u)                             \
     X(TRAJ_MODE, traj_type, U8, 0u)                           \
     X(MOTOR_POLEPAIRS, motor_polepairs, U8, 7u)               \
     X(POSITIVE_DIR, positive_dir, BOOL, true)                 \
@@ -33,6 +31,8 @@ tFlashUnit param_unit;
     X(CAN_ID, can_id, U32, 1u)                                \
     X(CAN_MODE, can_mode, U8, 0u)                             \
     X(CLBW_COEF, clbw_coef, F32, 0.0f)                        \
+    X(QCLBW, qclbw, F32, 0.0f)                                \
+    X(DCLBW, dclbw, F32, 0.0f)                                \
     X(QCLKP, qclkp, F32, 0.0f)                                \
     X(QCLKI, qclki, F32, 0.0f)                                \
     X(DCLKP, dclkp, F32, 0.0f)                                \

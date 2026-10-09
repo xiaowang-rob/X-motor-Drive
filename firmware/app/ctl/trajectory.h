@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 
+#define TRAJ_PVT_MAX_POINTS 10
 /*
 轨迹规划算法
 1、 可以对输入的阶跃位置、速度指令 做平滑处理
@@ -13,8 +14,7 @@ typedef enum
     TRAJ_DISABLE = 0,   /* 禁用 */
     TRAJ_TRAPEZOID = 1, /* 梯形 */
     TRAJ_S_CURVE = 2,   /* S形 */
-    TRAJ_PV = 3,        /* PV模式 */
-    TRAJ_PT = 4,        /* PT模式 */
+    TRAJ_PVT = 3,       /* PVT模式 */
 } eTrajType;
 
 //  配置参数
@@ -28,6 +28,12 @@ typedef struct
 
 } tTraj_Config;
 
+typedef struct
+{
+    float p;
+    float v;
+    float t;
+} tPVTpoint;
 //  输出结果
 typedef struct
 {
@@ -39,12 +45,13 @@ typedef struct
 //  轨迹规划器
 typedef struct
 {
-    tTraj_Config cfg; // 配置参数
-    tTraj_Out out;    // 输出结果
-    float target;     // 目标值
-    float current;    // 当前规划值
-    float rate;       // 一阶变化率
-    float rate_d2;    // 二阶变化率(仅 S 型需要)
+    tTraj_Config cfg;                   // 配置参数
+    tTraj_Out out;                      // 输出结果
+    tPVTpoint pvt[TRAJ_PVT_MAX_POINTS]; // PVT点
+    float target;                       // 目标值
+    float current;                      // 当前规划值
+    float rate;                         // 一阶变化率
+    float rate_d2;                      // 二阶变化率(仅 S 型需要)
     bool busy;
 
 } tTraj;
@@ -53,6 +60,7 @@ typedef struct
 bool traj_init(tTraj *traj, tTraj_Config cfg);
 void traj_reset(tTraj *traj, float current_value);
 void traj_set_target(tTraj *traj, float target);
+void traj_pvt_add_target(tTraj *traj, float p, float v, float t);
 void traj_Update(tTraj *traj, float dt);
 
 #endif //  __TRAJECTORY_H

@@ -9,9 +9,12 @@
 #include "core.h"
 
 // 整定参数配置
-
-#define RS_I_TARGET_1_COEF 0.2f      // 第一点目标电流 = cur_limit × 0.2
-#define RS_I_TARGET_2_COEF 0.6f      // 第二点目标电流 = cur_limit × 0.6
+#define RS_I_TARGET_HYST 0.05f       // 目标电流滞环 ±10%
+#define RS_I_TARGET_1_COEF 0.3f      // 第一点目标电流下限 = cur_limit × 0.2
+#define RS_I_TARGET_2_COEF 0.6f      // 第二点目标电流下限 = cur_limit × 0.6
+#define RS_V_ADJ_START 0.2f          // 电压自适应调整起始值 (V)
+#define RS_V_ADJ_MAX 8.0f            // 电压自适应调整上限 (V)
+#define RS_V_ADJ_STEP 0.01f          // 电压自适应调整步长 (V)
 #define RS_STEADY_ERR_THR_COEF 0.02f // 稳态电流误差阈值 = cur_limit × 0.02
 #define RS_STEADY_MS 10.0f           // 稳态持续时间
 #define RS_RANGE_MIN 0.02f           // 电阻合理下限 (Ω)
@@ -54,48 +57,18 @@
 
 typedef struct
 {
-    // 控制参数
-    float cur_filter_alpha; // 电流滤波系数
-
-    float iq_kp;
-    float iq_ki;
-    float id_kp;
-    float id_ki;
-
-    // 电气参数
-    float kv; // 电压转化器增益 (V/V) 用于检验参数有效性
-
-    float rs;    // 定子电阻(Ω)
-    float ld;    // d 轴电感 (H)
-    float lq;    // q 轴电感 (H)
-    float psi_f; // 永磁体磁链 (Wb)
-    float ke;    // 反电动势常数 (V/(rad/s))
-
-    // 机械参数
-    float j; // 转动惯量 (kg·m²)
-    float b; // 摩擦系数 (N·m·s/rad)
-
-    // 编码器参数
-    float theta_offset; // 编码器角度偏移 (rad)
-    uint8_t pole_pairs; // 极对数
-    bool direction;     // 转动方向 (true:逆 false 顺)
-
-} tTuneParams;
-
-typedef struct
-{
     eTuneState state;
-    bool TO_init; // 单项是否初始化
-    float cur_limit;
     eFault fault;
 
-    tTuneParams params;
+    bool TO_init; // 单项是否初始化
+    float cur_limit;
+    float kv;           // 电压转化器增益 (V/V) 用于检验参数有效性
+    float pole_pairs;   // 真实电机极对数 用于检验参数有效性
+    float dclbw, qclbw; // 电流环带宽 (rad/s)
+    float cf_alpha;     // 电流环滤波系数
 
-    tTune_rs_oc_ctx rs_ctx;
+    tTune_rs_ov_ctx rs_ctx;
     tTune_ls_hfi_ctx ls_ctx;
-    tTune_ls_hfi_ctx ls_ctx;
-    tTune_ls_hfi_ctx ls_ctx;
-    tTune_ls_hfi_ctx_hfi_ctx ls_ctx;
     tEncCal_ctx enc_ctx;
     tTune_psif_ctx psif_ctx;
     tTune_JB_ctx jb_ctx;
