@@ -224,10 +224,15 @@ void obs_foc_task(float ts)
         core.fb.theta_elec += core.ref.vel_elec * ts;
         core.fb.theta_elec = normalize_angle_2pi(core.fb.theta_elec);
     }
+    // 预计算sin cos
+    arm_sin_cos_rad_f32(core.fb.theta_elec, &core.fb.sin_e, &core.fb.cos_e);
 
-    // foc 数据处理
+    // 电流处理
     current_process(svpwm.sector, core.fb.ims, core.fb.is);
-    foc_process(&foc, svpwm.sector);
+    // Clarke 变换
+    clarke_transform(core.fb.is[0], core.fb.is[1], core.fb.is[2], &core.fb.ialpha, &core.fb.ibeta);
+    // Park 变换
+    park_transform(core.fb.ialpha, core.fb.ibeta, core.fb.sin_e, core.fb.cos_e, &core.fb.id, &core.fb.iq);
 
     if (core.enable)
     {
@@ -283,7 +288,7 @@ void vl_pid_mit_task(float ts)
     {
         if (core.ctrl_mode == PID_SPEED)
         { // 速度环pid控制
-            core.pidtag.vel = traj.out.value;
+
             core.ref.iq = pi_update(&core.PI_vel, core.pidtag.vel, core.fb.vel);
         }
         else if (core.ctrl_mode == MIT_MODE)

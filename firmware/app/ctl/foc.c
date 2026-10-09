@@ -23,22 +23,3 @@ void foc_reset(tFOC *foc)
     pi_reset(&foc->PI_weakmag);
     pid_reset(&foc->PID_pos);
 }
-
-// 电角度预计算、原始三相电流处理 重构-滤波-clark-park
-void foc_process(tFOC *foc, uint8_t sec)
-{
-
-    // 预计算sin cos
-    arm_sin_cos_rad_f32(foc->fb.theta_elec, &foc->fb.sin_e, &foc->fb.cos_e);
-
-    // Clarke 变换
-    clarke_transform(foc->fb.iu, foc->fb.iv, foc->fb.iw, &foc->fb.ialpha, &foc->fb.ibeta);
-    // Park 变换
-    park_transform(foc->fb.ialpha, foc->fb.ibeta, foc->fb.sin_e, foc->fb.cos_e, &foc->fb.id, &foc->fb.iq);
-}
-// 电流内环更新 pi输出dq电压 反park变换为ab电压 再融合HFI
-void foc_update(tFOC *foc)
-{
-    foc->fb.uq = pi_update(&foc->PI_iq, foc->ref.iq, foc->fb.iq);
-    foc->fb.ud = pi_update(&foc->PI_id, foc->ref.id, foc->fb.id);
-}
