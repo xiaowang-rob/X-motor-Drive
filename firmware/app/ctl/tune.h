@@ -5,7 +5,6 @@
 
 #include "protocol.h"
 #include "parameters.h"
-#include "foc.h"
 #include "core.h"
 
 // 整定参数配置
@@ -55,11 +54,31 @@
 #define JB_SKIP_MS 1.0f      // 跳过阶跃后 1ms 数据
 #define JB_MIN_SAMPLES 10    // 最少采样点数
 
+/*参数校准状态*/
+typedef enum
+{
+    TUNE_IDLE,    /* 空闲 */
+    TUNE_RUNNING, /* 运行中 */
+    TUNE_DONE,    /* 完成 */
+    TUNE_FAILED,  /* 失败 */
+} eTuneState;
+// 校准类型
+typedef enum
+{
+    TUNE_FOC,  // FOC内参辨识、RS Ldq Psif
+    TUNE_OBS,  // 观测器校准
+    TUNE_MECH, // 机械参数辨识
+    TUNE_PID,  // PID参数自适应
+    TUNE_MIT,  // MIT参数自适应
+} eTuneType;
+
 typedef struct
 {
     eTuneState state;
+    eTuneType type;
     eFault fault;
 
+    uint8_t step;
     bool TO_init; // 单项是否初始化
     float cur_limit;
     float kv;           // 电压转化器增益 (V/V) 用于检验参数有效性

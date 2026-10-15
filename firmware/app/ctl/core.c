@@ -8,7 +8,7 @@
 #include "bus_com.h"
 #include "sense.h"
 
-#include "foc.h"
+#include "control.h"
 #include "obs.h"
 #include "svpwm.h"
 #include "trajectory.h"
@@ -17,13 +17,15 @@
 #include "slot_con.h"
 #include "status_feedback.h"
 
-tCore core; // 控制核心
-tFOC foc;
-tObs obs;
-tSvpwm svpwm;
+#include "filter.h"
+
+tCore core;
+tCtrl ctrl;   // 控制器
+tObs obs;     // 观测器
+tSvpwm svpwm; // 调制器
 
 static tFirstOrderLagFilter cf_u, cf_v, cf_w; // 电流滤波器
-static tTraj traj;
+static tTraj traj;                            // 内置轨迹规划器
 
 void current_filter_init(float cfalpha)
 {
@@ -55,7 +57,11 @@ void core_init(void)
     svpwm_init(&svpwm, TIC_PWM, core.fb.udc, T_PWM, T_SAMPLE, T_NOISE, T_DIED);
 
     // foc初始化
-    foc_init(&foc, &g_param, g_slotcon.t_high, g_slotcon.t_med, g_slotcon.t_low, core.fb.vmax);
+    ctrl_foc_init(&ctrl, &g_param, g_slotcon.t_high, core.fb.vmax);
+    // pid控制器初始化
+    ctrl_pid_init(&ctrl, &g_param, g_param.pvc_enable, g_slotcon.t_med, g_slotcon.t_low);
+    // mit控制器初始化
+    ctrl_mit_init(&ctrl, &g_param);
 
     // 初始化观测器
     if (!obs_init(&obs))
@@ -87,6 +93,8 @@ void core_init(void)
 
     // 将solt槽任务注册到pwm下溢中断 以 启动solt槽任务
     pwm_register_callback(NULL, slot_con_update);
+
+    core.state = IDLE;
 
     return;
 }
@@ -295,7 +303,7 @@ void obs_foc_task(float ts)
     {
         // foc电流环更新
         if (!core.ov_enable)
-            foc_cl_update(&foc, core.ref.iq, core.fb.iq, core.ref.id, core.fb.id, &core.fb.uq, &core.fb.ud);
+            foc_cl_update(&ctrl, core.ref.iq, core.fb.iq, core.ref.id, core.fb.id, &core.fb.uq, &core.fb.ud);
 
         inv_park_transform(core.fb.ud, core.fb.uq, core.fb.sin_e, core.fb.cos_e,
                            &core.fb.ualpha, &core.fb.ubeta);
@@ -312,61 +320,62 @@ void obs_foc_task(float ts)
 // 运行轨迹规划器
 void traj_task(float ts)
 {
-    if (core.enable)
+    // 电流模式 整定 其他状态不需要轨迹规划
+    if (core.state <= CURRENT_MODE)
+        return;
+    traj_Update(&traj, ts);
+    if (core.state == MIT_MODE)
     {
-        // 电流模式不需要轨迹规划
-        if (core.state == CURRENT_MODE)
+        if (traj.cfg.type == TRAJ_DISABLE)
             return;
-        traj_Update(&traj, ts);
-        if (core.state == MIT_MODE)
-        {
-            if (traj.cfg.type == TRAJ_DISABLE)
-                return;
 
-            // 使用内置轨迹规划器 输出轨迹信息
-            core.ref.pos = traj.out.value;
-            core.ref.vel = traj.out.rate_d1;
-            core.ref.tau_ff = g_param.motor_j * traj.out.rate_d2 + g_param.motor_b * traj.out.rate_d1;
-        }
-        else if (core.state == PID_SPEED)
-            core.ref.vel = traj.out.value;
-        else if (core.state == PID_POSITION)
-        {
-            if (traj.cfg.type == TRAJ_DISABLE)
-                return;
-            core.ref.pos = traj.out.value;
-        }
+        // 使用内置轨迹规划器 输出轨迹信息
+        core.ref.pos = traj.out.value;
+        core.ref.vel = traj.out.rate_d1;
+        core.ref.tau_ff = g_param.motor_j * traj.out.rate_d2 + g_param.motor_b * traj.out.rate_d1;
+    }
+    else if (core.state == PID_SPEED)
+        core.ref.vel = traj.out.value;
+    else if (core.state == PID_POSITION)
+    {
+        if (traj.cfg.type == TRAJ_DISABLE)
+            return;
+        core.ref.pos = traj.out.value;
     }
 }
 
 // 跑pid速度环/mit
 void vl_pid_mit_task(float ts)
 {
-    if (core.enable)
+    if (core.state == PID_SPEED)
+    { // 速度环pid控制 或 位置环
+        core.ref.iq = pid_vl_update(&ctrl, core.ref.vel, core.fb.vel);
+    }
+    else if (core.state == PID_POSITION)
     {
-        if (core.state == PID_SPEED || core.state == PID_POSITION)
-        { // 速度环pid控制 或 位置环
-            foc_pidvl_update(&foc, core.ref.vel, core.fb.vel, &core.ref.iq);
-        }
-        else if (core.state == MIT_MODE)
-        {
-            foc_mit_update(&foc, core.ref.tau_ff, core.ref.pos, core.fb.pos,
-                           core.ref.vel, core.fb.vel, &core.ref.tau);
+        if (ctrl.pos_pvc)
+            core.ref.iq = pid_vl_update(&ctrl, core.ref.vel, core.fb.vel);
+        else
+            core.ref.iq = pid_pl_update(&ctrl, core.ref.pos, core.fb.pos);
+    }
+    else if (core.state == MIT_MODE)
+    {
+        core.ref.tau = mit_con_update(&ctrl, core.ref.tau_ff, core.ref.pos, core.fb.pos,
+                                      core.ref.vel, core.fb.vel);
 
-            core.ref.iq = core.ref.tau / g_param.motor_ke;
-        }
+        core.ref.iq = core.ref.tau / g_param.motor_ke;
     }
 }
 // 弱磁控制
 void weak_mag_task(float ts)
 {
-    if (core.enable)
+    if (core.state == PID_SPEED)
     {
         float vout;
         arm_sqrt_f32((core.fb.ud * core.fb.ud + core.fb.uq * core.fb.uq), &vout);
         float error = core.fb.vmax - vout;
         if (error < 0)
-            foc_weakmag_update(&foc, core.fb.vmax, vout, &core.ref.id);
+            core.ref.id = field_weakening_update(&ctrl, core.fb.vmax, vout);
         else
             core.ref.id = 0.0f;
     }
@@ -375,12 +384,9 @@ void weak_mag_task(float ts)
 // pid位置环
 void pl_pid_task(float ts)
 {
-    if (core.enable)
-    {
-        if (core.state == PID_POSITION)
-        { // 位置环pid控制
-            foc_pidpl_update(&foc, core.ref.pos, core.fb.pos, &core.ref.vel);
-        }
+    if (core.state == PID_POSITION && ctrl.pos_pvc)
+    { // 位置环pid pvc控制
+        core.ref.vel = foc_pidpl_update(&ctrl, core.ref.pos, core.fb.pos);
     }
 }
 

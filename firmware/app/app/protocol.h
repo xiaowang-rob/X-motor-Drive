@@ -108,11 +108,12 @@ typedef enum
 /*观测器*/
 typedef enum
 {
-    NONE_OBS,       /* 无观测开环 */
-    ENCODER_SPI,    /* SPI编码器 */
-    ENCODER_ABZ,    // ABZ编码器
-    ENCODER_SINCOS, /* 正余弦编码器 */
-    HFI_SMO,        /* HFI+SMO观测器 */
+    NONE_OBS,   /* 无观测开环 */
+    ENC_HALL,   /* 霍尔编码器 */
+    ENC_SPI,    /* SPI编码器 */
+    ENC_ABI,    // ABI编码器
+    ENC_SINCOS, /* 正余弦编码器 */
+    HFI_SMO,    /* HFI+SMO观测器 */
 } eObsList;
 
 /*CAN模式*/
@@ -122,30 +123,18 @@ typedef enum
     CAN_ANSWER,  /* 响应模式 */
 } eCanMode;
 
-/*参数校准状态*/
-typedef enum
-{
-    TUNE_INIT,       /* INIT */
-    TUNE_RESISTANCE, /* 电阻校准 */
-    TUNE_INDUCTANCE, /* 电感校准 */
-    TUNE_ENCODER,    /* 编码器校准 */
-    TUNE_ELEC_PARAM, /* 电气参数校准 */
-    TUNE_MECH_PARAM, /* 机械参数校准 */
-    TUNE_DONE,       /* 完成 */
-    TUNE_FAILED,     /* 失败 */
-} eTuneState;
 // 核心状态
 typedef enum
 {
     INIT,         // INIT
     IDLE,         // IDLE
     TUNING,       // TUNING
+    FAULT,        // FAULT
+    WARNING,      // WARNING
     CURRENT_MODE, /* 电流模式 */
     PID_SPEED,    /* PID速度模式 */
     PID_POSITION, /* PID位置模式 */
     MIT_MODE,     /* MIT模式 */
-    FAULT,        // FAULT
-    WARNING,      // WARNING
 } eCoreState;
 /*错误*/
 typedef enum

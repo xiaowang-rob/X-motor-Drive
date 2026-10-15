@@ -18,6 +18,8 @@ typedef struct
     uint8_t obs_type;
     uint8_t traj_type;
 
+    bool pvc_enable; // 位置环级联模式
+
     // 电机参数
     uint8_t motor_polepairs;
     bool positive_dir;
