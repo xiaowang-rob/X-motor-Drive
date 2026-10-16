@@ -5,44 +5,20 @@
 
 void tune_start(tTune *tune, eTuneType type, float cur_limit)
 {
-
     tune->state = TUNE_RUNNING;
     tune->type = type;
     tune->TO_init = false;
     tune->cur_limit = cur_limit;
-
-    // 基本参数加载
 }
 
 void tune_reset(tTune *tune)
 {
     tune->fault = FAULT_NONE;
-    tune->state = TUNE_DONE;
+    tune->state = TUNE_IDLE;
 }
 
-void motor_param_tune_force_save(tParameter *p, tTuneParams *tp)
-{
-    //  这里是集中写入参数flash中转站
-    p->motor_rs = tune->rs_ctx.rs_out;
-    p->motor_ld = tune->ls_ctx.ldq_out[0];
-    p->motor_lq = tp->lq;
-    p->motor_psif = tp->psi_f;
-    p->motor_ke = tp->ke;
-    p->motor_j = tp->j;
-    p->motor_b = tp->b;
-    p->motor_polepairs = tp->pole_pairs;
-    p->theta_offset = tp->theta_offset;
-    p->positive_dir = tp->direction;
-
-    p->qclkp = tp->iq_kp;
-    p->qclki = tp->iq_ki;
-    p->dclkp = tp->id_kp;
-    p->dclki = tp->id_ki;
-
-    p->cfalpha = tp->cur_filter_alpha;
-}
 // foc 内参辨识 rs ldq psif
-bool tune_FOC_update(tTune *tune, tCore *core, float ts)
+bool tune_FOC_update(tTune *tune, tCore *core, tCtrl *con, tParameter *p, float ts)
 {
     switch (tune->step)
     {
@@ -138,19 +114,24 @@ bool tune_FOC_update(tTune *tune, tCore *core, float ts)
         break;
     case 2: // 内环pi参数写入
 
-        // 内环参数经验公式  电流环带宽系数暂定为0.5服务后面的校准过程
-        float fn_d = 1 / (MATH_2PI * tune->ls_ctx.ldq_out[0] / tune->rs_ctx.rs_out);
-        tune->dclbw = MATH_2PI * (2 * fn_d < F_PWM / 10 ? 2 * fn_d : F_PWM / 10);
-        float id_kp = 0.5f * tune->dclbw * tune->ls_ctx.ldq_out[0];
-        float id_ki = 0.5f * tune->dclbw * tune->rs_ctx.rs_out;
+        p->motor_rs = tune->rs_ctx.rs_out;
+        p->motor_ld = tune->ls_ctx.ldq_out[0];
+        p->motor_lq = tune->ls_ctx.ldq_out[1];
 
-        float fn_q = 1 / (MATH_2PI * tune->ls_ctx.ldq_out[1] / tune->rs_ctx.rs_out);
-        tune->qclbw = MATH_2PI * (2 * fn_q < F_PWM / 10 ? 2 * fn_q : F_PWM / 10);
-        float iq_kp = 0.5f * tune->qclbw * tune->ls_ctx.ldq_out[1];
-        float iq_ki = 0.5f * tune->qclbw * tune->rs_ctx.rs_out;
+        // 内环参数经验公式  电流环带宽系数重新整定之后默认为0.5 服务后面的校准过程
+        p->clbw_coef = 0.5f;
+        float fn_d = 1 / (MATH_2PI * p->motor_ld / p->motor_rs);
+        p->dclbw = MATH_2PI * (2 * fn_d < F_PWM / 10 ? 2 * fn_d : F_PWM / 10);
+        p->dclkp = p->clbw_coef * p->dclbw * p->motor_ld;
+        p->dclki = p->clbw_coef * p->dclbw * p->motor_rs;
+
+        float fn_q = 1 / (MATH_2PI * p->motor_lq / p->motor_rs);
+        p->qclbw = MATH_2PI * (2 * fn_q < F_PWM / 10 ? 2 * fn_q : F_PWM / 10);
+        p->qclkp = p->clbw_coef * p->qclbw * p->motor_lq;
+        p->qclki = p->clbw_coef * p->qclbw * p->motor_rs;
 
         // 取电流环开环截止频率 (Hz)
-        float f_c_open = fminf(tune->dclbw, tune->qclbw) / MATH_2PI;
+        float f_c_open = fminf(p->dclbw, p->qclbw) / MATH_2PI;
 
         // 设计滤波截止频率：取开环截止频率的 4倍
         float f_filter = 4.0f * f_c_open;
@@ -166,13 +147,13 @@ bool tune_FOC_update(tTune *tune, tCore *core, float ts)
             f_filter = f_min;
 
         // 计算一阶低通滤波系数 alpha
-        tune->cf_alpha = 1.0f - expf(-MATH_2PI * f_filter / f_sw);
-        current_filter_init(tune->cf_alpha);
+        p->cfalpha = 1.0f - expf(-MATH_2PI * f_filter / f_sw);
         // 直接写入
-        foc->PI_id.kp = id_kp;
-        foc->PI_id.ki = id_ki;
-        foc->PI_iq.kp = iq_kp;
-        foc->PI_iq.ki = iq_ki;
+        current_filter_init(p->cfalpha);
+        con->PI_id.kp = p->dclkp;
+        con->PI_id.ki = p->dclki;
+        con->PI_iq.kp = p->qclkp;
+        con->PI_iq.ki = p->qclki;
 
         tune->step = 3;
         break;
@@ -188,7 +169,7 @@ bool tune_FOC_update(tTune *tune, tCore *core, float ts)
                 .steady_ticks = PSIF_STEADY_MS / 1000.0f / ts,
                 .sample_ticks = PSIF_SAMPLE_MS / 1000.0f / ts,
                 .vel_band = PSIF_VEL_BAND,
-                .pole_pairs = tune->pole_pairs,
+                .pole_pairs = p->motor_polepairs,
             };
             tune_psif_init(&tune->psif_ctx, psif_cfg);
             tune->TO_init = true;
@@ -198,9 +179,21 @@ bool tune_FOC_update(tTune *tune, tCore *core, float ts)
             eTuneOneState sta = tune_psif_update(&tune->psif_ctx, core->fb.uq, core->fb.iq, core->fb.vel); // 电气参数辨识
             if (TO_DONE == sta)
             {
-                tune->step = 4;
+                tune->step = 0;
+                tune->state = TUNE_DONE;
                 tune->TO_init = false;
-                // TODO: 处理参数
+                p->motor_psif = tune->psif_ctx.out.psi_f;
+                p->motor_ke = tune->psif_ctx.out.ke;
+                float ke_ext = 9.55f / p->motor_kv;
+                if (FABS(ke_ext - p->motor_ke) > 0.1f)
+                {
+                    tune->fault = FAULT_PSIF_TUNE;
+                    tune->state = TUNE_FAILED;
+                }
+                else
+                    tune->state = TUNE_DONE;
+                tune->TO_init = false;
+                return true;
             }
             else if (TO_RUNNING == sta)
             {
@@ -210,64 +203,72 @@ bool tune_FOC_update(tTune *tune, tCore *core, float ts)
             {
             }
         }
-
         break;
-    case 4: // FOC 总参数写入
-        tune->step = 0;
-        tune->state = TUNE_DONE;
-        return true;
     }
+    return false;
 }
 // 观测器参数辨识
-bool tune_obs_update()
+bool tune_obs_update(tTune *tune, tCore *core, tObs *obs, tParameter *p, float ts)
 {
-    if (!tune->TO_init)
+    switch (obs->type)
     {
-        tEncCal_cfg enc_cal_cfg = {
-            .i_tune = tune->cur_limit,
-            .align_ticks = EC_ALIGN_MS / 1000.0f / ts,
-            .delta_e = EC_OPEN_LOOP_OMEGA * ts,
-            .sample_step_e = EC_SAMPLE_STEP_E,
-            .travel_pos = EC_TRAVEL_POS,
-            .pole_pairs_expected = tune->pole_pairs,
-            .fit_max_mse = EC_FIT_MAX_MSE,
+    case NONE_OBS:
 
-        };
-        enc_cal_init(&tune->enc_ctx, enc_cal_cfg);
-        tune->TO_init = true;
-        // 先失能 后面转为闭环电流 开环角度
-        core_disable();
-    }
-    else
-    {
-        eTuneOneState sta = enc_cal_update(&tune->enc_ctx, core->fb.pos); // 编码器校准
-        if (TO_DONE == sta)
+        break;
+    case ENC_HALL:
+
+        break;
+    case ENC_SPI:
+    case ENC_SINCOS:
+        if (!tune->TO_init)
         {
-            tune->state = TUNE_ELEC_PARAM;
-            tune->TO_init = false;
-            // TODO: 处理参数
-        }
-        else if (TO_RUNNING == sta)
-        {
-            // 电角度开环
-            core_ot_cmd_set_theta(tune->enc_ctx.cmd.theta_e);
-            tCmd cmd = {
-                .mode = CURRENT_MODE,
-                .id = tune->enc_ctx.cmd.id,
-                .iq = 0.0f,
+            tEncCal_cfg enc_cal_cfg = {
+                .i_tune = tune->cur_limit,
+                .align_ticks = EC_ALIGN_MS / 1000.0f / ts,
+                .delta_e = EC_OPEN_LOOP_OMEGA * ts,
+                .sample_step_e = EC_SAMPLE_STEP_E,
+                .travel_pos = EC_TRAVEL_POS,
+                .pole_pairs_expected = p->motor_polepairs,
+                .fit_max_mse = EC_FIT_MAX_MSE,
+
             };
-            core_cmd_set(&cmd);
+            enc_cal_init(&tune->enc_ctx, enc_cal_cfg);
+            tune->TO_init = true;
         }
         else
         {
-            if (TO_DATA_INVALID == sta)
-                tune->fault = FAULT_OBS_TUNE;
-            else if (TO_DATA_IMBALANCE == sta)
-                tune->fault = FAULT_POLE_PAIR_MISMATCH;
-            else if (TO_TIMEOUT == sta)
-                tune->fault = FAULT_MOTOR_LOCK;
-            tune->state = TUNE_FAILED;
+            eTuneOneState sta = enc_cal_update(&tune->enc_ctx, core->fb.pos); // 编码器校准
+            if (TO_DONE == sta)
+            {
+                tune->state = TUNE_ELEC_PARAM;
+                tune->TO_init = false;
+                // TODO: 处理参数
+            }
+            else if (TO_RUNNING == sta)
+            {
+                // 电角度开环
+                core_ot_cmd_set_theta(tune->enc_ctx.cmd.theta_e);
+                tCmd cmd = {
+                    .mode = CURRENT_MODE,
+                    .id = tune->enc_ctx.cmd.id,
+                    .iq = 0.0f,
+                };
+                core_cmd_set(&cmd);
+            }
+            else
+            {
+                if (TO_DATA_INVALID == sta)
+                    tune->fault = FAULT_OBS_TUNE;
+                else if (TO_DATA_IMBALANCE == sta)
+                    tune->fault = FAULT_POLE_PAIR_MISMATCH;
+                else if (TO_TIMEOUT == sta)
+                    tune->fault = FAULT_MOTOR_LOCK;
+                tune->state = TUNE_FAILED;
+            }
         }
+        break;
+    case HFI_SMO:
+        break;
     }
 }
 // 机械参数辨识

@@ -145,10 +145,10 @@ typedef enum
     FAULT_RS_TUNE,            /* 电阻整定失败 */
     FAULT_RS_IMBALANCE,       /* 相电阻不平衡 */
     FAULT_LS_TUNE,            /* 电感整定失败 */
+    FAULT_PSIF_TUNE,          /* 磁链整定失败 */
     FAULT_OBS_TUNE,           /* 观测器校准失败 */
     FAULT_POLE_PAIR_MISMATCH, /* 极对数不匹配 */
     FAULT_MOTOR_LOCK,         /* 电机堵转 */
-    FAULT_ELEC_PARAM_FAIL,    /* 电气参数校准失败 */
     FAULT_MECH_PARAM_FAIL,    /* 机械参数校准失败 */
     FAULT_OVERVOLTAGE,        /* 过电压 */
     FAULT_UNDERVOLTAGE,       /* 低电压 */

@@ -6,6 +6,8 @@
 #include "protocol.h"
 #include "parameters.h"
 #include "core.h"
+#include "control.h"
+#include "obs.h"
 
 // 整定参数配置
 #define RS_I_TARGET_HYST 0.05f       // 目标电流滞环 ±10%
@@ -81,10 +83,6 @@ typedef struct
     uint8_t step;
     bool TO_init; // 单项是否初始化
     float cur_limit;
-    float kv;           // 电压转化器增益 (V/V) 用于检验参数有效性
-    float pole_pairs;   // 真实电机极对数 用于检验参数有效性
-    float dclbw, qclbw; // 电流环带宽 (rad/s)
-    float cf_alpha;     // 电流环滤波系数
 
     tTune_rs_ov_ctx rs_ctx;
     tTune_ls_hfi_ctx ls_ctx;

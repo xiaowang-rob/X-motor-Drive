@@ -548,6 +548,29 @@ void tune_psif_init(tTune_psif_ctx *ctx, tTune_psif_cfg cfg)
     ls1d_reset(&ctx->ls);
 }
 
+void ls_slope_accum(tLS1D *a, float x, float y)
+{
+    a->sum_xx += x * x;
+    a->sum_xy += x * y;
+    a->n++;
+}
+
+bool ls_slope_fit(const tLS1D *a, float *k)
+{
+    if (a->n < 10)
+    {
+        *k = 0;
+        return false;
+    }
+    if (fabsf(a->sum_xx) < 1e-9f)
+    {
+        *k = 0;
+        return false;
+    }
+    *k = a->sum_xy / a->sum_xx;
+    return true;
+}
+
 eTuneOneState tune_psif_update(tTune_psif_ctx *ctx,
                                float uq, float iq, float vel)
 {
@@ -579,7 +602,7 @@ eTuneOneState tune_psif_update(tTune_psif_ctx *ctx,
             if (fabsf(vel_e) > 1.0f)
             { /* 避免低速除零 */
                 float y = uq - ctx->cfg.rs_known * iq;
-                ls_slope_accum(&ctx->ls, vel_e, y);
+                ls1d_accum(&ctx->ls, vel_e, y);
             }
         }
         if (ctx->tick_cnt >= ctx->cfg.steady_ticks + ctx->cfg.sample_ticks)
@@ -600,8 +623,8 @@ eTuneOneState tune_psif_update(tTune_psif_ctx *ctx,
     /* ========== 状态 3: 拟合 ========== */
     case 3:
     {
-        float k;
-        if (!ls_slope_fit(&ctx->ls, &k) || k < 1e-6f || k > 1.0f)
+        float k, b, mse;
+        if (!ls1d_fit(&ctx->ls, &k, &b, &mse) || k < 1e-6f || k > 1.0f)
         {
             ctx->state = TO_DATA_INVALID;
 
