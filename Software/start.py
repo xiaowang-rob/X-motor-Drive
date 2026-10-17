@@ -1,4 +1,4 @@
-"""XDr 电机驱动上位机 —— 入口"""
+"""XDr 电机驱动上位机 —— 纯 UI 入口（不初始化设备业务）。"""
 import sys
 from PyQt5.QtWidgets import QApplication
 

@@ -1,10 +1,11 @@
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QScrollArea, QGridLayout
 from PyQt5.QtCore import Qt
 from qfluentwidgets import (
-    HeaderCardWidget, PushButton, ComboBox, LineEdit,
+    PushButton, ComboBox, LineEdit,
     BodyLabel, StrongBodyLabel, ScrollArea, CaptionLabel, HorizontalSeparator
 )
 from protocol import Midx
+from app.ui_components import SurfaceCard
 
 
 class DataPage(QWidget):
@@ -19,8 +20,7 @@ class DataPage(QWidget):
         main_layout.setSpacing(12)
 
         # ── 1. 控制参数卡片 ──
-        self.control_card = HeaderCardWidget()
-        self.control_card.setTitle("控制参数")
+        self.control_card = SurfaceCard()
         ctrl_container = QWidget()
         control_layout = QVBoxLayout(ctrl_container)
         control_layout.setContentsMargins(8, 4, 8, 8)
@@ -85,7 +85,7 @@ class DataPage(QWidget):
         self._add_param_row(scroll_layout, "位置环 d", self.position_loop_D_input)
         self.position_loop_alpha_input = LineEdit()
         self.position_loop_alpha_input.setPlaceholderText("0")
-        self._add_param_row(scroll_layout, "滤波系数", self.position_loop_alpha_input)
+        self._add_param_row(scroll_layout, "滤波系数", self.position_loop_alpha_input, unit="0~1")
 
         # MIT 参数
         self._add_section_title(scroll_layout, "MIT参数")
@@ -143,11 +143,10 @@ class DataPage(QWidget):
 
         scroll.setWidget(scroll_container)
         control_layout.addWidget(scroll)
-        self.control_card.viewLayout.addWidget(ctrl_container)
+        QVBoxLayout(self.control_card).addWidget(ctrl_container)
 
         # ── 2. 模式参数卡片 ──
-        self.mode_card = HeaderCardWidget()
-        self.mode_card.setTitle("模式参数")
+        self.mode_card = SurfaceCard()
         mode_container = QWidget()
         mode_layout = QVBoxLayout(mode_container)
         mode_layout.setContentsMargins(8, 4, 8, 8)
@@ -175,11 +174,10 @@ class DataPage(QWidget):
         self.TRAJ_mode_input.addItems(Midx.traj_type)
         self._add_param_row(mode_layout, "轨迹模式", self.TRAJ_mode_input)
         mode_layout.addStretch()
-        self.mode_card.viewLayout.addWidget(mode_container)
+        QVBoxLayout(self.mode_card).addWidget(mode_container)
 
         # ── 3. 电机参数卡片 ──
-        self.motor_card = HeaderCardWidget()
-        self.motor_card.setTitle("电机参数")
+        self.motor_card = SurfaceCard()
         motor_container = QWidget()
         motor_layout = QVBoxLayout(motor_container)
         motor_layout.setContentsMargins(8, 4, 8, 8)
@@ -216,11 +214,10 @@ class DataPage(QWidget):
         self.motor_B_input.setPlaceholderText("0.001")
         self._add_param_row(motor_layout, "摩擦系数", self.motor_B_input, unit="N·m·s")
         motor_layout.addStretch()
-        self.motor_card.viewLayout.addWidget(motor_container)
+        QVBoxLayout(self.motor_card).addWidget(motor_container)
 
         # ── 4. 日志信息卡片 ──
-        self.log_card = HeaderCardWidget()
-        self.log_card.setTitle("日志信息")
+        self.log_card = SurfaceCard()
         log_container = QWidget()
         log_layout = QVBoxLayout(log_container)
         log_layout.setContentsMargins(8, 4, 8, 8)
@@ -285,7 +282,7 @@ class DataPage(QWidget):
 
         log_scroll.setWidget(log_container_w)
         log_layout.addWidget(log_scroll)
-        self.log_card.viewLayout.addWidget(log_container)
+        QVBoxLayout(self.log_card).addWidget(log_container)
 
         # ── 组装 ──
         grid = QHBoxLayout()

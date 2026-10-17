@@ -1,11 +1,11 @@
 <mxfile host="65bd71144e">
     <diagram id="HVilZgKc1jR6jSf_f8j0" name="第 1 页">
-        <mxGraphModel dx="1123" dy="1837" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+        <mxGraphModel dx="1074" dy="1801" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-375" parent="1" style="whiteSpace=wrap;html=1;rounded=0;" value="" vertex="1">
-                    <mxGeometry height="170" width="700" x="3140" y="1090" as="geometry"/>
+                    <mxGeometry height="220" width="770" x="3140" y="1090" as="geometry"/>
                 </mxCell>
                 <mxCell id="GdAy10gMfRsSakSoFbkw-392" parent="1" style="rounded=0;whiteSpace=wrap;html=1;movable=0;resizable=0;rotatable=0;deletable=0;editable=0;locked=1;connectable=0;" value="" vertex="1">
                     <mxGeometry height="390" width="810" x="2700" y="-280" as="geometry"/>
@@ -1083,16 +1083,16 @@
                     <mxGeometry height="30" width="60" x="3490" y="700" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-367" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="连接" vertex="1">
-                    <mxGeometry height="40" width="80" x="3120" y="1023" as="geometry"/>
+                    <mxGeometry height="40" width="80" x="3140" y="1000" as="geometry"/>
                 </mxCell>
-                <mxCell id="toZDnd8n7dz2EqzFZZcb-368" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="状态" vertex="1">
-                    <mxGeometry height="40" width="80" x="3218" y="1023" as="geometry"/>
+                <mxCell id="toZDnd8n7dz2EqzFZZcb-368" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="状态&lt;div&gt;运行状态、电压、温度、错误&lt;/div&gt;" vertex="1">
+                    <mxGeometry height="40" width="185" x="3248" y="1000" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-369" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="主题" vertex="1">
-                    <mxGeometry height="40" width="80" x="3400" y="1023" as="geometry"/>
+                    <mxGeometry height="40" width="80" x="3620" y="1000" as="geometry"/>
                 </mxCell>
-                <mxCell id="toZDnd8n7dz2EqzFZZcb-370" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="复位" vertex="1">
-                    <mxGeometry height="40" width="80" x="3309" y="1023" as="geometry"/>
+                <mxCell id="toZDnd8n7dz2EqzFZZcb-370" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="复位按钮" vertex="1">
+                    <mxGeometry height="40" width="80" x="3480" y="1000" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-376" edge="1" parent="1" source="toZDnd8n7dz2EqzFZZcb-371" style="edgeStyle=none;html=1;" target="toZDnd8n7dz2EqzFZZcb-375" value="">
                     <mxGeometry relative="1" as="geometry"/>
@@ -1104,73 +1104,76 @@
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-372" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="控制" vertex="1">
-                    <mxGeometry height="40" width="80" x="3040" y="1280" as="geometry"/>
+                    <mxGeometry height="40" width="80" x="3041" y="1360" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-391" edge="1" parent="1" source="toZDnd8n7dz2EqzFZZcb-373" style="edgeStyle=none;html=1;" target="toZDnd8n7dz2EqzFZZcb-390" value="">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-373" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="固件" vertex="1">
-                    <mxGeometry height="40" width="80" x="3040" y="1341" as="geometry"/>
+                    <mxGeometry height="40" width="80" x="3041" y="1421" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-393" edge="1" parent="1" source="toZDnd8n7dz2EqzFZZcb-374" style="edgeStyle=none;html=1;" target="toZDnd8n7dz2EqzFZZcb-392" value="">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-374" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="终端" vertex="1">
-                    <mxGeometry height="40" width="80" x="3040" y="1402" as="geometry"/>
+                    <mxGeometry height="40" width="80" x="3041" y="1482" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-383" edge="1" parent="1" source="toZDnd8n7dz2EqzFZZcb-377" style="edgeStyle=none;html=1;" target="toZDnd8n7dz2EqzFZZcb-382" value="">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-377" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;" value="电机参数" vertex="1">
-                    <mxGeometry height="50" width="70" x="3170" y="1090" as="geometry"/>
+                    <mxGeometry height="50" width="70" x="3225" y="1091.5" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-387" edge="1" parent="1" source="toZDnd8n7dz2EqzFZZcb-378" style="edgeStyle=none;html=1;" target="toZDnd8n7dz2EqzFZZcb-386" value="">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-378" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;" value="观测器参数" vertex="1">
-                    <mxGeometry height="50" width="70" x="3308" y="1090" as="geometry"/>
+                    <mxGeometry height="50" width="70" x="3363" y="1091.5" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-397" edge="1" parent="1" source="toZDnd8n7dz2EqzFZZcb-379" style="edgeStyle=none;html=1;" target="toZDnd8n7dz2EqzFZZcb-396" value="">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-379" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;" value="控制参数" vertex="1">
-                    <mxGeometry height="50" width="70" x="3470" y="1090" as="geometry"/>
+                    <mxGeometry height="50" width="70" x="3525" y="1091.5" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-399" edge="1" parent="1" source="toZDnd8n7dz2EqzFZZcb-380" style="edgeStyle=none;html=1;" target="toZDnd8n7dz2EqzFZZcb-398" value="">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-380" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;" value="轨迹规划器参数" vertex="1">
-                    <mxGeometry height="50" width="70" x="3610" y="1090" as="geometry"/>
+                    <mxGeometry height="50" width="70" x="3665" y="1091.5" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-401" edge="1" parent="1" source="toZDnd8n7dz2EqzFZZcb-381" style="edgeStyle=none;html=1;" target="toZDnd8n7dz2EqzFZZcb-400" value="">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-381" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;" value="保护参数" vertex="1">
-                    <mxGeometry height="50" width="70" x="3740" y="1090" as="geometry"/>
+                    <mxGeometry height="50" width="70" x="3795" y="1091.5" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-382" parent="1" style="whiteSpace=wrap;html=1;" value="内参辨识、电气参数辨识、机械参数辨识" vertex="1">
-                    <mxGeometry height="60" width="120" x="3145" y="1193" as="geometry"/>
+                    <mxGeometry height="60" width="120" x="3200" y="1194.5" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-386" parent="1" style="whiteSpace=wrap;html=1;" value="编码器校准、观测器参数、" vertex="1">
-                    <mxGeometry height="60" width="120" x="3283" y="1193" as="geometry"/>
+                    <mxGeometry height="60" width="120" x="3338" y="1194.5" as="geometry"/>
                 </mxCell>
-                <mxCell id="toZDnd8n7dz2EqzFZZcb-388" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="波形、控制" vertex="1">
-                    <mxGeometry height="40" width="80" x="3200" y="1280" as="geometry"/>
+                <mxCell id="toZDnd8n7dz2EqzFZZcb-388" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="波形显示、控制滑条、按钮" vertex="1">
+                    <mxGeometry height="40" width="197" x="3201" y="1360" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-390" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="bl固件烧录、app固件烧录" vertex="1">
-                    <mxGeometry height="40" width="189" x="3200" y="1341" as="geometry"/>
+                    <mxGeometry height="40" width="189" x="3201" y="1421" as="geometry"/>
                 </mxCell>
-                <mxCell id="toZDnd8n7dz2EqzFZZcb-392" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="上位机运行日志、下位机报错" vertex="1">
-                    <mxGeometry height="40" width="189" x="3200" y="1402" as="geometry"/>
+                <mxCell id="toZDnd8n7dz2EqzFZZcb-392" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="上位机运行日志、下位机日志、报错" vertex="1">
+                    <mxGeometry height="40" width="197" x="3201" y="1482" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-396" parent="1" style="whiteSpace=wrap;html=1;" value="PID参数配置以及自动辨识、MIT参数配置以及自动辨识" vertex="1">
-                    <mxGeometry height="60" width="120" x="3445" y="1193" as="geometry"/>
+                    <mxGeometry height="60" width="120" x="3500" y="1194.5" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-398" parent="1" style="whiteSpace=wrap;html=1;" value="参数配置" vertex="1">
-                    <mxGeometry height="60" width="120" x="3585" y="1193" as="geometry"/>
+                    <mxGeometry height="60" width="120" x="3640" y="1194.5" as="geometry"/>
                 </mxCell>
                 <mxCell id="toZDnd8n7dz2EqzFZZcb-400" parent="1" style="whiteSpace=wrap;html=1;" value="参数配置" vertex="1">
-                    <mxGeometry height="60" width="120" x="3715" y="1193" as="geometry"/>
+                    <mxGeometry height="60" width="120" x="3770" y="1194.5" as="geometry"/>
+                </mxCell>
+                <mxCell id="EtQ9Qxi5XOCSB2mGKd6V-367" parent="1" style="whiteSpace=wrap;html=1;" value="配置文件选择" vertex="1">
+                    <mxGeometry height="97" width="50" x="3148" y="1097.5" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>
