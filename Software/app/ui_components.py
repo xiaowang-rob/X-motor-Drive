@@ -1,11 +1,12 @@
 """纯 UI 公共组件，不依赖设备协议或业务模块。"""
 from PyQt5.QtCore import Qt, QRectF, pyqtSignal
-from app.parameter_input import ParameterInput
+from app.parameter_input import ParameterInput, VAL_TYPE_TO_UI
 from PyQt5.QtGui import QPainter, QFontDatabase
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget,
-    QStyle, QStyleOptionButton,
+    QStyle, QStyleOptionButton, QSizePolicy,
 )
+from protocol import PARAMETERS
 from qfluentwidgets import (
     BodyLabel, CaptionLabel, StrongBodyLabel, ComboBox, LineEdit,
     PushButton, PrimaryPushButton, ToolButton, ToolTipFilter, Pivot, ScrollArea,
@@ -58,6 +59,24 @@ def style_console(editor, compact=False):
     setCustomStyleSheet(editor, *for_theme)
 
 
+def style_console_line(editor):
+    """状态栏单行终端样式，不出现滚动条。"""
+    font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
+    font.setPointSize(10)
+    editor.setFont(font)
+    for_theme = []
+    for background, foreground, border in [
+        ("#f5f7fa", "#263244", "#dce2ea"),
+        ("#191d24", "#d4dce8", "#353d49"),
+    ]:
+        for_theme.append(
+            f"QLineEdit {{ background-color: {background}; color: {foreground}; "
+            f"border: 1px solid {border}; border-radius: 8px; padding: 0 10px; "
+            "selection-background-color: #346aa6; selection-color: white; }"
+        )
+    setCustomStyleSheet(editor, *for_theme)
+
+
 def preview_button(text, primary=False):
     button = PrimaryPushButton(text) if primary else PushButton(text)
     button.setProperty("deviceAction", True)
@@ -89,17 +108,15 @@ def button_row(*texts):
     return row
 
 
-class SectionCard(SurfaceCard):
-    def __init__(self, title, parent=None):
+class FieldCard(SurfaceCard):
+    """参数卡片基类；子类负责提供 self.content 布局。"""
+    def __init__(self, title="", parent=None):
         super().__init__(parent)
-        self.content = QVBoxLayout(self)
-        self.content.setContentsMargins(16, 14, 16, 16)
-        self.content.setSpacing(12)
         self.fields = {}
         self.parameters = {}
         self.parameter_scope = title
 
-    def add_fields(self, fields, read_only=False, data_type=None):
+    def add_fields(self, fields, read_only=False, data_type=None, show_actions=True):
         for name, spec in fields:
             options = spec if isinstance(spec, (tuple, list)) else None
             config = dict(spec) if isinstance(spec, dict) else {}
@@ -110,12 +127,68 @@ class SectionCard(SurfaceCard):
             config.setdefault("unit", spec if isinstance(spec, str) else "")
             config.setdefault("options", options)
             config.setdefault("read_only", read_only)
+            config.setdefault("show_actions", show_actions)
             parameter = ParameterInput(name, **config)
             self.content.addWidget(parameter)
             self.parameters[name] = parameter
             # 保留旧的 editor 索引，业务集成使用 ContentPage 的参数 API。
             self.fields[name] = parameter.editor
         return self
+
+    def add_protocol_fields(self, *param_ids, label_width=None):
+        """按协议元数据生成参数行；名称/单位/默认值/选项/类型都来自 protocol。"""
+        for param_id in param_ids:
+            meta = PARAMETERS[param_id]
+            parameter = ParameterInput(
+                meta.name,
+                meta.id,
+                protocol_id=meta.id,
+                data_type=VAL_TYPE_TO_UI[meta.val_type],
+                unit=meta.unit,
+                options=meta.options,
+                default=meta.default,
+                label_width=label_width,
+            )
+            self.content.addWidget(parameter)
+            self.parameters[meta.name] = parameter
+            self.fields[meta.name] = parameter.editor
+        return self
+
+
+class PlainCard(FieldCard):
+    """普通参数卡片：内容不滚动。"""
+    def __init__(self, title="", parent=None):
+        super().__init__(title, parent)
+        self.content = QVBoxLayout(self)
+        self.content.setContentsMargins(16, 14, 16, 16)
+        self.content.setSpacing(12)
+
+
+class ScrollCard(FieldCard):
+    """滚动参数卡片：参数多时只滚动卡片内部，卡片外布局保持固定。"""
+    def __init__(self, title="", parent=None):
+        super().__init__(title, parent)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        self.scroll = ScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setStyleSheet(
+            "QScrollArea { background: transparent; border: none; }")
+        self.scroll.viewport().setStyleSheet("background: transparent;")
+        self.view = QWidget()
+        self.view.setStyleSheet("background: transparent;")
+        self.content = QVBoxLayout(self.view)
+        self.content.setContentsMargins(16, 14, 16, 16)
+        self.content.setSpacing(12)
+        self.content.setAlignment(Qt.AlignTop)
+        self.scroll.setWidget(self.view)
+        outer.addWidget(self.scroll)
+
+
+# 兼容旧代码/测试的别名
+SectionCard = PlainCard
 
 
 class ContentPage(QWidget):
@@ -154,6 +227,27 @@ class ContentPage(QWidget):
         return {key: parameter.value() for key, parameter in self.parameters.items()
                 if not parameter.read_only and
                 (isinstance(parameter.editor, ComboBox) or parameter.editor.text().strip())}
+
+    def set_protocol_parameter(self, protocol_id, value):
+        """按协议 ID 回填所有使用该参数的控件（校准卡片可能重复引用同一参数）。"""
+        updated = False
+        for parameter in self.parameters.values():
+            if parameter.protocol_id == protocol_id:
+                parameter.set_value(value)
+                updated = True
+        return updated
+
+    def get_protocol_parameters(self):
+        """返回 protocol_id -> 当前值的字典，供本地配置保存使用。"""
+        values = {}
+        for parameter in self.parameters.values():
+            if parameter.read_only:
+                continue
+            try:
+                values[parameter.protocol_id] = parameter.value()
+            except (TypeError, ValueError):
+                continue
+        return values
 
     def bind_action(self, button, action, payload=None):
         button.clicked.connect(lambda: self.action_requested.emit(
@@ -202,11 +296,15 @@ class TabbedPage(ContentPage):
         self.stack.currentChanged.connect(self._sync_tab)
 
     def add_tab(self, route, text):
-        scroll, layout = self.add_scroll(route)
-        self.tabs[route] = scroll
-        self.stack.addWidget(scroll)
+        page = QWidget()
+        page.setObjectName(route)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+        self.tabs[route] = page
+        self.stack.addWidget(page)
         self.pivot.addItem(routeKey=route, text=text,
-                           onClick=lambda: self.stack.setCurrentWidget(scroll))
+                           onClick=lambda: self.stack.setCurrentWidget(page))
         if self.stack.count() == 1:
             self.pivot.setCurrentItem(route)
         return layout

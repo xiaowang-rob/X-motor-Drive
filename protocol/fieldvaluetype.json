@@ -1,0 +1,25 @@
+{
+      "type_enum_name": "eFieldValueType",
+      "value_type": {
+    "FLD_U8": {
+      "value": 0,
+      "c_type": "uint8_t"
+    },
+    "FLD_U16": {
+      "value": 1,
+      "c_type": "uint16_t"
+    },
+    "FLD_U32": {
+      "value": 2,
+      "c_type": "uint32_t"
+    },
+    "FLD_F32": {
+      "value": 3,
+      "c_type": "float"
+    },
+    "FLD_BOOL": {
+      "value": 4,
+      "c_type": "bool"
+    }
+  }
+}

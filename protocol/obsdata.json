@@ -1,0 +1,345 @@
+{
+  "struct_name": "tObsData",
+  "enum_name": "eObsData",
+  "fields": [
+    {
+      "field": "current_u",
+      "name": "U相电流",
+      "id_name": "DATA_CURRENT_U",
+      "unit": "A",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "current_v",
+      "name": "V相电流",
+      "id_name": "DATA_CURRENT_V",
+      "unit": "A",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "current_w",
+      "name": "W相电流",
+      "id_name": "DATA_CURRENT_W",
+      "unit": "A",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "voltage_q",
+      "name": "Q轴电压",
+      "id_name": "DATA_VOLTAGE_Q",
+      "unit": "V",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "voltage_d",
+      "name": "D轴电压",
+      "id_name": "DATA_VOLTAGE_D",
+      "unit": "V",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "current_alpha",
+      "name": "α轴电流",
+      "id_name": "DATA_CURRENT_ALPHA",
+      "unit": "A",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "current_beta",
+      "name": "β轴电流",
+      "id_name": "DATA_CURRENT_BETA",
+      "unit": "A",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "current_q",
+      "name": "Q轴电流",
+      "id_name": "DATA_CURRENT_Q",
+      "unit": "A",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "current_d",
+      "name": "D轴电流",
+      "id_name": "DATA_CURRENT_D",
+      "unit": "A",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "current_q_ref",
+      "name": "Q轴电流参考",
+      "id_name": "DATA_CURRENT_Q_REF",
+      "unit": "A",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "current_d_ref",
+      "name": "D轴电流参考",
+      "id_name": "DATA_CURRENT_D_REF",
+      "unit": "A",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "velocity",
+      "name": "速度",
+      "id_name": "DATA_VELOCITY",
+      "unit": "rad/s",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "velocity_ref",
+      "name": "速度参考",
+      "id_name": "DATA_VELOCITY_REF",
+      "unit": "rad/s",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "theta_elec",
+      "name": "电角度",
+      "id_name": "DATA_THETA_ELEC",
+      "unit": "rad",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "theta_mech",
+      "name": "机械角度",
+      "id_name": "DATA_THETA_MECH",
+      "unit": "rad",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "position",
+      "name": "位置",
+      "id_name": "DATA_POSITION",
+      "unit": "rad",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "position_ref",
+      "name": "位置参考",
+      "id_name": "DATA_POSITION_REF",
+      "unit": "rad",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "minutes",
+      "name": "分钟",
+      "id_name": "DATA_MINUTES",
+      "unit": "min",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "seconds",
+      "name": "秒",
+      "id_name": "DATA_SECONDS",
+      "unit": "s",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "state",
+      "name": "状态",
+      "id_name": "DATA_STATE",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 0,
+      "options": {
+        "enum_name": "eCoreState",
+        "comment": "核心状态",
+        "items": [
+          {
+            "id_name": "CORE_INIT",
+            "comment": "INIT"
+          },
+          {
+            "id_name": "CORE_IDLE",
+            "comment": "IDLE"
+          },
+          {
+            "id_name": "CORE_TUNING",
+            "comment": "TUNING"
+          },
+          {
+            "id_name": "CORE_FAULT",
+            "comment": "FAULT"
+          },
+          {
+            "id_name": "CORE_WARNING",
+            "comment": "WARNING"
+          },
+          {
+            "id_name": "CORE_OPENLOOP",
+            "comment": "开环模式"
+          },
+          {
+            "id_name": "CORE_CURRENT_MODE",
+            "comment": "电流模式"
+          },
+          {
+            "id_name": "CORE_PID_SPEED",
+            "comment": "PID速度模式"
+          },
+          {
+            "id_name": "CORE_PID_POSITION",
+            "comment": "PID位置模式"
+          },
+          {
+            "id_name": "CORE_MIT_MODE",
+            "comment": "MIT模式"
+          }
+        ]
+      }
+    },
+
+    {
+      "field": "fault",
+      "name": "故障",
+      "id_name": "DATA_FAULT",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 0,
+      "options": {
+        "enum_name": "eFault",
+        "comment": "错误",
+        "items": [
+          {
+            "id_name": "FAULT_NONE",
+            "comment": "NONE"
+          },
+          {
+            "id_name": "FAULT_OBS_INIT",
+            "comment": "观测器初始化失败"
+          },
+          {
+            "id_name": "FAULT_BUSCOM_INIT",
+            "comment": "总线通信初始化失败"
+          },
+          {
+            "id_name": "FAULT_RS_TUNE",
+            "comment": "电阻整定失败"
+          },
+          {
+            "id_name": "FAULT_RS_IMBALANCE",
+            "comment": "相电阻不平衡"
+          },
+          {
+            "id_name": "FAULT_LS_TUNE",
+            "comment": "电感整定失败"
+          },
+          {
+            "id_name": "FAULT_PSIF_TUNE",
+            "comment": "磁链整定失败"
+          },
+          {
+            "id_name": "FAULT_OBS_TUNE",
+            "comment": "观测器校准失败"
+          },
+          {
+            "id_name": "FAULT_POLE_PAIR_MISMATCH",
+            "comment": "极对数不匹配"
+          },
+          {
+            "id_name": "FAULT_MOTOR_LOCK",
+            "comment": "电机堵转"
+          },
+          {
+            "id_name": "FAULT_MECH_PARAM_FAIL",
+            "comment": "机械参数校准失败"
+          },
+          {
+            "id_name": "FAULT_OVERVOLTAGE",
+            "comment": "过电压"
+          },
+          {
+            "id_name": "FAULT_UNDERVOLTAGE",
+            "comment": "低电压"
+          },
+          {
+            "id_name": "FAULT_OVERCURRENT",
+            "comment": "过电流"
+          }
+        ]
+      }
+    },
+    {
+      "field": "warning",
+      "name": "警告",
+      "id_name": "DATA_WARNING",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 0,
+      "options": {
+        "enum_name": "eWarning",
+        "comment": "警告",
+        "items": [
+          {
+            "id_name": "WARNING_NONE",
+            "comment": "NONE"
+          },
+          {
+            "id_name": "WARNING_OVERTEMP",
+            "comment": "过温"
+          },
+          {
+            "id_name": "WARNING_OVERSPEED",
+            "comment": "超速"
+          },
+          {
+            "id_name": "WARNING_POSITION_LIMIT",
+            "comment": "位置超限"
+          },
+          {
+            "id_name": "WARNING_BUSCOM_RUN",
+            "comment": "总线通讯异常"
+          },
+          {
+            "id_name": "WARNING_OBS_RUN",
+            "comment": "观测器运行异常"
+          }
+        ]
+      }
+    },
+    {
+      "field": "vbus",
+      "name": "母线电压",
+      "id_name": "DATA_VBUS",
+      "unit": "V",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "driver_temp",
+      "name": "驱动温度",
+      "id_name": "DATA_DRIVER_TEMP",
+      "unit": "°C",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "motor_temp",
+      "name": "电机温度",
+      "id_name": "DATA_MOTOR_TEMP",
+      "unit": "°C",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    }
+  ]
+}

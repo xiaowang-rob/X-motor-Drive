@@ -1,12 +1,12 @@
 """常驻全局状态栏；连接操作与设备状态分行呈现。"""
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QSizePolicy
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal
 from qfluentwidgets import (
-    ComboBox, CaptionLabel, StrongBodyLabel, ToolButton,
+    ComboBox, CaptionLabel, StrongBodyLabel, ToolButton, LineEdit,
     HorizontalSeparator, VerticalSeparator, FluentIcon as FIF,
-    Theme, setTheme, isDarkTheme, PlainTextEdit,
+    Theme, setTheme, isDarkTheme,
 )
-from app.ui_components import preview_button, SurfaceCard, style_console
+from app.ui_components import preview_button, SurfaceCard, style_console_line
 
 
 class StatusBar(QWidget):
@@ -36,14 +36,16 @@ class StatusBar(QWidget):
         self.connect_but.setEnabled(False)
         controls.addWidget(self.com_port)
         controls.addWidget(self.connect_but)
-        self.host_output = PlainTextEdit()
+        controls.addWidget(CaptionLabel("上位机"))
+        self.host_output = LineEdit()
         self.host_output.setReadOnly(True)
-        self.host_output.setFixedHeight(40)
-        self.host_output.setMinimumWidth(120)
-        style_console(self.host_output, compact=True)
+        self.host_output.setFixedHeight(32)
+        self.host_output.setMinimumWidth(140)
+        self.host_output.setPlaceholderText("上位机执行输出")
+        self.host_output.setFocusPolicy(Qt.NoFocus)
+        style_console_line(self.host_output)
         self.host_output.setAccessibleName("上位机执行输出")
         self.host_output.setToolTip("上位机执行输出")
-        self.host_output.document().setMaximumBlockCount(200)
         controls.addWidget(self.host_output, 1)
 
 
@@ -85,7 +87,7 @@ class StatusBar(QWidget):
             self.indicators[key] = label
             status.addLayout(group, 1)
         self.system_reset_button = preview_button("系统复位")
-        self.reset_button = preview_button("状态复位")
+        self.reset_button = preview_button("核心复位")
         status.addWidget(self.system_reset_button)
         status.addWidget(self.reset_button)
         self.system_reset_button.clicked.connect(lambda: self.action_requested.emit("system_reset"))
@@ -100,6 +102,11 @@ class StatusBar(QWidget):
             if key in self.indicators:
                 self.indicators[key].setText(str(value))
                 self.status_changed.emit(key, value)
+
+    def set_host_text(self, text):
+        """上位机终端只保留当前一行输出。"""
+        self.host_output.setText(str(text))
+        self.host_output.setCursorPosition(0)
 
     def set_device_enabled(self, enabled):
         self.connect_but.setEnabled(enabled)

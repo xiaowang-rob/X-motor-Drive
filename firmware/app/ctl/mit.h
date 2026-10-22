@@ -4,11 +4,12 @@
 typedef struct
 {
     // 可调参数
-    float Kp;         // 刚度 (Nm/rad)
-    float Kd;         // 阻尼 (Nm/(rad/s))
-    float tau_ff_sta; // 前馈补偿扭矩 (Nm/rad)
+    float Kp; // 刚度 (Nm/rad)
+    float Kd; // 阻尼 (Nm/(rad/s))
 
     // 限幅
+    float kp_max;
+    float kd_max;
     float tau_max; // 最大扭矩 (Nm)
 
 } tMIT;

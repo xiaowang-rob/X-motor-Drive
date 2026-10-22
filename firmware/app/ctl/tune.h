@@ -3,7 +3,6 @@
 
 #include "tune_alg.h"
 
-#include "protocol.h"
 #include "parameters.h"
 #include "core.h"
 #include "control.h"

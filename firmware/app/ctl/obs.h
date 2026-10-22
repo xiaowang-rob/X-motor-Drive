@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "protocol.h"
+#include "parameter_list.h"
 #include "pll.h"
 
 // 位置记录
@@ -22,9 +22,11 @@ typedef struct
 typedef struct
 {
 
-    eObsList type; // 观测器输入类型
-    tPosAcc pacc;  // 位置记录
-    tPLL pll;      // PLL
+    eObsList rotor_obs;       // 转子观测器
+    eObsList abs_obs;         // 绝对位置观测器
+    eSpiEncList spi_enc_chip; // spi编码器芯片
+    tPosAcc pacc;             // 位置记录
+    tPLL pll;                 // PLL
 
     float theta_e;
     float theta_m;
@@ -32,7 +34,7 @@ typedef struct
 
 bool obs_init(tObs *obs);
 bool obs_loop_task(tObs *obs);
-void obs_tim_task(tObs *obs, float ts,
+void obs_tim_task(tObs *obs, float ts, float *theta_r,
                   float *theta_e, float *vel, float *pos);
 
 #endif

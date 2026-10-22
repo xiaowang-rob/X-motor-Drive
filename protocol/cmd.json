@@ -1,0 +1,82 @@
+[
+  {
+    "enum_name": "eCmdId",
+    "comment": "CMD ID",
+    "items": [
+      { "id_name": "CMD_CONNECT",        "id": "0xF0", "comment": "连接状态 1/0" },
+      { "id_name": "CMD_HEARTBEAT",      "id": "0xFB", "comment": "心跳/数据流请求" },
+      { "id_name": "CMD_CORE_NRST",      "id": "0xFD", "comment": "核心复位" },
+      { "id_name": "CMD_SYSTEM_RESET",   "id": "0xFC", "comment": "系统复位" },
+
+      { "id_name": "CMD_RL_TUNNING",     "id": "0xE1", "comment": "RL校准" },
+      { "id_name": "CMD_PSIF_TUNNING",   "id": "0xE2", "comment": "Psif校准" },
+      { "id_name": "CMD_MECH_TUNNING",   "id": "0xE3", "comment": "机械参数校准" },
+      { "id_name": "CMD_OBS_TUNNING",    "id": "0xE4", "comment": "观测器校准" },
+      { "id_name": "CMD_PID_TUNNING",    "id": "0xE5", "comment": "PID参数校准" },
+      { "id_name": "CMD_MIT_TUNNING",    "id": "0xE6", "comment": "MIT参数校准" },
+
+      { "id_name": "CMD_PARAM_ALLRELOAD",   "id": "0xC1", "comment": "参数一键重置" },
+      { "id_name": "CMD_PARAM_ALLWRITE",    "id": "0xC2", "comment": "参数一键写入" },
+      { "id_name": "CMD_PARAM_ALLREAD",     "id": "0xC3", "comment": "参数一键读取" },
+      { "id_name": "CMD_PARAM_RELOAD",   "id": "0xC4", "comment": "参数重置" },
+      { "id_name": "CMD_PARAM_WRITE",    "id": "0xC5", "comment": "参数写入" },
+      { "id_name": "CMD_PARAM_READ",     "id": "0xC6", "comment": "参数读取" },
+      { "id_name": "CMD_PARAM_SAVE",     "id": "0xC7", "comment": "参数保存" },
+      { "id_name": "CMD_DATA_ASK",       "id": "0xC8", "comment": "数据查询" },
+      { "id_name": "CMD_DATA_STREAM_SET",     "id": "0xC9", "comment": "数据流设置" },
+
+      { "id_name": "CMD_OPENLOOP_THETA", "id": "0xB1", "comment": "开环角度控制" },   
+      { "id_name": "CMD_OPENLOOP_VEL",   "id": "0xB2", "comment": "开环速度控制" },          
+      { "id_name": "CMD_CUR_TAU_MODE",   "id": "0xB3", "comment": "电流/力矩控制" },      
+      { "id_name": "CMD_PID_VEL",        "id": "0xB4", "comment": "速度PID控制" },      
+      { "id_name": "CMD_PID_POS",        "id": "0xB5", "comment": "位置PID控制" }, 
+      { "id_name": "CMD_MIT_POS",        "id": "0xB6", "comment": "MIT控制" }, 
+      { "id_name": "CMD_MIT_CONFIG",     "id": "0xB7", "comment": "MITKpKd配置" }, 
+      { "id_name": "CMD_MIT_VT",         "id": "0xB8", "comment": "MIT控制补充VT" },    
+      { "id_name": "CMD_DISABLE",        "id": "0xBB", "comment": "释放电机" },
+      { "id_name": "CMD_SET_ZERO_POS",   "id": "0xBD", "comment": "设置零点" },
+      { "id_name": "CMD_SET_LIMIT_POS",  "id": "0xBE", "comment": "设置极限位置" },
+
+      { "id_name": "CMD_IAP_ENTER",      "id": "0xA1", "comment": "进入IAP模式" },
+      { "id_name": "CMD_IAP_ERASE_FLASH","id": "0xA2", "comment": "擦除Flash" },
+      { "id_name": "CMD_IAP_WRITE_FLASH","id": "0xA3", "comment": "写入Flash" },
+      { "id_name": "CMD_IAP_VERIFY_FLASH","id": "0xA4", "comment": "校验Flash" },
+      { "id_name": "CMD_IAP_EXIT",       "id": "0xA5", "comment": "退出IAP模式" },
+      { "id_name": "CMD_ASK_BL_VERSION",       "id": "0xA6", "comment": "查询bootload版本" },
+      { "id_name": "CMD_ASK_APP_VERSION",      "id": "0xA7", "comment": "查询app版本" },
+      { "id_name": "CMD_ASK_DEVICE_MESSAGE",   "id": "0xA8", "comment": "查询设备信息" }
+    ]
+  },
+  {
+    "enum_name": "eFbId",
+    "comment": "反馈 ID",
+    "items": [
+      { "id_name": "FB_EXECUTE", "id": "0x90", "comment": "成功" },
+      { "id_name": "FB_FAILURE", "id": "0x9E", "comment": "失败" }
+    ]
+  },
+  {
+    "enum_name": "eUartFrame",
+    "comment": "USBcdc/UART 协议格式",
+    "items": [
+      { "id_name": "UART_PACKET_HEAD", "id": "0x81", "comment": "包头" },
+      { "id_name": "UART_PACKET_TAIL", "id": "0x8E", "comment": "包尾" }
+    ]
+  },
+  {
+    "enum_name": "eCmdTarget",
+    "comment": "控制目标",
+    "items": [
+      { "id_name": "TARGET_THETA_E", "id": "0x71", "comment": "电角度" },
+      { "id_name": "TARGET_VEL_E", "id": "0x72", "comment": "电角速度" },
+      { "id_name": "TARGET_DUTY", "id": "0x73", "comment": "占空比" },
+      { "id_name": "TARGET_CUR_Q", "id": "0x74", "comment": "拖动电流" },
+      { "id_name": "TARGET_TAU", "id": "0x75", "comment": "转矩" },
+      { "id_name": "TARGET_VEL", "id": "0x76", "comment": "速度" },
+      { "id_name": "TARGET_POS", "id": "0x77", "comment": "位置" },
+      { "id_name": "TARGET_PVT_TP", "id": "0x78", "comment": "PVT时间点" },
+      { "id_name": "TARGET_MIT_TAU_FF", "id": "0x78", "comment": "MIT前馈力矩" }
+    ]
+  }
+ 
+]

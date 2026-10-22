@@ -1,7 +1,7 @@
 #ifndef __STATUS_FEEDBACK_H
 #define __STATUS_FEEDBACK_H
 
-#include "protocol.h"
+#include "data_list.h"
 
 void status_feedback_main_loop(eCoreState cstate);
 

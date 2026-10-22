@@ -1,0 +1,802 @@
+{
+  "struct_name": "tParameter",
+  "enum_name": "eParameter",
+  "fields": [
+    {
+      "field": "motor_type",
+      "name": "电机类型",
+      "id_name": "PARAM_MOTOR_TYPE",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 0,
+      "options": {
+        "enum_name": "eMotorList",
+        "comment": "电机类型",
+        "items": [
+          {
+            "id_name": "MOTOR_PMSM",
+            "comment": "PMSM-永磁同步电机"
+          },
+          {
+            "id_name": "MOTOR_BLDC",
+            "comment": "BLDC-无刷直流电机"
+          }
+        ]
+      }
+    },
+    {
+      "field": "motor_polepairs",
+      "name": "极对数",
+      "id_name": "PARAM_MOTOR_POLEPAIRS",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 7
+    },
+    {
+      "field": "motor_kv",
+      "name": "电机KV值",
+      "id_name": "PARAM_MOTOR_KV",
+      "unit": "rpm/V",
+      "val_type": "FLD_F32",
+      "default": 550
+    },
+    {
+      "field": "motor_rated_current",
+      "name": "额定电流",
+      "id_name": "PARAM_MOTOR_RATED_CURRENT",
+      "unit": "A",
+      "val_type": "FLD_F32",
+      "default": 3
+    },
+    {
+      "field": "motor_rs",
+      "name": "定子电阻(Rs)",
+      "id_name": "PARAM_MOTOR_RS",
+      "unit": "Ω",
+      "val_type": "FLD_F32",
+      "default": 0.5
+    },
+    {
+      "field": "motor_ld",
+      "name": "d轴电感(Ld)",
+      "id_name": "PARAM_MOTOR_LD",
+      "unit": "H",
+      "val_type": "FLD_F32",
+      "default": 4e-6
+    },
+    {
+      "field": "motor_lq",
+      "name": "q轴电感(Lq)",
+      "id_name": "PARAM_MOTOR_LQ",
+      "unit": "H",
+      "val_type": "FLD_F32",
+      "default": 4e-6
+    },
+    {
+      "field": "motor_psif",
+      "name": "永磁体磁链(λ)",
+      "id_name": "PARAM_MOTOR_PSIF",
+      "unit": "Wb",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "motor_ke",
+      "name": "反电动势常数(Ke)",
+      "id_name": "PARAM_MOTOR_KE",
+      "unit": "V/(rad/s)",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "motor_j",
+      "name": "转动惯量(J)",
+      "id_name": "PARAM_MOTOR_J",
+      "unit": "kg·m²",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "motor_b",
+      "name": "粘滞摩擦系数(B)",
+      "id_name": "PARAM_MOTOR_B",
+      "unit": "N·m·s/rad",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "clbw_coef",
+      "name": "电流环带宽系数",
+      "id_name": "PARAM_CLBW_COEF",
+      "unit": "0~1",
+      "val_type": "FLD_F32",
+      "default": 0.5
+    },
+    {
+      "field": "dclbw",
+      "name": "d轴电流环带宽",
+      "id_name": "PARAM_DCLBW",
+      "unit": "rad/s",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "dclkp",
+      "name": "d轴电流环Kp",
+      "id_name": "PARAM_DCLKP",
+      "unit": "A/V",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "dclki",
+      "name": "d轴电流环Ki",
+      "id_name": "PARAM_DCLKI",
+      "unit": "A/(V·s)",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "qclbw",
+      "name": "q轴电流环带宽",
+      "id_name": "PARAM_QCLBW",
+      "unit": "rad/s",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "qclkp",
+      "name": "q轴电流环Kp",
+      "id_name": "PARAM_QCLKP",
+      "unit": "A/V",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "qclki",
+      "name": "q轴电流环Ki",
+      "id_name": "PARAM_QCLKI",
+      "unit": "A/(V·s)",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "cfalpha",
+      "name": "电流滤波系数",
+      "id_name": "PARAM_CFALPHA",
+      "unit": "0~1",
+      "val_type": "FLD_F32",
+      "default": 0.5
+    },
+    {
+      "field": "tune_current",
+      "name": "校准电流",
+      "id_name": "PARAM_TUNE_CURRENT",
+      "unit": "A",
+      "val_type": "FLD_F32",
+      "default": 10
+    },
+    {
+      "field": "tune_vel",
+      "name": "校准速度",
+      "id_name": "PARAM_TUNE_VEL",
+      "unit": "rad/s",
+      "val_type": "FLD_F32",
+      "default": 20
+    },
+    {
+      "field": "rotor_obs",
+      "name": "转子观测器",
+      "id_name": "PARAM_ROTOR_OBS",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 0,
+      "options": {
+        "enum_name": "eObsList",
+        "comment": "观测器",
+        "items": [
+          {
+            "id_name": "OBS_NONE",
+            "comment": "无观测"
+          },
+          {
+            "id_name": "OBS_INT_ENC",
+            "comment": "内置编码器"
+          },
+          {
+            "id_name": "OBS_ENC_HALL",
+            "comment": "霍尔编码器"
+          },
+          {
+            "id_name": "OBS_ENC_SPI",
+            "comment": "SPI编码器"
+          },
+          {
+            "id_name": "OBS_ENC_ABI",
+            "comment": "ABI编码器"
+          },
+          {
+            "id_name": "OBS_ENC_SINCOS",
+            "comment": "正余弦编码器"
+          },
+          {
+            "id_name": "OBS_HFI_SMO",
+            "comment": "HFI+SMO观测器"
+          }
+        ]
+      }
+    },
+    {
+      "field": "abs_pos_obs",
+      "name": "绝对位置观测器",
+      "id_name": "PARAM_ABS_POS_OBS",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 0,
+      "options": {
+        "enum_name": "eObsList",
+        "comment": "观测器",
+        "items": [
+          {
+            "id_name": "OBS_NONE",
+            "comment": "无观测"
+          },
+          {
+            "id_name": "OBS_INT_ENC",
+            "comment": "内置编码器"
+          },
+          {
+            "id_name": "OBS_ENC_HALL",
+            "comment": "霍尔编码器"
+          },
+          {
+            "id_name": "OBS_ENC_SPI",
+            "comment": "SPI编码器"
+          },
+          {
+            "id_name": "OBS_ENC_ABI",
+            "comment": "ABI编码器"
+          },
+          {
+            "id_name": "OBS_ENC_SINCOS",
+            "comment": "正余弦编码器"
+          },
+          {
+            "id_name": "OBS_HFI_SMO",
+            "comment": "HFI+SMO观测器"
+          }
+        ]
+      }
+    },
+    {
+      "field": "theta_offset",
+      "name": "角度偏移",
+      "id_name": "PARAM_THETA_OFFSET",
+      "unit": "rad",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "positive_dir",
+      "name": "方向反转",
+      "id_name": "PARAM_POSITIVE_DIR",
+      "unit": "",
+      "val_type": "FLD_BOOL",
+      "default": false
+    },
+    {
+      "field": "theta_source",
+      "name": "角度源",
+      "id_name": "PARAM_THETA_SOURCE",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 0,
+      "options": {
+        "enum_name": "eThetaSource",
+        "comment": "角度源",
+        "items": [
+          {
+            "id_name": "THETA_PLL",
+            "comment": "PLL"
+          },
+          {
+            "id_name": "THETA_RAW",
+            "comment": "原始角度"
+          }
+        ]
+      }
+    },
+    {
+      "field": "vel_source",
+      "name": "速度源",
+      "id_name": "PARAM_VEL_SOURCE",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 0,
+      "options": {
+        "enum_name": "eVelSource",
+        "comment": "速度源",
+        "items": [
+          {
+            "id_name": "VEL_PLL",
+            "comment": "PLL"
+          },
+          {
+            "id_name": "VEL_FDM",
+            "comment": "差分速度"
+          }
+        ]
+      }
+    },
+    {
+      "field": "hfi_smo_threshold",
+      "name": "HFI/SMO切换阈值",
+      "id_name": "PARAM_HFI_SMO_THRESHOLD",
+      "unit": "rad/s",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "hall_table_0",
+      "name": "HALL编码器表0",
+      "id_name": "PARAM_HALL_TABLE_0",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 255
+    },
+    {
+      "field": "hall_table_1",
+      "name": "HALL编码器表1",
+      "id_name": "PARAM_HALL_TABLE_1",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 255
+    },
+    {
+      "field": "hall_table_2",
+      "name": "HALL编码器表2",
+      "id_name": "PARAM_HALL_TABLE_2",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 255
+    },
+    {
+      "field": "hall_table_3",
+      "name": "HALL编码器表3",
+      "id_name": "PARAM_HALL_TABLE_3",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 255
+    },
+    {
+      "field": "hall_table_4",
+      "name": "HALL编码器表4",
+      "id_name": "PARAM_HALL_TABLE_4",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 255
+    },
+    {
+      "field": "hall_table_5",
+      "name": "HALL编码器表5",
+      "id_name": "PARAM_HALL_TABLE_5",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 255
+    },
+    {
+      "field": "hall_table_6",
+      "name": "HALL编码器表6",
+      "id_name": "PARAM_HALL_TABLE_6",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 255
+    },
+    {
+      "field": "hall_table_7",
+      "name": "HALL编码器表7",
+      "id_name": "PARAM_HALL_TABLE_7",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 255
+    },
+    {
+      "field": "abi_count",
+      "name": "ABI编码器线数",
+      "id_name": "PARAM_ABI_COUNT",
+      "unit": "counts/rev",
+      "val_type": "FLD_U16",
+      "default": 8192
+    },
+    {
+      "field": "sin_amp",
+      "name": "SIN幅值",
+      "id_name": "PARAM_SIN_AMP",
+      "unit": "V",
+      "val_type": "FLD_F32",
+      "default": 1.0
+    },
+    {
+      "field": "cos_amp",
+      "name": "COS幅值",
+      "id_name": "PARAM_COS_AMP",
+      "unit": "V",
+      "val_type": "FLD_F32",
+      "default": 1.0
+    },
+    {
+      "field": "sin_offset",
+      "name": "SIN偏移",
+      "id_name": "PARAM_SIN_OFFSET",
+      "unit": "V",
+      "val_type": "FLD_F32",
+      "default": 1.65
+    },
+    {
+      "field": "cos_offset",
+      "name": "COS偏移",
+      "id_name": "PARAM_COS_OFFSET",
+      "unit": "V",
+      "val_type": "FLD_F32",
+      "default": 1.65
+    },
+    {
+      "field": "sincos_fl",
+      "name": "SINCOS滤波系数",
+      "id_name": "PARAM_SINCOS_FL",
+      "unit": "0~1",
+      "val_type": "FLD_F32",
+      "default": 0.5
+    },
+    {
+      "field": "enc_chip",
+      "name": "编码器芯片",
+      "id_name": "PARAM_ENC_CHIP",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 0,
+      "options": {
+        "enum_name": "eSpiEncList",
+        "comment": "spi编码器芯片",
+        "items": [
+          {
+            "id_name": "ENC_MT6816",
+            "comment": "MT6816"
+          },
+          {
+            "id_name": "ENC_MT6835",
+            "comment": "MT6835"
+          },
+          {
+            "id_name": "ENC_AS5047",
+            "comment": "AS5047"
+          }
+        ]
+      }
+    },
+    {
+      "field": "vlkp",
+      "name": "速度环Kp",
+      "id_name": "PARAM_VLKP",
+      "unit": "",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "vlki",
+      "name": "速度环Ki",
+      "id_name": "PARAM_VLKI",
+      "unit": "",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "pos_pidmode",
+      "name": "位置环模式",
+      "id_name": "PARAM_POS_PIDMODE",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 0,
+      "options": {
+        "enum_name": "ePosPidmode",
+        "comment": "位置环pid模式",
+        "items": [
+          {
+            "id_name": "POS_PID_PVC",
+            "comment": "PVC三环级联(抗干扰)"
+          },
+          {
+            "id_name": "POS_PID_PC",
+            "comment": "PC双环(高响应)"
+          }
+        ]
+      }
+    },
+    {
+      "field": "plkp",
+      "name": "位置环Kp",
+      "id_name": "PARAM_PLKP",
+      "unit": "1/s",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "plki",
+      "name": "位置环Ki",
+      "id_name": "PARAM_PLKI",
+      "unit": "1/s²",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "plkd",
+      "name": "位置环Kd",
+      "id_name": "PARAM_PLKD",
+      "unit": "",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "plalpha",
+      "name": "位置环滤波系数",
+      "id_name": "PARAM_PLALPHA",
+      "unit": "0~1",
+      "val_type": "FLD_F32",
+      "default": 0.5
+    },
+    {
+      "field": "mit_kp",
+      "name": "MIT 刚度(Kp)",
+      "id_name": "PARAM_MIT_KP",
+      "unit": "N·m/rad",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "mit_kd",
+      "name": "MIT 阻尼(Kd)",
+      "id_name": "PARAM_MIT_KD",
+      "unit": "N·m·s/rad",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "mit_kpmax",
+      "name": "MIT 最大刚度",
+      "id_name": "PARAM_MIT_KPMAX",
+      "unit": "N·m/rad",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "mit_kdmax",
+      "name": "MIT 最大阻尼",
+      "id_name": "PARAM_MIT_KDMAX",
+      "unit": "N·m·s/rad",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "mit_tmax",
+      "name": "MIT最大扭矩",
+      "id_name": "PARAM_MIT_TMAX",
+      "unit": "N·m",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "fwlkp",
+      "name": "弱磁Kp",
+      "id_name": "PARAM_FWLKP",
+      "unit": "",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "fwlki",
+      "name": "弱磁Ki",
+      "id_name": "PARAM_FWLKI",
+      "unit": "",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "traj_type",
+      "name": "轨迹类型",
+      "id_name": "PARAM_TRAJ_TYPE",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 0,
+      "options": {
+        "enum_name": "eTrajMode",
+        "comment": "轨迹规划模式",
+        "items": [
+          {
+            "id_name": "TRAJ_DISABLE",
+            "comment": "禁用"
+          },
+          {
+            "id_name": "TRAJ_TRAPEZOID",
+            "comment": "梯形轨迹(斜坡缓冲)"
+          },
+          {
+            "id_name": "TRAJ_S_CURVE",
+            "comment": "曲线轨迹(双重缓冲)"
+          }
+        ]
+      }
+    },
+    {
+      "field": "traj_limit_d1",
+      "name": "轨迹一阶限幅",
+      "id_name": "PARAM_TRAJ_LIMIT_D1",
+      "unit": "unit/s",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "traj_limit_d2",
+      "name": "轨迹二阶限幅",
+      "id_name": "PARAM_TRAJ_LIMIT_D2",
+      "unit": "unit/s²",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "traj_limit_d3",
+      "name": "轨迹三阶限幅",
+      "id_name": "PARAM_TRAJ_LIMIT_D3",
+      "unit": "unit/s³",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "traj_tolerance",
+      "name": "轨迹容差",
+      "id_name": "PARAM_TRAJ_TOLERANCE",
+      "unit": "0~1",
+      "val_type": "FLD_F32",
+      "default": 0.0
+    },
+    {
+      "field": "undervoltage_threshold",
+      "name": "欠压阈值",
+      "id_name": "PARAM_UNDERVOLTAGE_THRESHOLD",
+      "unit": "V",
+      "val_type": "FLD_F32",
+      "default": 20
+    },
+    {
+      "field": "overvoltage_threshold",
+      "name": "过压阈值",
+      "id_name": "PARAM_OVERVOLTAGE_THRESHOLD",
+      "unit": "V",
+      "val_type": "FLD_F32",
+      "default": 26
+    },
+    {
+      "field": "current_threshold",
+      "name": "过流阈值",
+      "id_name": "PARAM_CURRENT_THRESHOLD",
+      "unit": "A",
+      "val_type": "FLD_F32",
+      "default": 30
+    },
+    {
+      "field": "elec_tolerance",
+      "name": "电气超限容忍度",
+      "id_name": "PARAM_ELEC_TOLERANCE",
+      "unit": "0~1",
+      "val_type": "FLD_F32",
+      "default": 0.1
+    },
+    {
+      "field": "elec_tolerance_time_ms",
+      "name": "电气超限容忍时间",
+      "id_name": "PARAM_ELEC_TOLERANCE_TIME_MS",
+      "unit": "ms",
+      "val_type": "FLD_F32",
+      "default": 1
+    },
+    {
+      "field": "vel_limit",
+      "name": "速度限制",
+      "id_name": "PARAM_VEL_LIMIT",
+      "unit": "rad/s",
+      "val_type": "FLD_F32",
+      "default": 500
+    },
+    {
+      "field": "pos_min_limit",
+      "name": "最小位置",
+      "id_name": "PARAM_POS_MIN_LIMIT",
+      "unit": "rad",
+      "val_type": "FLD_F32",
+      "default": -15000
+    },
+    {
+      "field": "pos_max_limit",
+      "name": "最大位置",
+      "id_name": "PARAM_POS_MAX_LIMIT",
+      "unit": "rad",
+      "val_type": "FLD_F32",
+      "default": 15000
+    },
+    {
+      "field": "tau_limit",
+      "name": "力矩限制",
+      "id_name": "PARAM_TAU_LIMIT",
+      "unit": "N·m",
+      "val_type": "FLD_F32",
+      "default": 10
+    },
+    {
+      "field": "motion_tolerance",
+      "name": "运动超限容忍度",
+      "id_name": "PARAM_MOTION_TOLERANCE",
+      "unit": "0~1",
+      "val_type": "FLD_F32",
+      "default": 0.1
+    },
+    {
+      "field": "motion_tolerance_time_ms",
+      "name": "运动超限容忍时间",
+      "id_name": "PARAM_MOTION_TOLERANCE_TIME_MS",
+      "unit": "ms",
+      "val_type": "FLD_F32",
+      "default": 10
+    },
+    {
+      "field": "can_rate",
+      "name": "CAN速率",
+      "id_name": "PARAM_CAN_RATE",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 0,
+      "options": {
+        "enum_name": "eCanRate",
+        "comment": "CAN速率",
+        "items": [
+          {
+            "id_name": "CAN_RATE_1000K",
+            "comment": "1Mbps"
+          },
+          {
+            "id_name": "CAN_RATE_500K",
+            "comment": "500Kbps"
+          }
+        ]
+      }
+    },
+    {
+      "field": "can_id",
+      "name": "CAN ID",
+      "id_name": "PARAM_CAN_ID",
+      "unit": "",
+      "val_type": "FLD_U32",
+      "default": 1
+    },
+    {
+      "field": "can_mode",
+      "name": "CAN模式",
+      "id_name": "PARAM_CAN_MODE",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 0,
+      "options": {
+        "enum_name": "eCanMode",
+        "comment": "CAN模式",
+        "items": [
+          {
+            "id_name": "CAN_SILENCE",
+            "comment": "静默模式"
+          },
+          {
+            "id_name": "CAN_ANSWER",
+            "comment": "响应模式"
+          }
+        ]
+      }
+    }
+  ]
+}

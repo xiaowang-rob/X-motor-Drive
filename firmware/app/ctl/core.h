@@ -3,20 +3,55 @@
 
 #include <stdbool.h>
 
-#include "protocol.h"
+#include "data_list.h"
+#include "cmd_list.h"
 
 typedef struct
 {
     eCoreState mode;
-    float vel;      // 速度 (rad/s)
-    float pos;      // 位置 (rad)
-    float tp;       // pvt模式下时刻
-    float tau_ff;   // 转矩前馈
-    float vel_elec; // 电角速度 rad/s
-    float id;       // 电枢电流 A
-    float iq;       // 拖动电流 A
-    float tau;      // 转矩 N/m
+    eCmdTarget tag;
+
+    bool ext_sw; // 拓展bool
+
+    float value; // 指令值
 } tCmd;
+
+typedef struct
+{
+    eCoreState mode;
+    struct // 两帧
+    {
+        bool theta_or_vel; // 角度还是速度
+        float value;       // 角度或者速度
+        float duty;        // 占空比
+    } openloop;
+    struct // 一帧
+    {
+        bool cur_or_tau; // 电流还是力矩
+        float value;     // 拖动电流/转矩 N/m
+    } current_ctrl;
+
+    struct
+    {
+        float vel; // 速度 (rad/s)
+    } vel_pid_ctrl;
+
+    struct
+    {
+        float pos; // 位置 (rad)
+    } pos_pid_ctrl;
+
+    struct
+    {
+        float kp;     // 刚度
+        float kd;     // 阻尼
+        bool traj;    // traj 开关
+        float pos;    // 位置 (rad)
+        float vel;    // pvt vel
+        float tau_ff; // 转矩前馈
+    } mit_ctrl;
+
+} tCmdValue;
 
 // 主要核心
 typedef struct
@@ -27,18 +62,19 @@ typedef struct
 
     volatile bool enable; // 使能标记
 
-    volatile bool ov_enable; // 开环电压使能标记
-    volatile bool ot_enable; // 开环角度使能标记
+    volatile bool oc_enable; // 电流开环使能标记
 
     bool obs_running; // 观测器是否正常运行
     bool com_running; // 通信是否正常运行
 
     struct
     {
-        float vel;      // 速度 (rad/s)
-        float pos;      // 位置 (rad)
-        float tau_ff;   // 转矩前馈
-        float vel_elec; // 电角速度 rad/s
+        float vel;        // 速度 (rad/s)
+        float pos;        // 位置 (rad)
+        float tau_ff;     // 转矩前馈
+        float theta_elec; // 电角度rad
+        float vel_elec;   // 电角速度 rad/s
+        float duty;       // 占空比
         float iq, id;
         float tau; // 转矩 N/m
     } ref;
@@ -56,6 +92,7 @@ typedef struct
 
         float tau; // 转矩 N/m
 
+        float theta_rotor;  // 转子角度
         float theta_elec;   // 电角度 rad
         float sin_e, cos_e; // 电角度 sin cos
 

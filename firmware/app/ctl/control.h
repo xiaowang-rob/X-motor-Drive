@@ -1,7 +1,6 @@
 #ifndef __CONTROL_H
 #define __CONTROL_H
 
-#include "protocol.h"
 #include "pid.h"
 #include "mit.h"
 

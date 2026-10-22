@@ -4,7 +4,6 @@ from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QEvent
 from PyQt5.QtGui import QFont
 import numpy as np
 import logging
-from protocol import Cidx
 
 # ---------- 日志配置 ----------
 logger = logging.getLogger("Wave")
@@ -34,6 +33,9 @@ class WaveformWidget(QWidget):
             (136, 204, 102),
             (184, 134, 255),
         ]
+        self.channel_colors = tuple(
+            f"#{red:02x}{green:02x}{blue:02x}" for red, green, blue in self.colors
+        )
         self.wave_data = [[] for _ in range(5)]
         self.is_running = True
         self.auto_x = True
@@ -368,103 +370,3 @@ class WaveformWidget(QWidget):
         super().leaveEvent(event)
         self.hover_label.hide()
 
-
-class Wave:
-    """波形控制模块 - 连接UI与波形控件"""
-
-    def __init__(self, main_window):
-        self.mw = main_window
-        self.pw = self.mw.control_page
-        self.wave_area = self.pw.wave_area
-        self.com = self.mw.comport
-
-        self.showindex = []
-        self.channel_index = []
-
-        self.combo_boxes = [
-            self.pw.wave_ch1,
-            self.pw.wave_ch2,
-            self.pw.wave_ch3,
-            self.pw.wave_ch4,
-            self.pw.wave_ch5,
-        ]
-
-        self.waveform_widget = WaveformWidget()
-
-        self.start_wave_but = self.pw.start_wave_button
-        self.auto_x_but = self.pw.auto_x_switch
-        self.auto_x_but.setChecked(True)
-        self.auto_y_but = self.pw.auto_y_switch
-        self.auto_y_but.setChecked(True)
-        self.clear_wave_but = self.pw.clear_wave_button
-
-        self.start_wave_but.clicked.connect(self.handle_start)
-        self.auto_x_but.toggled.connect(self.waveform_widget.set_auto_x_scale)
-        self.auto_y_but.toggled.connect(self.waveform_widget.set_auto_y_scale)
-        self.clear_wave_but.clicked.connect(self.clear)
-
-        # 嵌入波形控件
-        layout = self.wave_area.layout()
-        if layout:
-            while layout.count():
-                child = layout.takeAt(0)
-                if child.widget():
-                    child.widget().deleteLater()
-        else:
-            layout = QVBoxLayout(self.wave_area)
-            layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.waveform_widget)
-
-        # 双向同步（auto_x/auto_y 的 toggled 信号已在上方连接）
-        self.waveform_widget.auto_x_state_changed.connect(self._sync_auto_x_button)
-        self.waveform_widget.auto_y_state_changed.connect(self._sync_auto_y_button)
-
-    def _sync_auto_x_button(self, state: bool):
-        self.auto_x_but.blockSignals(True)
-        self.auto_x_but.setChecked(state)
-        self.auto_x_but.blockSignals(False)
-
-    def _sync_auto_y_button(self, state: bool):
-        self.auto_y_but.blockSignals(True)
-        self.auto_y_but.setChecked(state)
-        self.auto_y_but.blockSignals(False)
-
-    def clear(self):
-        self.waveform_widget.clear_waveforms()
-
-    def handle_start(self, enable: bool):
-        if enable:
-            self.waveform_widget.start()
-            self.start_wave_but.setText("停止示波")
-            self.showindex.clear()
-            self.channel_index.clear()
-            for i, combo in enumerate(self.combo_boxes):
-                if combo.currentText() != "NONE":
-                    self.showindex.append(combo.currentIndex()-1)
-                    self.channel_index.append(i)
-            self.com.send_packet(Cidx.CMD_STREAM_SET, bytes(self.showindex))
-            logger.info("波形流已启动，通道映射: %s", self.channel_index)
-        else:
-            self.waveform_widget.pause()
-            self.start_wave_but.setText("开始示波")
-            self.showindex.clear()
-            self.com.send_packet(Cidx.CMD_STREAM_SET, bytes())
-            logger.info("波形流已停止")
-
-    def add_data(self, channel: int, data):
-        self.waveform_widget.add_waveform_data(channel, data)
-
-    def handle_stream_data(self, data):
-        """批量解析波形数据流（使用 numpy 向量化解包）"""
-        count = len(data) // 4
-        if count == 0:
-            return
-        # numpy 批量解包比逐点 struct.unpack 快得多
-        values = np.frombuffer(data, dtype=np.float32, count=count)
-        for i in range(count):
-            self.add_data_by_index(i, float(values[i]))
-
-    def add_data_by_index(self, index: int, data):
-        id_index = index % len(self.channel_index)
-        if id_index < len(self.channel_index):
-            self.add_data(self.channel_index[id_index], data)

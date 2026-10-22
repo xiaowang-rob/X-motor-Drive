@@ -208,18 +208,19 @@ bool tune_FOC_update(tTune *tune, tCore *core, tCtrl *con, tParameter *p, float 
     return false;
 }
 // 观测器参数辨识
-bool tune_obs_update(tTune *tune, tCore *core, tObs *obs, tParameter *p, float ts)
+bool tune_obs_update(tTune *tune, tCore *core, eObsList obs, tParameter *p, float ts)
 {
-    switch (obs->type)
+    switch (obs)
     {
-    case NONE_OBS:
+    case OBS_NONE:
 
         break;
-    case ENC_HALL:
+    case OBS_ENC_HALL:
 
         break;
-    case ENC_SPI:
-    case ENC_SINCOS:
+    case OBS_INT_ENC:
+    case OBS_ENC_SPI:
+    case OBS_ENC_SINCOS:
         if (!tune->TO_init)
         {
             tEncCal_cfg enc_cal_cfg = {
@@ -267,7 +268,7 @@ bool tune_obs_update(tTune *tune, tCore *core, tObs *obs, tParameter *p, float t
             }
         }
         break;
-    case HFI_SMO:
+    case OBS_HFI_SMO:
         break;
     }
 }

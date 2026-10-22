@@ -10,61 +10,11 @@ tFlashUnit param_unit;
 //   X(枚举 id, 结构体字段, 类型, 默认值)
 //   - id 直接用 protocol.h 的 eParameter 名 → 与协议强绑定
 // ============================================================
-#define PARAM_FIELDS(X)                                       \
-    X(INC_ENC_MODE, ienc_mode, U8, 0u)                        \
-    X(INC_ENC_CHIP, ienc_chip, U8, 0u)                        \
-    X(EXT_ENC_MODE, eenc_mode, U8, 0u)                        \
-    X(EXT_ENC_CHIP, eenc_chip, U8, 0u)                        \
-    X(OBS_TYPE, obs_type, U8, 0u)                             \
-    X(TRAJ_MODE, traj_type, U8, 0u)                           \
-    X(MOTOR_POLEPAIRS, motor_polepairs, U8, 7u)               \
-    X(POSITIVE_DIR, positive_dir, BOOL, true)                 \
-    X(THETA_OFFSET, theta_offset, F32, 0.0f)                  \
-    X(MOTOR_KV, motor_kv, F32, 0.0f)                          \
-    X(MOTOR_RS, motor_rs, F32, 0.07f)                         \
-    X(MOTOR_Ld, motor_ld, F32, 45e-6f)                        \
-    X(MOTOR_Lq, motor_lq, F32, 49e-6f)                        \
-    X(MOTOR_PSIF, motor_psif, F32, 0.00035f)                  \
-    X(MOTOR_KE, motor_ke, F32, 0.0025f)                       \
-    X(MOTOR_J, motor_j, F32, 1e-4f)                           \
-    X(MOTOR_B, motor_b, F32, 1e-3f)                           \
-    X(CAN_ID, can_id, U32, 1u)                                \
-    X(CAN_MODE, can_mode, U8, 0u)                             \
-    X(CLBW_COEF, clbw_coef, F32, 0.0f)                        \
-    X(QCLBW, qclbw, F32, 0.0f)                                \
-    X(DCLBW, dclbw, F32, 0.0f)                                \
-    X(QCLKP, qclkp, F32, 0.0f)                                \
-    X(QCLKI, qclki, F32, 0.0f)                                \
-    X(DCLKP, dclkp, F32, 0.0f)                                \
-    X(DCLKI, dclki, F32, 0.0f)                                \
-    X(CFALPHA, cfalpha, F32, 0.0f)                            \
-    X(VLKP, vlkp, F32, 3.0f)                                  \
-    X(VLKI, vlki, F32, 20.0f)                                 \
-    X(WLKP, wlkp, F32, 0.0f)                                  \
-    X(WLKI, wlki, F32, 0.0f)                                  \
-    X(PLKP, plkp, F32, 0.5f)                                  \
-    X(PLKI, plki, F32, 0.05f)                                 \
-    X(PLKD, plkd, F32, 0.005f)                                \
-    X(PLALPHA, plalpha, F32, 0.15f)                           \
-    X(MIT_KP, mit_kp, F32, 0.0f)                              \
-    X(MIT_KD, mit_kd, F32, 0.0f)                              \
-    X(MIT_TSTA, mit_tsta, F32, 0.0f)                          \
-    X(MIT_TMAX, mit_tmax, F32, 0.0f)                          \
-    X(TUNE_CURRENT, tune_current, F32, 1.5f)                  \
-    X(LIMIT_CURRENT, limit_current, F32, 30.0f)               \
-    X(LIMIT_VELOCITY, limit_vel, F32, 209.44f)                \
-    X(LIMIT_POSITION_MIN, limit_position_min, F32, -15000.0f) \
-    X(LIMIT_POSITION_MAX, limit_position_max, F32, 15000.0f)  \
-    X(TOLERANCE_TIME, tolerance_time, F32, 1.0f)              \
-    X(TOLERANCE_LIMIT, tolerance_limit, F32, 1.1f)            \
-    X(TRAJ_LIMIT_D1, traj_limit_d1, F32, 1000.0f)             \
-    X(TRAJ_LIMIT_D2, traj_limit_d2, F32, 1000.0f)             \
-    X(TRAJ_LIMIT_D3, traj_limit_d3, F32, 1000.0f)             \
-    X(TRAJ_TOLERANCE, traj_tolerance, F32, 0.1f)
+
 // ---- 描述符表（协议读写用；字段名错 → 编译期报错）----
 const tField g_param_fields[PARAM_NUM] = {
 #define P_DESC(id, field, type, def) \
-    [id] = {&g_param.field, FLD_##type, (def)},
+    [id] = {&g_param.field, type, (def)},
     PARAM_FIELDS(P_DESC)
 #undef P_DESC
 };
@@ -84,6 +34,32 @@ typedef struct
 } tParamHdr;
 
 #define PARAM_BLOB_SIZE (sizeof(tParamHdr) + sizeof(tParameter))
+
+static const uint8_t TYPE_SIZE[] = {
+    [FLD_U8] = sizeof(uint8_t),
+    [FLD_U32] = sizeof(uint32_t),
+    [FLD_F32] = sizeof(float),
+    [FLD_BOOL] = sizeof(bool),
+};
+
+uint8_t field_read_raw(const tField *f, uint8_t *dst)
+{
+    if (!f || !f->ptr || !dst)
+        return 0U;
+
+    uint8_t n = TYPE_SIZE[f->type];
+    memcpy(dst, f->ptr, n);
+    return n;
+}
+
+bool field_write_raw(const tField *f, const uint8_t *src)
+{
+    if (!f || !f->ptr || !src)
+        return false;
+
+    memcpy(f->ptr, src, TYPE_SIZE[f->type]);
+    return true;
+}
 
 // 参数服务初始化 注册存储单元 读出上次数值
 bool param_init(tFlash *flash)

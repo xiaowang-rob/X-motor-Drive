@@ -7,10 +7,11 @@ from qfluentwidgets import (
 )
 from app.status_bar import StatusBar
 from app.config_page import ConfigPage
-from app.communication_page import CommunicationPage
+from app.monitor_page import MonitorPage
 from app.control_page import ControlPage
 from app.iap_page import IAPPage
 from app.terminal_page import TerminalPage
+from app.services.device_service import DeviceService
 
 
 class MainWindow(FluentWindow):
@@ -24,7 +25,7 @@ class MainWindow(FluentWindow):
         self.setMinimumSize(1180, 800)
 
         self.config_page = ConfigPage()
-        self.communication_page = CommunicationPage()
+        self.monitor_page = MonitorPage()
         self.control_page = ControlPage()
         self.download_page = IAPPage()
         self.terminal_page = TerminalPage()
@@ -32,8 +33,8 @@ class MainWindow(FluentWindow):
         self._embed_status_bar()
         for page, icon, title in [
             (self.config_page, FIF.SETTING, "配置"),
-            (self.communication_page, FIF.CHAT, "通讯"),
             (self.control_page, FIF.SPEED_HIGH, "控制"),
+            (self.monitor_page, FIF.CHAT, "监听"),
             (self.download_page, FIF.DOWNLOAD, "固件"),
             (self.terminal_page, FIF.COMMAND_PROMPT, "日志"),
         ]:
@@ -41,6 +42,7 @@ class MainWindow(FluentWindow):
         self.navigationInterface.setExpandWidth(176)
         self.navigationInterface.setCurrentItem(self.config_page.objectName())
         self.switchTo(self.config_page)
+        self.device_service = DeviceService(self)
 
     def _embed_status_bar(self):
         self.widgetLayout.removeWidget(self.stackedWidget)

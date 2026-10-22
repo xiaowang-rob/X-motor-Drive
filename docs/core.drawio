@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="HVilZgKc1jR6jSf_f8j0" name="第 1 页">
-        <mxGraphModel dx="1074" dy="1801" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+        <mxGraphModel dx="518" dy="1691" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -1174,6 +1174,42 @@
                 </mxCell>
                 <mxCell id="EtQ9Qxi5XOCSB2mGKd6V-367" parent="1" style="whiteSpace=wrap;html=1;" value="配置文件选择" vertex="1">
                     <mxGeometry height="97" width="50" x="3148" y="1097.5" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6cDhT0f-zXvw3tvWuAL-370" edge="1" parent="1" source="L6cDhT0f-zXvw3tvWuAL-367" style="edgeStyle=none;html=1;" target="L6cDhT0f-zXvw3tvWuAL-369" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6cDhT0f-zXvw3tvWuAL-367" parent="1" style="rounded=1;whiteSpace=wrap;html=1;roundedPerimeter=1;" value="参数输入输出类" vertex="1">
+                    <mxGeometry height="60" width="120" x="3040" y="1590" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6cDhT0f-zXvw3tvWuAL-372" edge="1" parent="1" source="L6cDhT0f-zXvw3tvWuAL-368" style="edgeStyle=none;html=1;" target="L6cDhT0f-zXvw3tvWuAL-371" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6cDhT0f-zXvw3tvWuAL-368" parent="1" style="rounded=1;whiteSpace=wrap;html=1;roundedPerimeter=1;" value="校准类" vertex="1">
+                    <mxGeometry height="60" width="120" x="3041" y="1754" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6cDhT0f-zXvw3tvWuAL-369" parent="1" style="rounded=1;whiteSpace=wrap;html=1;roundedPerimeter=1;" value="名称、英文简称、id、单位、值、显示控件、值类型、读取、重置、写入" vertex="1">
+                    <mxGeometry height="60" width="180" x="3240" y="1590" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6cDhT0f-zXvw3tvWuAL-371" parent="1" style="rounded=1;whiteSpace=wrap;html=1;roundedPerimeter=1;" value="参数类*n、校准按钮*n、help、stop" vertex="1">
+                    <mxGeometry height="60" width="180" x="3241" y="1754" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6cDhT0f-zXvw3tvWuAL-373" edge="1" parent="1" source="L6cDhT0f-zXvw3tvWuAL-374" style="edgeStyle=none;html=1;" target="L6cDhT0f-zXvw3tvWuAL-375" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6cDhT0f-zXvw3tvWuAL-374" parent="1" style="rounded=1;whiteSpace=wrap;html=1;roundedPerimeter=1;" value="指令按钮类" vertex="1">
+                    <mxGeometry height="60" width="120" x="3040" y="1670" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6cDhT0f-zXvw3tvWuAL-375" parent="1" style="rounded=1;whiteSpace=wrap;html=1;roundedPerimeter=1;" value="指令id、" vertex="1">
+                    <mxGeometry height="60" width="180" x="3240" y="1670" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6cDhT0f-zXvw3tvWuAL-376" edge="1" parent="1" source="L6cDhT0f-zXvw3tvWuAL-377" style="edgeStyle=none;html=1;" target="L6cDhT0f-zXvw3tvWuAL-378" value="">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6cDhT0f-zXvw3tvWuAL-377" parent="1" style="rounded=1;whiteSpace=wrap;html=1;roundedPerimeter=1;" value="数据显示" vertex="1">
+                    <mxGeometry height="60" width="120" x="3041" y="1840" as="geometry"/>
+                </mxCell>
+                <mxCell id="L6cDhT0f-zXvw3tvWuAL-378" parent="1" style="rounded=1;whiteSpace=wrap;html=1;roundedPerimeter=1;" value="数据id、值、值类型、数据显示控件、" vertex="1">
+                    <mxGeometry height="60" width="180" x="3241" y="1840" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>

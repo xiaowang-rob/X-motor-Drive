@@ -14,7 +14,6 @@ typedef enum
     TRAJ_DISABLE = 0,   /* 禁用 */
     TRAJ_TRAPEZOID = 1, /* 梯形 */
     TRAJ_S_CURVE = 2,   /* S形 */
-    TRAJ_PVT = 3,       /* PVT模式 */
 } eTrajType;
 
 //  配置参数
@@ -60,7 +59,6 @@ typedef struct
 bool traj_init(tTraj *traj, tTraj_Config cfg);
 void traj_reset(tTraj *traj, float current_value);
 void traj_set_target(tTraj *traj, float target);
-void traj_pvt_add_target(tTraj *traj, float p, float v, float t);
 void traj_Update(tTraj *traj, float dt);
 
 #endif //  __TRAJECTORY_H

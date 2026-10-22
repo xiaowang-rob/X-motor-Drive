@@ -36,7 +36,7 @@ set_property(CACHE BOARD PROPERTY STRINGS xdr_p xdr_s)
 set_property(CACHE FW_TYPE PROPERTY STRINGS app bl)
 
 set(FW_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
-set(PROTOCOL_DIR ${FW_ROOT}/../protocol)
+set(PROTOCOL_DIR ${FW_ROOT}/protocol)
 
 if(NOT BOARD MATCHES "^(xdr_p|xdr_s)$")
     message(FATAL_ERROR "未知板卡 BOARD=${BOARD}（可选：xdr_p | xdr_s）")

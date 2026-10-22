@@ -42,7 +42,7 @@ void core_init(void)
     memset(&core.fb, 0, sizeof(core.fb));
 
     core.enable = false;
-    core.state = INIT;
+    core.state = CORE_INIT;
 
     // 初始化保护服务
     pro_manager_init(&g_param);
@@ -69,8 +69,7 @@ void core_init(void)
         core_enter_fault(FAULT_OBS_INIT);
         return;
     }
-    if (obs.type == NONE_OBS)
-        core.ot_enable = true; // 无观测器时 开环角度
+
     // 启动主总线通信
     if (!bus_start(&g_can, g_param.can_id))
     {
@@ -94,7 +93,7 @@ void core_init(void)
     // 将solt槽任务注册到pwm下溢中断 以 启动solt槽任务
     pwm_register_callback(NULL, slot_con_update);
 
-    core.state = IDLE;
+    core.state = CORE_IDLE;
 
     return;
 }
@@ -111,25 +110,38 @@ static inline void core_reset(void)
 void core_disable(void)
 {
     core.enable = false;
-    core.ot_enable = false;
-    core.ov_enable = false;
+    core.oc_enable = false;
     core_reset();
-    core.state = IDLE;
+    core.state = CORE_IDLE;
     gate_drv_enable(&g_gate, false);
 }
+
+// 0xb1 corestate valueid 0/1 value
+// 控制模式 - 传输开始 - 参数值id - 辅助bool - value
 // 核心使能和指令写入
 bool core_cmd_set(tCmd *cmd)
 {
     // 非法输入
-    if (cmd->mode < CURRENT_MODE || cmd->mode > MIT_MODE)
+    if (cmd->mode < CORE_OPENLOOP || cmd->mode > CORE_MIT_MODE)
         return false;
-    if (core.state == FAULT || core.state == WARNING)
+    if (core.state == CORE_FAULT || core.state == CORE_WARNING)
         return false;
     core.state = cmd->mode;
     core.enable = true;
     switch (cmd->mode)
     {
-    case CURRENT_MODE:
+    case CORE_OPENLOOP:
+        switch (cmd->val)
+        {
+        case CMD_ID:
+            /* code */
+            break;
+
+        default: // 非法输入
+            return false;
+        }
+        break;
+    case CORE_CURRENT_MODE:
         core.ref.iq = cmd->iq;
         if (core.ot_enable)
         {
@@ -137,10 +149,10 @@ bool core_cmd_set(tCmd *cmd)
             core.ref.vel_elec = cmd->vel_elec;
         }
         break;
-    case PID_SPEED:
+    case CORE_PID_SPEED:
         traj_set_target(&traj, cmd->vel);
         break;
-    case PID_POSITION:
+    case CORE_PID_POSITION:
         if (traj.cfg.type == TRAJ_DISABLE)
         {
             core.ref.pos = cmd->pos;
@@ -152,7 +164,7 @@ bool core_cmd_set(tCmd *cmd)
         else
             traj_set_target(&traj, cmd->pos);
         break;
-    case MIT_MODE:
+    case CORE_MIT_MODE:
         if (traj.cfg.type == TRAJ_DISABLE)
         {
             core.ref.tau_ff = cmd->tau_ff;
@@ -177,7 +189,7 @@ void core_ov_cmd_set(float ud, float uq, float theta_e)
     core.fb.ud = ud;
     core.fb.uq = uq;
     core.fb.theta_elec = theta_e;
-    core.ov_enable = true;
+    core.oc_enable = true;
     core.enable = true;
 }
 // 角度开环指令输入
@@ -201,7 +213,7 @@ void core_enter_fault(eFault fault)
 {
     core.enable = false;
     core_reset();
-    core.state = FAULT;
+    core.state = CORE_FAULT;
     core.fault = fault;
     gate_drv_enable(&g_gate, false);
     gate_drv_power_on(&g_gate, false); // 直接电源隔断
@@ -211,7 +223,7 @@ void core_enter_warning(eWarning warning)
 {
     core.enable = false;
     core_reset();
-    core.state = WARNING;
+    core.state = CORE_WARNING;
     core.warning = warning;
     gate_drv_enable(&g_gate, false);
 }
@@ -282,12 +294,13 @@ void core_mainloop_tasks(void)
 void obs_foc_task(float ts)
 {
     // 观测器运行
-    obs_tim_task(&obs, ts,
+    obs_tim_task(&obs, ts, &core.fb.theta_rotor,
                  &core.fb.theta_elec, &core.fb.vel, &core.fb.pos);
-    if (core.ot_enable)
+    if (core.state == CORE_OPENLOOP)
     {
-        core.fb.theta_elec += core.ref.vel_elec * ts;
-        core.fb.theta_elec = normalize_angle_2pi(core.fb.theta_elec);
+        core.fb.theta_elec = core.ref.theta_elec;
+        core.ref.theta_elec += core.ref.vel_elec * ts;
+        core.ref.theta_elec = normalize_angle_2pi(core.ref.theta_elec);
     }
     // 预计算sin cos
     arm_sin_cos_rad_f32(core.fb.theta_elec, &core.fb.sin_e, &core.fb.cos_e);
@@ -302,7 +315,7 @@ void obs_foc_task(float ts)
     if (core.enable)
     {
         // foc电流环更新
-        if (!core.ov_enable)
+        if (!core.oc_enable)
             foc_cl_update(&ctrl, core.ref.iq, core.fb.iq, core.ref.id, core.fb.id, &core.fb.uq, &core.fb.ud);
 
         inv_park_transform(core.fb.ud, core.fb.uq, core.fb.sin_e, core.fb.cos_e,

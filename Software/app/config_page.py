@@ -1,12 +1,166 @@
-"""参数配置中心：顶层分类与分类页内导航。"""
+"""参数配置中心：协议驱动的参数卡片与固定校准栏。"""
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget
-from qfluentwidgets import FluentIcon as FIF, HorizontalSeparator
-from app.parameter_input import ParameterInput
-from app.ui_components import preview_button
+from qfluentwidgets import CaptionLabel, FluentIcon as FIF, HorizontalSeparator
 from qfluentwidgets.components.navigation import SegmentedWidget
+
+from protocol import CmdId, Pidx
+from app.calibration_card import CalibrationCard, CalibrationSpec
 from app.ui_components import (
-    TabbedPage, SectionCard, SurfaceCard, CompactComboBox, icon_action,
+    TabbedPage, PlainCard, ScrollCard, SurfaceCard, CompactComboBox, icon_action,
 )
+
+
+# ============================================================
+# 参数页面分组：字段顺序、页面名称都在这里配置。
+# 字段本身的名称/单位/默认值/选项/类型由 protocol 包提供。
+# ============================================================
+MOTOR_PARAMS = (
+    Pidx.PARAM_MOTOR_TYPE,
+    Pidx.PARAM_MOTOR_POLEPAIRS,
+    Pidx.PARAM_MOTOR_KV,
+    Pidx.PARAM_MOTOR_RATED_CURRENT,
+    Pidx.PARAM_MOTOR_RS,
+    Pidx.PARAM_MOTOR_LD,
+    Pidx.PARAM_MOTOR_LQ,
+    Pidx.PARAM_MOTOR_PSIF,
+    Pidx.PARAM_MOTOR_KE,
+    Pidx.PARAM_MOTOR_J,
+    Pidx.PARAM_MOTOR_B,
+    Pidx.PARAM_CLBW_COEF,
+    Pidx.PARAM_DCLBW,
+    Pidx.PARAM_DCLKP,
+    Pidx.PARAM_DCLKI,
+    Pidx.PARAM_QCLBW,
+    Pidx.PARAM_QCLKP,
+    Pidx.PARAM_QCLKI,
+    Pidx.PARAM_CFALPHA,
+)
+
+OBSERVER_PAGES = (
+    ("通用", (
+        Pidx.PARAM_ROTOR_OBS,
+        Pidx.PARAM_ABS_POS_OBS,
+        Pidx.PARAM_THETA_OFFSET,
+        Pidx.PARAM_POSITIVE_DIR,
+        Pidx.PARAM_THETA_SOURCE,
+        Pidx.PARAM_VEL_SOURCE,
+    )),
+    ("无感观测器", (Pidx.PARAM_HFI_SMO_THRESHOLD,)),
+    ("HALL 编码器", (
+        Pidx.PARAM_HALL_TABLE_0,
+        Pidx.PARAM_HALL_TABLE_1,
+        Pidx.PARAM_HALL_TABLE_2,
+        Pidx.PARAM_HALL_TABLE_3,
+        Pidx.PARAM_HALL_TABLE_4,
+        Pidx.PARAM_HALL_TABLE_5,
+        Pidx.PARAM_HALL_TABLE_6,
+        Pidx.PARAM_HALL_TABLE_7,
+    )),
+    ("ABI 编码器", (Pidx.PARAM_ABI_COUNT,)),
+    ("SIN/COS 编码器", (
+        Pidx.PARAM_SIN_AMP,
+        Pidx.PARAM_COS_AMP,
+        Pidx.PARAM_SIN_OFFSET,
+        Pidx.PARAM_COS_OFFSET,
+        Pidx.PARAM_SINCOS_FL,
+    )),
+    ("SPI 编码器", (Pidx.PARAM_ENC_CHIP,)),
+)
+
+CONTROLLER_PAGES = (
+    ("PID", (
+        Pidx.PARAM_VLKP,
+        Pidx.PARAM_VLKI,
+        Pidx.PARAM_POS_PIDMODE,
+        Pidx.PARAM_PLKP,
+        Pidx.PARAM_PLKI,
+        Pidx.PARAM_PLKD,
+        Pidx.PARAM_PLALPHA,
+    )),
+    ("MIT", (
+        Pidx.PARAM_MIT_KP,
+        Pidx.PARAM_MIT_KD,
+        Pidx.PARAM_MIT_KPMAX,
+        Pidx.PARAM_MIT_KDMAX,
+        Pidx.PARAM_MIT_TMAX,
+    )),
+    ("高级", (Pidx.PARAM_FWLKP, Pidx.PARAM_FWLKI)),
+)
+
+TRAJECTORY_PARAMS = (
+    Pidx.PARAM_TRAJ_TYPE,
+    Pidx.PARAM_TRAJ_LIMIT_D1,
+    Pidx.PARAM_TRAJ_LIMIT_D2,
+    Pidx.PARAM_TRAJ_LIMIT_D3,
+    Pidx.PARAM_TRAJ_TOLERANCE,
+)
+
+COMMUNICATION_PARAMS = (
+    Pidx.PARAM_CAN_RATE,
+    Pidx.PARAM_CAN_ID,
+    Pidx.PARAM_CAN_MODE,
+)
+
+PROTECTION_PAGES = (
+    ("电气保护", (
+        Pidx.PARAM_UNDERVOLTAGE_THRESHOLD,
+        Pidx.PARAM_OVERVOLTAGE_THRESHOLD,
+        Pidx.PARAM_CURRENT_THRESHOLD,
+        Pidx.PARAM_ELEC_TOLERANCE,
+        Pidx.PARAM_ELEC_TOLERANCE_TIME_MS,
+    )),
+    ("运动保护", (
+        Pidx.PARAM_VEL_LIMIT,
+        Pidx.PARAM_POS_MIN_LIMIT,
+        Pidx.PARAM_POS_MAX_LIMIT,
+        Pidx.PARAM_TAU_LIMIT,
+        Pidx.PARAM_MOTION_TOLERANCE,
+        Pidx.PARAM_MOTION_TOLERANCE_TIME_MS,
+    )),
+)
+
+# 校准卡片配置：fields 为协议参数，actions 为 (命令 ID, 按钮文字)。
+# help_text 可以直接改成自己的说明，点击 info 按钮弹窗显示。
+CALIBRATIONS = {
+    "motor": CalibrationSpec(
+        scope="电机校准",
+        fields=(Pidx.PARAM_TUNE_CURRENT, Pidx.PARAM_TUNE_VEL),
+        actions=(
+            (CmdId.CMD_RL_TUNNING, "RL校准"),
+            (CmdId.CMD_PSIF_TUNNING, "Psif校准"),
+            (CmdId.CMD_MECH_TUNNING, "机械校准"),
+        ),
+        help_text=(
+            "RL 校准：测量相电阻与电感。\n"
+            "Psif 校准：测量永磁体磁链。\n"
+            "机械校准：测量转动惯量与阻尼。\n"
+            "请按实际电机状态填写校准电流/速度后执行。"
+        ),
+    ),
+    "observer": CalibrationSpec(
+        scope="观测器校准",
+        fields=(Pidx.PARAM_TUNE_CURRENT,),
+        actions=(
+            (CmdId.CMD_OBS_TUNNING, "观测器校准"),
+            (CmdId.CMD_SET_ZERO_POS, "设置零位"),
+        ),
+        help_text=(
+            "观测器校准前请确认编码器或霍尔安装正确。\n"
+            "设置零位会把当前位置写入零点。"
+        ),
+    ),
+    # PID/MIT 目前没有独立校准参数；需要时在 fields 中加入 Pidx.PARAM_*。
+    "pid": CalibrationSpec(
+        scope="PID校准",
+        actions=((CmdId.CMD_PID_TUNNING, "PID校准"),),
+        help_text="PID 校准说明请在此编辑。",
+    ),
+    "mit": CalibrationSpec(
+        scope="MIT校准",
+        actions=((CmdId.CMD_MIT_TUNNING, "MIT校准"),),
+        help_text="MIT 校准说明请在此编辑。",
+    ),
+}
 
 
 class SideStack(QWidget):
@@ -43,7 +197,19 @@ class SideStack(QWidget):
             self.nav.setCurrentItem(self._routes[index])
 
 
+def page_with(*cards):
+    """把卡片放进页内导航的页面；卡片占满剩余高度。"""
+    page = QWidget()
+    layout = QVBoxLayout(page)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(12)
+    for card in cards:
+        layout.addWidget(card, 1)
+    return page
+
+
 def section_page(*cards):
+    """兼容旧代码的普通页面包装。"""
     page = QWidget()
     layout = QVBoxLayout(page)
     layout.setContentsMargins(0, 0, 0, 0)
@@ -52,23 +218,6 @@ def section_page(*cards):
         layout.addWidget(card)
     layout.addStretch()
     return page
-
-
-def calibration_row(scope, fields, *actions):
-    """无标题校准卡片，参数与按钮处于同一行。"""
-    widget = SurfaceCard()
-    row = QHBoxLayout(widget)
-    row.setContentsMargins(16, 14, 16, 16)
-    row.setSpacing(8)
-    for name, unit in fields:
-        parameter = ParameterInput(name, f"{scope}/{name}", unit=unit, label_width=120)
-        row.addWidget(parameter, 1)
-    for text in actions:
-        button = preview_button(text)
-        button.setIcon(FIF.UPDATE)
-        button.setProperty("calibrationScope", scope)
-        row.addWidget(button)
-    return widget
 
 
 class ConfigPage(TabbedPage):
@@ -117,16 +266,15 @@ class ConfigPage(TabbedPage):
         self._build_observer()
         self._build_controller()
         self._build_trajectory()
+        self._build_communication()
         self._build_protection()
         self.bind_parameters()
         for button, action in zip(self.action_buttons, (
                 "load_config", "save_config_as", "delete_config", "read_parameters",
                 "write_parameters", "save_to_device", "restore_defaults")):
             self.bind_action(button, action, lambda: self.config_file.currentText())
-        for button in self.findChildren(QWidget):
-            if button.property("calibrationScope"):
-                self.bind_action(button, "calibrate", lambda b=button: {
-                    "section": b.property("calibrationScope"), "operation": b.text()})
+        for card in self.findChildren(CalibrationCard):
+            card.action_requested.connect(self.action_requested)
 
     def set_config_files(self, names, current=None):
         self.config_file.clear()
@@ -135,150 +283,61 @@ class ConfigPage(TabbedPage):
             self.config_file.setCurrentText(current)
 
     def _build_motor(self):
-        motor = self.add_tab("motor", "电机")
-        self.motor_nav = SideStack()
-        motor_common = SectionCard("通用配置")
-        motor_common.add_fields([("电机类型", ["PMSM", "BLDC"]), 
-                                 ("极对数", ""),
-                                 ("KV 值", "rpm/V"), 
-                                 ("额定电流", "A"),
-                                 ("转动惯量(J)", "kg·m²"), 
-                                 ("粘性摩擦系数(B)", "N·m·s/rad"),
-                                 ])
-
-        self.motor_nav.add_page("通用", section_page(motor_common))
-        pmsm = SectionCard("")
-        pmsm.add_fields([("相电阻(Rs)", "Ω"), ("d 轴电感(Ld)", "mH"),
-                         ("q 轴电感(Lq)", "mH"), ("磁链(Psif)", "Wb"),
-                         ("反电动势常数(Ke)", "V/(rad/s mech)")])
-        foc_config = SectionCard("")
-        foc_config.add_fields([("电流环带宽系数", "0~1"), ("d轴电流环带宽", "Hz"),
-                               ("d轴电流环Kp", ""), ("d轴电流环Ki", ""),
-                               ("q轴电流环带宽", "Hz"), ("q轴电流环Kp", ""),
-                               ("q轴电流环Ki", ""), ("电流滤波系数", "0~1")])
-        self.parameter_card = pmsm
-        for name, parameter in pmsm.parameters.items():
-            legacy_name = {"相电阻(Rs)": "相电阻", "磁链(Psif)": "磁链"}.get(name, name)
-            parameter.param_id = f"FOC 整定/{legacy_name}"
-        self.pmsm_scroll, pmsm_layout = self.add_scroll("motor_pmsm")
-        pmsm_layout.addWidget(pmsm)
-        pmsm_layout.addWidget(foc_config)
-        pmsm_layout.addStretch()
-        self.motor_nav.add_page("PMSM", self.pmsm_scroll)
-
-        bldc = SectionCard("")
-        bldc.parameter_scope = "BLDC"
-        self.motor_nav.add_page("BLDC", section_page(bldc))
-        motor.addWidget(self.motor_nav, 1)
-        self.motor_calibration_row = calibration_row(
-            "电机校准", [("校准电流", "A"), ("校准速度", "rad/s")],
-            "RL校准", "Psif校准", "机械校准")
-        motor.addWidget(self.motor_calibration_row)
-
-    def _motor_pmsm(self):
-        card = SectionCard("pmsm电机参数")
-        card.add_fields([("相电阻(Rs)", "Ω"), ("d 轴电感(Ld)", "mH"),
-                         ("q 轴电感(Lq)", "mH"), ("磁链(Psif)", "Wb"),
-                         ("反电动势常数(Ke)", "V/(rad/s mech)")])
-        return card
+        layout = self.add_tab("motor", "电机")
+        self.motor_scroll = ScrollCard("电机参数")
+        self.motor_scroll.add_protocol_fields(*MOTOR_PARAMS)
+        layout.addWidget(self.motor_scroll, 1)
+        self.motor_calibration = CalibrationCard(CALIBRATIONS["motor"])
+        layout.addWidget(self.motor_calibration)
 
     def _build_observer(self):
-        observer = self.add_tab("observer", "观测器")
-        body = QVBoxLayout()
+        layout = self.add_tab("observer", "观测器")
         self.observer_nav = SideStack()
-        self.observer_nav.add_page("通用", section_page(self._observer_general()))
-        self.observer_nav.add_page("无感 观测器", section_page(self._observer_sensorless()))
-        self.observer_nav.add_page("HALL 编码器", section_page(self._observer_enc_hall()))
-        self.observer_nav.add_page("ABI 编码器", section_page(self._observer_enc_abi()))
-        self.observer_nav.add_page("SIN/COS 编码器", section_page(self._observer_enc_sincos()))
-        self.observer_nav.add_page("SPI 编码器", section_page(self._observer_enc_spi()))
-        body.addWidget(self.observer_nav, 1)
-        self.observer_calibration_row = calibration_row(
-            "观测器校准", [("校准电流", "A")], "开始校准", "设置零位")
-        body.addWidget(self.observer_calibration_row)
-        observer.addLayout(body)
-
-    def _observer_general(self):
-        card = SectionCard("")
-        card.add_fields([("转子观测器", ["内置", "无感观测器", "HALL编码器", "ABI编码器", "SINCOS编码器", "SPI编码器"]),
-                         ("绝对位置观测器", ["禁用", "内置", "HALL编码器", "ABI编码器", "SINCOS编码器", "SPI编码器"]),
-                         ("零位偏置", "rad"), ("方向反转", ["false", "true"]),
-                         ("角度源", ["PLL", "RAW"]), ("速度源", ["PLL", "FDM(差分速度)"])])
-        return card
-
-    def _observer_sensorless(self):
-        card = SectionCard("")
-        card.add_fields([("阈值电频率", "Hz")])
-        return card
-
-    def _observer_enc_hall(self):
-        card = SectionCard("")
-        card.add_fields([(f"TABLE[{i}]", "") for i in range(8)])
-        return card
-
-    def _observer_enc_abi(self):
-        card = SectionCard("")
-        card.add_fields([("计数", "")])
-        return card
-
-    def _observer_enc_sincos(self):
-        card = SectionCard("")
-        card.add_fields([("sin幅值", "V"), ("cos幅值", "V"), ("sin偏置", "V"),
-                         ("cos偏置", "V"), ("滤波系数", "0~1")])
-        return card
-
-    def _observer_enc_spi(self):
-        card = SectionCard("")
-        card.add_fields([("芯片", ["MT6816", "MT6835", "AS5047"])])
-        return card
+        for title, params in OBSERVER_PAGES:
+            card = ScrollCard(title)
+            card.add_protocol_fields(*params)
+            self.observer_nav.add_page(title, page_with(card))
+        layout.addWidget(self.observer_nav, 1)
+        self.observer_calibration = CalibrationCard(CALIBRATIONS["observer"])
+        layout.addWidget(self.observer_calibration)
 
     def _build_controller(self):
-        controller = self.add_tab("controller", "控制器")
-        body = QVBoxLayout()
+        layout = self.add_tab("controller", "控制器")
         self.controller_nav = SideStack()
-        pid = SectionCard("PID 参数")
-        pid.add_fields([("速度环 Kp", ""), ("速度环 Ki", ""),
-                        ("位置环模式", ["PVC（三环级联）", "PC（双环）"]),
-                        ("位置环 Kp", ""), ("位置环 Ki", ""), ("位置环 Kd", ""), ("滤波系数", "0~1")])
-        mit = SectionCard("MIT 参数")
-        mit.add_fields([("刚度 Kp", "N·m/rad"), ("阻尼 Kd", "N·m·s/rad"),
-                        ("前馈转矩", "N·m"), ("转矩限幅", "N·m")])
-        advanced = SectionCard("高级")
-        advanced.add_fields([("弱磁环 Kp", ""), ("弱磁环 Ki", "")])
+        for title, params in CONTROLLER_PAGES:
+            card = ScrollCard(title)
+            card.add_protocol_fields(*params)
+            self.controller_nav.add_page(title, page_with(card))
+        layout.addWidget(self.controller_nav, 1)
 
-
-        self.controller_nav.add_page("PID", section_page(pid))
-        self.controller_nav.add_page("MIT", section_page(mit))
-        self.controller_nav.add_page("高级", section_page(advanced))
-
-        body.addWidget(self.controller_nav, 1)
-        self.controller_calibration_row = QWidget()
-        calibration = QHBoxLayout(self.controller_calibration_row)
-        calibration.setContentsMargins(0, 0, 0, 0)
-        calibration.setSpacing(12)
-        calibration.addWidget(calibration_row(
-            "PID校准", [("占位参数", "")], "PID校准"), 1)
-        calibration.addWidget(calibration_row(
-            "MIT校准", [("占位参数", "")], "MIT校准"), 1)
-        body.addWidget(self.controller_calibration_row)
-        controller.addLayout(body)
+        calibration_row = QHBoxLayout()
+        calibration_row.setSpacing(12)
+        self.pid_calibration = CalibrationCard(CALIBRATIONS["pid"])
+        self.mit_calibration = CalibrationCard(CALIBRATIONS["mit"])
+        calibration_row.addWidget(self.pid_calibration, 1)
+        calibration_row.addWidget(self.mit_calibration, 1)
+        layout.addLayout(calibration_row)
 
     def _build_trajectory(self):
-        trajectory = self.add_tab("trajectory", "轨迹规划器")
-        planner = SectionCard("轨迹规划")
-        planner.add_fields([("规划模式", ["禁用", "梯形", "S 曲线", "PVT"]), ("一阶限幅", ""),
-                            ("二阶限幅", ""), ("三阶限幅", ""), ("到位容差", "")])
-        trajectory.addWidget(planner)
+        layout = self.add_tab("trajectory", "轨迹规划器")
+        self.trajectory_scroll = ScrollCard("轨迹规划")
+        self.trajectory_scroll.add_protocol_fields(*TRAJECTORY_PARAMS)
+        layout.addWidget(self.trajectory_scroll, 1)
+
+    def _build_communication(self):
+        layout = self.add_tab("communication", "通讯")
+        self.can_card = ScrollCard("CAN")
+        self.can_card.add_protocol_fields(*COMMUNICATION_PARAMS)
+        layout.addWidget(self.can_card, 1)
+        self.rs485_card = PlainCard("RS485")
+        self.rs485_card.content.addWidget(CaptionLabel("RS485（预留）"))
+        layout.addWidget(self.rs485_card)
 
     def _build_protection(self):
-        protection = self.add_tab("protection", "保护")
+        layout = self.add_tab("protection", "保护")
         self.protection_nav = SideStack()
-        electrical = SectionCard("电气保护")
-        electrical.add_fields([("欠压阈值", "V"), ("过压阈值", "V"), ("过流阈值", "A"),
-                            ("故障容忍度", "0-1"),("故障容忍时间", "ms")])
-        motion = SectionCard("运动保护")
-        motion.add_fields([("速度限制", "rad/s"), ("最小位置", "rad"), ("最大位置", "rad"),
-                           ("转矩限幅", "N·m"), ("超限容忍度", "0-1"),("超限容忍时间", "ms")])
-        self.protection_nav.add_page("电气保护", section_page(electrical))
-        self.protection_nav.add_page("运动保护", section_page(motion))
-        protection.addWidget(self.protection_nav)
+        for title, params in PROTECTION_PAGES:
+            card = ScrollCard(title)
+            card.add_protocol_fields(*params)
+            self.protection_nav.add_page(title, page_with(card))
+        layout.addWidget(self.protection_nav, 1)

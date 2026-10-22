@@ -2,7 +2,6 @@
 #define __LOG_H
 
 #include "protocol.h"
-#include "field.h"
 #include "protection.h"
 #include "flash.h"
 
