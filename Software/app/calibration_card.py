@@ -31,6 +31,10 @@ class CalibrationCard(PlainCard):
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
 
+        self.help_button = icon_action(FIF.INFO, f"{spec.scope}说明")
+        self.help_button.clicked.connect(self._show_help)
+        row.addWidget(self.help_button)
+
         for param_id in spec.fields:
             meta = PARAMETERS[param_id]
             parameter = ParameterInput(
@@ -55,9 +59,6 @@ class CalibrationCard(PlainCard):
             button.clicked.connect(lambda _=False, b=button: self._emit_action(b))
             row.addWidget(button)
 
-        self.help_button = icon_action(FIF.INFO, f"{spec.scope}说明")
-        self.help_button.clicked.connect(self._show_help)
-        row.addWidget(self.help_button)
         self.content.addLayout(row)
 
     def _emit_action(self, button):

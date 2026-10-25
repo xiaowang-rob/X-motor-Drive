@@ -13,21 +13,6 @@
 //   abs 只认 ops 与不透明 handle，不感知型号、外设与引脚。
 // ============================================================
 
-typedef enum
-{
-    ENC_OFF,  // 编码器未开启
-    ENC_MAIN, // 主编码器 主要的角度获取
-    ENC_AUX,  // 辅编码器 启动时的辅助角度获取
-} eEncoderMode;
-
-typedef enum
-{
-    ENC_NONE, /* 无 */
-    MT6816,   /* MT6816 */
-    MT6835,   /* MT6835 */
-    AS5047,   /* AS5047 */
-} eEncoderChip;
-
 #define ENCODER_ERR_VALID_LIMIT 100 // valid_counter 超过该值判编码器通讯出问题
 #define ENCODER_VALID_COUNT_MAX 110 // 失效方向的饱和值
 
@@ -44,8 +29,6 @@ typedef struct
     const tEncoderOps *ops; // 驱动 ops（装配时挂）
     void *handle;           // 驱动实例（装配时挂）
 
-    eEncoderMode mode; // 编码器模式（主/辅）
-
     eDeviceStatus dstate;   // 设备状态
     uint16_t resolution;    // 单圈分辨率（open 时由驱动给出，之后不变）
     float rad_per_lsb;      // 每 LSB 弧度（由 resolution 派生）
@@ -54,7 +37,7 @@ typedef struct
 } tEncoder;
 
 // 启动对象：ops/handle 须已由装配层挂好（任一为空返回 false）
-bool encoder_init(tEncoder *enc, eEncoderMode mode);
+bool encoder_init(tEncoder *enc);
 
 // 周期任务：读取一次角度并更新状态
 void encoder_task(tEncoder *enc);

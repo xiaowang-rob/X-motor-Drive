@@ -64,14 +64,13 @@ extern tUartDriver g_uart; // MCU 串口
 extern tUartDriver g_usb;  // USB CDC 虚拟串口
 
 // ---- 传感器 ----
-extern tEncoder g_enc_int; // 内置编码器
-extern tEncoder g_enc_ext; // 外部编码器
-extern tSense g_sense;     // 电流 / 母线 / 温度采样
+extern tEncoder g_enc; // 编码器
+extern tSense g_sense; // 电流 / 母线 / 温度采样
 
 // 装配并启动全板设备
 bool bsp_base_init(void);
 
 // 编码器初始化
-bool bsp_enc_init(eEncoderMode int_mode, eEncoderMode ext_mode, eEncoderChip ext_chip);
+bool bsp_enc_init(eObsList enc, eSpiEncList spi_enc);
 
 #endif // __BSP_CFG_H

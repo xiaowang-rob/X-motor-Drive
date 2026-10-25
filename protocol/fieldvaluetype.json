@@ -1,25 +1,13 @@
 {
-      "type_enum_name": "eFieldValueType",
-      "value_type": {
-    "FLD_U8": {
-      "value": 0,
-      "c_type": "uint8_t"
-    },
-    "FLD_U16": {
-      "value": 1,
-      "c_type": "uint16_t"
-    },
-    "FLD_U32": {
-      "value": 2,
-      "c_type": "uint32_t"
-    },
-    "FLD_F32": {
-      "value": 3,
-      "c_type": "float"
-    },
-    "FLD_BOOL": {
-      "value": 4,
-      "c_type": "bool"
-    }
+  "type_enum_name": "eFieldValueType",
+  "value_type": {
+    "FLD_U8": {"value": 0, "c_type": "uint8_t", "size": 1, "format": "B", "signed": false},
+    "FLD_U16": {"value": 1, "c_type": "uint16_t", "size": 2, "format": "H", "signed": false},
+    "FLD_U32": {"value": 2, "c_type": "uint32_t", "size": 4, "format": "I", "signed": false},
+    "FLD_F32": {"value": 3, "c_type": "float", "size": 4, "format": "f", "signed": true},
+    "FLD_BOOL": {"value": 4, "c_type": "bool", "size": 1, "format": "B", "signed": false},
+    "FLD_I4": {"value": 5, "c_type": "int8_t", "size": 1, "bits": 4, "signed": true},
+    "FLD_I16": {"value": 6, "c_type": "int16_t", "size": 2, "format": "h", "signed": true},
+    "FLD_I24": {"value": 7, "c_type": "int32_t", "size": 3, "bits": 24, "signed": true}
   }
 }

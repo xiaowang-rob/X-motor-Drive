@@ -139,22 +139,6 @@
       "default": 0.0
     },
     {
-      "field": "minutes",
-      "name": "分钟",
-      "id_name": "DATA_MINUTES",
-      "unit": "min",
-      "val_type": "FLD_F32",
-      "default": 0.0
-    },
-    {
-      "field": "seconds",
-      "name": "秒",
-      "id_name": "DATA_SECONDS",
-      "unit": "s",
-      "val_type": "FLD_F32",
-      "default": 0.0
-    },
-    {
       "field": "state",
       "name": "状态",
       "id_name": "DATA_STATE",
@@ -313,6 +297,10 @@
           {
             "id_name": "WARNING_OBS_RUN",
             "comment": "观测器运行异常"
+          },
+          {
+            "id_name": "WARNING_INVALID_INPUT",
+            "comment": "非法输入"
           }
         ]
       }

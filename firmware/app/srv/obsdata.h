@@ -1,5 +1,5 @@
-#ifndef __DATA_H
-#define __DATA_H
+#ifndef __OBSDATA_H
+#define __OBSDATA_H
 
 #include "data_list.h"
 

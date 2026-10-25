@@ -41,17 +41,14 @@ WAVE_CHANNELS = (
 WAVE_CHANNEL_COUNT = 5
 
 # 控制模式来自 obsdata 的 eCoreState；顺序即左侧下拉和右侧顶部导航的顺序。
-CONTROL_MODES = (
-    ("空闲", eCoreState.CORE_IDLE),
+MODE_PAGE_MODES =  (
     ("开环模式", eCoreState.CORE_OPENLOOP),
     ("电流/力矩", eCoreState.CORE_CURRENT_MODE),
     ("PID速度", eCoreState.CORE_PID_SPEED),
     ("PID位置", eCoreState.CORE_PID_POSITION),
     ("MIT", eCoreState.CORE_MIT_MODE),
 )
-
-# 空闲不在导航栏建页，只保留一个不参与导航的占位内容。
-MODE_PAGE_MODES = CONTROL_MODES[1:]
+MODE_STACK_HEIGHT = 96
 
 
 class WaveCanvas(QWidget):
@@ -90,33 +87,24 @@ class WaveCanvas(QWidget):
 
 class TargetControl(QWidget):
     """按起点到终点映射滑条，支持终点小于起点及零跨度。"""
-    def __init__(self, name, unit, endpoint, parent=None, *, label_width=32,
-                 selector=None):
+    def __init__(self, name, unit, endpoint, parent=None, *, label_width=100):
         super().__init__(parent)
         self.name = name
         self.unit = unit
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
-        self.label = None
-        self.selector = selector
-        if selector is None:
-            self.label = BodyLabel(name)
-            self.label.setFixedWidth(label_width)
-            row.addWidget(self.label)
-        else:
-            selector.setFixedWidth(label_width)
-            selector.setFixedHeight(32)
-            selector.setAccessibleName(name)
-            row.addWidget(selector)
+        self.label = BodyLabel(self._title(name, unit))
+        self.label.setFixedWidth(label_width)
+        row.addWidget(self.label)
         self.minimum = QLabel("0")
         self.minimum.setFixedWidth(28)
         self.minimum.setAlignment(Qt.AlignCenter)
         self.minimum.setAccessibleName(name + "最小值")
         self.minimum.setToolTip("最小值")
-        self.maximum = self._line_edit(name + "最大值", str(endpoint))
+        self.maximum = self._line_edit(name + "最大值", str(endpoint), 96)
         self.maximum.setToolTip("最大值")
-        self.target = self._line_edit(name + "目标值", "0")
+        self.target = self._line_edit(name + "目标值", "0", 96)
         self.target.setToolTip("目标值 / " + unit)
         setCustomStyleSheet(
             self.target,
@@ -139,14 +127,15 @@ class TargetControl(QWidget):
         self.maximum.editingFinished.connect(self._update_range)
         self._update_range()
 
+    @staticmethod
+    def _title(name, unit):
+        return f"{name}({unit})" if unit else name
+
     def set_spec(self, name, unit, endpoint):
         """切换同一滑条代表的控制量（开环角度/速度、电流/力矩）。"""
         self.name = name
         self.unit = unit
-        if self.label is not None:
-            self.label.setText(name)
-        if self.selector is not None:
-            self.selector.setAccessibleName(name)
+        self.label.setText(self._title(name, unit))
         self.minimum.setAccessibleName(name + "最小值")
         self.maximum.setAccessibleName(name + "最大值")
         self.maximum.setToolTip("最大值")
@@ -160,10 +149,10 @@ class TargetControl(QWidget):
         self._update_range()
 
     @staticmethod
-    def _line_edit(name, value):
+    def _line_edit(name, value, width=96):
         edit = LineEdit()
         edit.setText(value)
-        edit.setFixedSize(132, 32)
+        edit.setFixedSize(width, 32)
         edit.setAccessibleName(name)
         return edit
 
@@ -283,12 +272,6 @@ class ControlPage(ContentPage):
         side = QVBoxLayout(self.control_side)
         side.setContentsMargins(0, 0, 0, 0)
         side.setSpacing(8)
-        self.control_mode = ComboBox()
-        for label, state in CONTROL_MODES:
-            self.control_mode.addItem(label, userData=state)
-        self.control_mode.setAccessibleName("控制模式")
-        self.control_mode.setFixedSize(120, 32)
-        side.addWidget(self.control_mode)
         self.action_buttons = []
         for text in ["释放电机", "设置零点", "设置限位"]:
             button = preview_button(text)
@@ -303,12 +286,12 @@ class ControlPage(ContentPage):
         divider.setMinimumHeight(140)
         control_body.addWidget(divider)
 
+        self.enable_buttons = []
         self.mode_nav = SegmentedWidget()
         self.mode_stack = QStackedWidget()
-        self.mode_stack.setFixedHeight(200)
+        self.mode_stack.setFixedHeight(MODE_STACK_HEIGHT)
         self.mode_routes = []
         self._mode_syncing = False
-        self.mode_stack.addWidget(self._build_idle_page())
         builders = (
             self._build_openloop_page,
             self._build_current_torque_page,
@@ -317,12 +300,11 @@ class ControlPage(ContentPage):
             self._build_mit_page,
         )
         for index, ((label, _), builder) in enumerate(
-                zip(MODE_PAGE_MODES, builders), start=1):
+                zip(MODE_PAGE_MODES, builders)):
             route = f"control_mode_{index}"
             self.mode_routes.append(route)
             self.mode_nav.addItem(route, label)
             self.mode_stack.addWidget(builder())
-        self.mode_nav.setVisible(False)
 
         right = QVBoxLayout()
         right.setContentsMargins(0, 0, 0, 0)
@@ -342,20 +324,55 @@ class ControlPage(ContentPage):
         self.sliders = [control.slider for control in self.target_controls]
         self.targets = [control.target for control in self.target_controls]
 
-        self.control_mode.currentIndexChanged.connect(self._on_mode_combo_changed)
         self.mode_nav.currentItemChanged.connect(self._on_mode_route_changed)
-        self._apply_mode(0, emit=False)
+        self._apply_mode(0)
 
         self.bind_parameters()
         for button, action in zip(self.action_buttons, ("disable", "set_zero", "set_limit")):
             self.bind_action(button, action)
 
-    def _make_target(self, name, unit, endpoint, label_width=48, selector=None):
-        control = TargetControl(
-            name, unit, endpoint, label_width=label_width, selector=selector)
+    def _make_target(self, name, unit, endpoint, label_width=100):
+        control = TargetControl(name, unit, endpoint, label_width=label_width)
         control.send_button.clicked.connect(
             lambda _=False, c=control: self._send_target(c))
         return control
+
+    def _mode_page(self, selector, *controls):
+        """模式页：左侧使能/选择列，右侧滑条或 CSV 控制。"""
+        page = QWidget()
+        row = QHBoxLayout(page)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(10)
+
+        left = QVBoxLayout()
+        left.setContentsMargins(0, 0, 0, 0)
+        left.setSpacing(8)
+        enable = preview_button("使能", primary=True)
+        enable.setFixedWidth(100)
+        enable.setAccessibleName("使能电机")
+        enable.clicked.connect(lambda: self.action_requested.emit("enable", None))
+        left.addWidget(enable)
+        self.enable_buttons.append(enable)
+        if selector is not None:
+            selector.setFixedWidth(100)
+            selector.setFixedHeight(32)
+            left.addWidget(selector)
+        left.addStretch()
+        row.addLayout(left)
+
+        divider = VerticalSeparator()
+        divider.setFixedWidth(1)
+        divider.setMinimumHeight(60)
+        row.addWidget(divider)
+
+        right = QVBoxLayout()
+        right.setContentsMargins(0, 0, 0, 0)
+        right.setSpacing(8)
+        for control in controls:
+            right.addWidget(control)
+        right.addStretch()
+        row.addLayout(right, 1)
+        return page
 
     @staticmethod
     def _page(*items):
@@ -371,35 +388,18 @@ class ControlPage(ContentPage):
         layout.addStretch()
         return page
 
-    @staticmethod
-    def _selector_row(title, options):
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(8)
-        row.addWidget(BodyLabel(title))
-        combo = ComboBox()
-        combo.setFixedHeight(32)
-        for label, value in options:
-            combo.addItem(label, userData=value)
-        row.addWidget(combo)
-        row.addStretch()
-        return row, combo
-
-    def _build_idle_page(self):
-        return self._page(BodyLabel("空闲模式，无控制输入"))
-
     def _build_openloop_page(self):
         self.openloop_kind = ComboBox()
         self.openloop_kind.setFixedHeight(32)
         self.openloop_kind.addItem("开环角度", userData=0)
         self.openloop_kind.addItem("开环速度", userData=1)
         self.openloop_kind.setAccessibleName("开环输入")
-        self.openloop_duty = self._make_target("占空比", "%", 100, label_width=72)
-        self.openloop_control = self._make_target(
-            "开环角度", "rad", 6.28, label_width=72, selector=self.openloop_kind)
+        self.openloop_duty = self._make_target("占空比", "%", 100)
+        self.openloop_control = self._make_target("开环角度", "rad", 6.28)
         self.openloop_kind.currentIndexChanged.connect(
             self._on_openloop_kind_changed)
-        return self._page(self.openloop_duty, self.openloop_control)
+        return self._mode_page(
+            self.openloop_kind, self.openloop_duty, self.openloop_control)
 
     def _on_openloop_kind_changed(self, index):
         if index == 0:
@@ -413,12 +413,12 @@ class ControlPage(ContentPage):
         self.current_torque_kind.addItem("电流", userData=0)
         self.current_torque_kind.addItem("力矩", userData=1)
         self.current_torque_kind.setAccessibleName("控制量")
-        self.current_torque_control = self._make_target(
-            "电流", "A", 10, label_width=48, selector=self.current_torque_kind)
+        self.current_torque_control = self._make_target("电流", "A", 10)
         self.current_control = self.current_torque_control
         self.current_torque_kind.currentIndexChanged.connect(
             self._on_current_torque_kind_changed)
-        return self._page(self.current_torque_control)
+        return self._mode_page(
+            self.current_torque_kind, self.current_torque_control)
 
     def _on_current_torque_kind_changed(self, index):
         if index == 0:
@@ -427,15 +427,15 @@ class ControlPage(ContentPage):
             self.current_torque_control.set_spec("力矩", "N·m", 5)
 
     def _build_pid_speed_page(self):
-        self.speed_control = self._make_target("速度", "rad/s", 100, label_width=48)
-        return self._page(self.speed_control)
+        self.speed_control = self._make_target("速度", "rad/s", 100)
+        return self._mode_page(None, self.speed_control)
 
     def _build_pid_position_page(self):
-        self.position_control = self._make_target("位置", "rad", 180, label_width=48)
-        return self._page(self.position_control)
+        self.position_control = self._make_target("位置", "rad", 180)
+        return self._mode_page(None, self.position_control)
 
     def _build_mit_page(self):
-        self.mit_position = self._make_target("位置", "rad", 180, label_width=48)
+        self.mit_position = self._make_target("位置", "rad", 180)
 
         execution = QHBoxLayout()
         execution.setContentsMargins(0, 0, 0, 0)
@@ -450,13 +450,12 @@ class ControlPage(ContentPage):
         execution.addWidget(self.mit_csv_path, 1)
         execution.addWidget(self.mit_csv_button)
 
-        execution.addWidget(BodyLabel("周期"))
+        execution.addWidget(BodyLabel("周期(ms)"))
         self.mit_period = DoubleSpinBox()
         self.mit_period.setRange(1, 60000)
         self.mit_period.setDecimals(0)
         self.mit_period.setValue(100)
-        self.mit_period.setSuffix(" ms")
-        self.mit_period.setFixedSize(140, 32)
+        self.mit_period.setFixedSize(120, 32)
         execution.addWidget(self.mit_period)
 
         self.mit_config_send = preview_button("开始执行", primary=True)
@@ -465,7 +464,19 @@ class ControlPage(ContentPage):
         self.mit_config_send.clicked.connect(self._send_mit_config)
         execution.addWidget(self.mit_config_send)
 
-        return self._page(self.mit_position, execution)
+        self.mit_kind = ComboBox()
+        self.mit_kind.setFixedHeight(32)
+        self.mit_kind.addItem("滑条控制", userData=0)
+        self.mit_kind.addItem("CSV控制", userData=1)
+        self.mit_kind.setAccessibleName("MIT 控制方式")
+
+        self.mit_stack = QStackedWidget()
+        self.mit_stack.setFixedHeight(72)
+        self.mit_stack.addWidget(self._page(self.mit_position))
+        self.mit_stack.addWidget(self._page(execution))
+        self.mit_kind.currentIndexChanged.connect(self.mit_stack.setCurrentIndex)
+
+        return self._mode_page(self.mit_kind, self.mit_stack)
 
     def _choose_mit_csv(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -482,41 +493,27 @@ class ControlPage(ContentPage):
             },
         )
 
-    def _on_mode_combo_changed(self, index):
-        if index >= 0:
-            self._apply_mode(index, sync_combo=False)
-
     def _on_mode_route_changed(self, route):
         if route in self.mode_routes:
-            # 导航切换只更新页面，不回写模式下拉框。
-            self._apply_mode(self.mode_routes.index(route) + 1, sync_combo=False)
+            self._apply_mode(self.mode_routes.index(route))
 
-    def _apply_mode(self, index, emit=True, sync_combo=True):
-        if self._mode_syncing or not 0 <= index < len(CONTROL_MODES):
+    def _apply_mode(self, index):
+        if self._mode_syncing or not 0 <= index < len(MODE_PAGE_MODES):
             return
         self._mode_syncing = True
-        self.current_mode = CONTROL_MODES[index][1]
+        self.current_mode = MODE_PAGE_MODES[index][1]
         self.mode_stack.setCurrentIndex(index)
-        if index == 0:
-            self.mode_nav.setVisible(False)
-        else:
-            self.mode_nav.setVisible(True)
-            self.mode_nav.setCurrentItem(self.mode_routes[index - 1])
-        if sync_combo:
-            self.control_mode.setCurrentIndex(index)
+        self.mode_nav.setCurrentItem(self.mode_routes[index])
         self._mode_syncing = False
 
-        if emit:
-            self.action_requested.emit(
-                "set_mode",
-                {"mode": self.current_mode, "label": CONTROL_MODES[index][0]},
-            )
-
     def set_mode(self, core_state):
-        for index, (_, state) in enumerate(CONTROL_MODES):
+        for index, (_, state) in enumerate(MODE_PAGE_MODES):
             if state == core_state:
-                self._apply_mode(index, emit=False, sync_combo=True)
+                self._apply_mode(index)
                 return
+        if core_state == eCoreState.CORE_IDLE:
+            self.current_mode = eCoreState.CORE_IDLE
+            return
         raise ValueError(f"未知控制模式：{core_state}")
 
     def get_mode(self):

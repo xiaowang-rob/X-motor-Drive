@@ -25,6 +25,8 @@
 #include "uart_mcu.h"
 #include "uart_usb_cdc.h"
 
+#include "parameter_list.h"
+
 const uint32_t TIC_PWM = GATE_TIC_PWM;
 const float F_PWM = GATE_F_PWM;          // PWM频率
 const float T_PWM = 1 / F_PWM;           // PWM周期
@@ -73,17 +75,11 @@ tUartDriver g_usb = {
 };
 
 // ---- 传感器 ----
-tEncoder g_enc_int = {
-    .ops = &mt6816_ops, // 板载编码器型号固定
+tEncoder g_enc = {
+    .ops = &mt6816_ops, // 默认板载编码器型号固定
     .handle = &g_mt6816_int,
-    .mode = ENC_OFF,
 };
-tEncoder g_enc_ext = {
-    // ops / handle 由参数中的型号决定，见 dev_ext_enc_init
-    .ops = NULL, // 默认无
-    .handle = NULL,
-    .mode = ENC_OFF,
-};
+
 tSense g_sense = {
     .ops = &sen_mcu_ops,
     .handle = &g_sen_mcu,
@@ -163,34 +159,48 @@ bool bsp_base_init(void)
     return true;
 }
 
-// 板载编码器初始化（型号固定，ops/handle 已在定义处挂好）
-bool bsp_enc_init(eEncoderMode int_mode, eEncoderMode ext_mode, eEncoderChip ext_chip)
+// 外接编码器初始化
+bool bsp_enc_init(eObsList enc, eSpiEncList spi_enc)
 {
-    bool enc_ok = false;
-    // 板载编码器初始化
-    enc_ok = encoder_init(&g_enc_int, int_mode);
     // 外接编码器初始化
-    switch (ext_chip)
+    switch (enc)
     {
-    case MT6816:
-        g_enc_ext.ops = &mt6816_ops;
-        g_enc_ext.handle = &g_mt6816_ext;
+    case OBS_NONE:
+        return true;
+    case OBS_INT_ENC:
+        g_enc.ops = &mt6816_ops;
+        g_enc.handle = &g_mt6816_int;
         break;
-    case MT6835:
-        g_enc_ext.ops = &mt6835_ops;
-        g_enc_ext.handle = &g_mt6835_ext;
+    case OBS_ENC_HALL:
+        // TODO:实现hall编码器驱动
         break;
-    case AS5047:
-        g_enc_ext.ops = &as5047_ops;
-        g_enc_ext.handle = &g_as5047_ext;
+    case OBS_ENC_SPI:
+        switch (spi_enc)
+        {
+        case ENC_MT6816:
+            g_enc.ops = &mt6816_ops;
+            g_enc.handle = &g_mt6816_ext;
+            break;
+        case ENC_MT6835:
+            g_enc.ops = &mt6835_ops;
+            g_enc.handle = &g_mt6835_ext;
+            break;
+        case ENC_AS5047:
+            g_enc.ops = &as5047_ops;
+            g_enc.handle = &g_as5047_ext;
+            break;
+        }
+        break;
+    case OBS_ENC_ABI:
+        // TODO:实现abi编码器驱动
+        break;
+    case OBS_ENC_SINCOS:
+        // TODO:实现sincos编码器驱动
         break;
 
     default:
-        g_enc_ext.ops = NULL;
-        g_enc_ext.handle = NULL;
-        enc_ok = true;
-        return enc_ok;
+        return false;
     }
-    enc_ok = encoder_init(&g_enc_ext, ext_mode);
-    return enc_ok;
+
+    return encoder_init(&g_enc);
 }

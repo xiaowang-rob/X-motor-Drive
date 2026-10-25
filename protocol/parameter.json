@@ -49,6 +49,14 @@
       "default": 3
     },
     {
+      "field": "motor_rated_velocity",
+      "name": "额定速度",
+      "id_name": "PARAM_MOTOR_RATED_VELOCITY",
+      "unit": "rad/s",
+      "val_type": "FLD_F32",
+      "default": 100
+    },
+    {
       "field": "motor_rs",
       "name": "定子电阻(Rs)",
       "id_name": "PARAM_MOTOR_RS",

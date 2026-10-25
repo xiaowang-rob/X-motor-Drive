@@ -28,13 +28,16 @@ typedef struct
     tPosAcc pacc;             // 位置记录
     tPLL pll;                 // PLL
 
-    float theta_e;
-    float theta_m;
+    float theta_e; // 电角度
+    float theta_r; // 转子角度
+    float vel;     // 转子速度
+    float pos;     // 转子位置
 } tObs;
 
 bool obs_init(tObs *obs);
 bool obs_loop_task(tObs *obs);
 void obs_tim_task(tObs *obs, float ts, float *theta_r,
                   float *theta_e, float *vel, float *pos);
-
+void obs_set_zero(tObs *obs);
+void obs_set_pos_limit(tObs *obs);
 #endif

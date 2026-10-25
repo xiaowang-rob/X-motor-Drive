@@ -8,7 +8,7 @@
 
 typedef struct
 {
-    bool pos_pvc; // pvc控制
+    uint8_t pos_pvc; // pvc控制
     tPI PI_iq;
     tPI PI_id;
     tPI PI_fw, PI_vel;
@@ -19,7 +19,7 @@ typedef struct
 void ctrl_foc_init(tCtrl *con, tParameter *param,
                    float t_cl, float vmax);
 void ctrl_pid_init(tCtrl *con, tParameter *param,
-                   bool pvc, float t_ml, float t_ll);
+                   uint8_t pvc, float t_ml, float t_ll);
 void ctrl_mit_init(tCtrl *con, tParameter *param);
 void ctrl_foc_reset(tCtrl *con);
 void ctrl_pid_reset(tCtrl *con);

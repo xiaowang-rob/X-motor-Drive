@@ -9,7 +9,7 @@
 
 #include "bsp_math.h"
 
-bool encoder_init(tEncoder *enc, eEncoderMode mode)
+bool encoder_init(tEncoder *enc)
 {
     if (!enc || !enc->ops || !enc->handle)
         return false;
@@ -17,7 +17,6 @@ bool encoder_init(tEncoder *enc, eEncoderMode mode)
         return false;
 
     // 只重置业务字段；ops / handle 是装配结果，不在本层改动
-    enc->mode = mode;
     enc->dstate = DEV_OFFLINE;
     enc->resolution = 0U;
     enc->rad_per_lsb = 0.0f;

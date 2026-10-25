@@ -10,20 +10,20 @@ void ctrl_foc_init(tCtrl *con, tParameter *param,
 
 // pid初始化
 void ctrl_pid_init(tCtrl *con, tParameter *param,
-                   bool pvc, float t_ml, float t_ll)
+                   uint8_t pvc, float t_ml, float t_ll)
 {
-    pi_init(&con->PI_vel, param->vlkp, param->vlki, param->limit_current, t_ml);
-    pi_init(&con->PI_fw, param->vlkp, param->vlki, param->limit_current, t_ml);
+    pi_init(&con->PI_vel, param->vlkp, param->vlki, param->motor_rated_current, t_ml);
+    pi_init(&con->PI_fw, param->vlkp, param->vlki, param->motor_rated_current, t_ml);
     con->pos_pvc = pvc;
-    if (!pvc)
-        pid_init(&con->PID_pos, param->plkp, param->plki, param->plkd, param->limit_current, param->plalpha, t_ml);
+    if (pvc == POS_PID_PC)
+        pid_init(&con->PID_pos, param->plkp, param->plki, param->plkd, param->motor_rated_current, param->plalpha, t_ml);
     else
-        pid_init(&con->PID_pos, param->plkp, param->plki, param->plkd, param->limit_vel, param->plalpha, t_ll);
+        pid_init(&con->PID_pos, param->plkp, param->plki, param->plkd, param->motor_rated_velocity, param->plalpha, t_ll);
 }
 // mit 初始化
 void ctrl_mit_init(tCtrl *con, tParameter *param)
 {
-    mit_init(&con->mit, param->mit_kp, param->mit_kd, param->mit_tsta, param->mit_tmax);
+    mit_init(&con->mit, param->mit_kp, param->mit_kd, param->mit_kpmax, param->mit_kdmax, param->mit_tmax);
 }
 
 void ctrl_foc_reset(tCtrl *con)

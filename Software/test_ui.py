@@ -20,7 +20,7 @@ from app.parameter_input import ParameterInput
 from app.calibration_card import CalibrationCard
 from app.config_page import COMMUNICATION_PARAMS, MOTOR_PARAMS
 from app.control_page import (
-    CONTROL_MODES, MODE_PAGE_MODES, WAVE_CHANNEL_COUNT, WAVE_CHANNELS,
+    MODE_PAGE_MODES, WAVE_CHANNEL_COUNT, WAVE_CHANNELS,
 )
 from app.services import payload_codec as codec
 from protocol import (
@@ -254,7 +254,7 @@ class UITest(unittest.TestCase):
         self.assertEqual(len(page.channel_badges), WAVE_CHANNEL_COUNT)
         self.assertEqual(page.channel_card.width(), 192)
         self.assertEqual(page.control_side.width(), 120)
-        self.assertIs(page.control_mode.parentWidget(), page.control_side)
+        self.assertEqual(len(page.action_buttons), 3)
         self.assertTrue(all(
             button.parentWidget() is page.control_side for button in page.action_buttons))
         self.assertLess(
@@ -313,63 +313,61 @@ class UITest(unittest.TestCase):
             self.assertEqual(float(control.target.text()), 5)
             control.maximum.setText("10")
         self.assertIn("A", page.targets[2].toolTip())
-        self.assertEqual(page.control_mode.itemText(2), CONTROL_MODES[2][0])
 
     def test_control_modes(self):
         page = self.window.control_page
+        # 其他测试可能切换过模式，先回到开环页再验证。
+        page.set_mode(eCoreState.CORE_OPENLOOP)
         self.assertIsInstance(page.mode_nav, SegmentedWidget)
-        self.assertEqual(page.control_mode.count(), len(CONTROL_MODES))
-        self.assertEqual(page.mode_stack.count(), len(CONTROL_MODES))
+        self.assertEqual(page.mode_stack.count(), len(MODE_PAGE_MODES))
         self.assertEqual(len(page.mode_routes), len(MODE_PAGE_MODES))
-        self.assertEqual(
-            [page.control_mode.itemText(index) for index in range(page.control_mode.count())],
-            [label for label, _ in CONTROL_MODES],
-        )
-        self.assertEqual(page.control_mode.itemData(0), eCoreState.CORE_IDLE)
-        self.assertEqual(page.get_mode(), eCoreState.CORE_IDLE)
+        self.assertEqual(len(page.enable_buttons), len(MODE_PAGE_MODES))
+        self.assertTrue(all(button.isEnabled() for button in page.enable_buttons))
+        self.assertEqual(page.get_mode(), eCoreState.CORE_OPENLOOP)
         self.assertEqual(page.mode_stack.currentIndex(), 0)
-        self.assertTrue(page.mode_nav.isHidden())
+        self.assertFalse(page.mode_nav.isHidden())
+        self.assertEqual(page.mode_nav.currentRouteKey(), page.mode_routes[0])
 
         page.set_mode(eCoreState.CORE_OPENLOOP)
-        self.assertEqual(page.mode_stack.currentIndex(), 1)
-        self.assertEqual(page.control_mode.currentIndex(), 1)
+        self.assertEqual(page.mode_stack.currentIndex(), 0)
         self.assertEqual(page.mode_nav.currentRouteKey(), page.mode_routes[0])
-        self.assertFalse(page.mode_nav.isHidden())
         self.assertEqual(page.openloop_kind.count(), 2)
         self.assertEqual(page.openloop_control.name, "开环角度")
+        self.assertEqual(page.openloop_control.label.text(), "开环角度(rad)")
         page.openloop_kind.setCurrentIndex(1)
         self.assertEqual(page.openloop_control.name, "开环速度")
+        self.assertEqual(page.openloop_control.label.text(), "开环速度(rad/s)")
         self.assertEqual(page.openloop_control.maximum.text(), "200")
 
         page.set_mode(eCoreState.CORE_CURRENT_MODE)
-        self.assertEqual(page.mode_stack.currentIndex(), 2)
+        self.assertEqual(page.mode_stack.currentIndex(), 1)
         self.assertEqual(page.current_torque_kind.count(), 2)
         self.assertEqual(page.current_torque_control.name, "电流")
+        self.assertEqual(page.current_torque_control.label.text(), "电流(A)")
         page.current_torque_kind.setCurrentIndex(1)
         self.assertEqual(page.current_torque_control.name, "力矩")
+        self.assertEqual(page.current_torque_control.label.text(), "力矩(N·m)")
 
         page.set_mode(eCoreState.CORE_PID_SPEED)
-        self.assertEqual(page.mode_stack.currentIndex(), 3)
+        self.assertEqual(page.mode_stack.currentIndex(), 2)
         page.set_mode(eCoreState.CORE_PID_POSITION)
-        self.assertEqual(page.mode_stack.currentIndex(), 4)
+        self.assertEqual(page.mode_stack.currentIndex(), 3)
 
         page.set_mode(eCoreState.CORE_MIT_MODE)
-        self.assertEqual(page.mode_stack.currentIndex(), 5)
+        self.assertEqual(page.mode_stack.currentIndex(), 4)
         self.assertEqual(page.mit_period.value(), 100)
+        self.assertEqual(page.mit_kind.count(), 2)
+        self.assertEqual(page.mit_stack.count(), 2)
         self.assertIsInstance(page.mit_csv_button, ToolButton)
         self.assertTrue(page.mit_config_send.property("deviceAction"))
         self.assertTrue(page.mit_config_send.isEnabled())
         self.assertEqual(page.mit_config_send.text(), "开始执行")
 
-        # 导航切换不回写模式选择框；模式选择框可以跳转导航页。
+        # 导航只切页，不发送模式命令。
         page.set_mode(eCoreState.CORE_OPENLOOP)
-        combo_index = page.control_mode.currentIndex()
-        page.mode_nav.setCurrentItem(page.mode_routes[2])
-        self.assertEqual(page.mode_stack.currentIndex(), 3)
-        self.assertEqual(page.control_mode.currentIndex(), combo_index)
-        page.control_mode.setCurrentIndex(2)
-        self.assertEqual(page.mode_stack.currentIndex(), 2)
-        self.assertEqual(page.mode_nav.currentRouteKey(), page.mode_routes[1])
+        page.mode_nav.setCurrentItem(page.mode_routes[1])
+        self.assertEqual(page.mode_stack.currentIndex(), 1)
+        self.assertEqual(page.get_mode(), eCoreState.CORE_CURRENT_MODE)
 
         requests = []
 
@@ -378,12 +376,16 @@ class UITest(unittest.TestCase):
 
         page.action_requested.connect(record_action)
         try:
-            page.control_mode.setCurrentIndex(3)
-            self.assertEqual(requests[-1][0], "set_mode")
-            self.assertEqual(requests[-1][1]["mode"], eCoreState.CORE_PID_SPEED)
+            page.set_mode(eCoreState.CORE_OPENLOOP)
+            page.mode_nav.setCurrentItem(page.mode_routes[1])
+            self.assertFalse(any(action == "set_mode" for action, _ in requests))
+
+            page.enable_buttons[0].clicked.emit()
+            self.assertEqual(requests[-1][0], "enable")
 
             page.set_mode(eCoreState.CORE_MIT_MODE)
             page.set_device_enabled(True)
+            page.mit_kind.setCurrentIndex(1)
             page.mit_csv_path.setText("/tmp/mit.csv")
             page.mit_period.setValue(200)
             page.mit_config_send.clicked.emit()
@@ -395,7 +397,8 @@ class UITest(unittest.TestCase):
             page.set_device_enabled(True)
             page.openloop_kind.setCurrentIndex(0)
             page.current_torque_kind.setCurrentIndex(0)
-            page.set_mode(eCoreState.CORE_IDLE)
+            page.mit_kind.setCurrentIndex(0)
+            page.set_mode(eCoreState.CORE_OPENLOOP)
 
     def test_parameter_defaults_from_protocol(self):
         page = self.window.config_page
@@ -477,9 +480,9 @@ class UITest(unittest.TestCase):
         values = service._collect_config_values()
         self.assertIn("PARAM_MOTOR_RS", values)
 
-        self.assertEqual(service._target_command("位置"), CmdId.CMD_PID_POS)
+        self.assertEqual(service._target_command("位置"), CmdId.CMD_PID_POS_CTRL)
         w.control_page.set_mode(eCoreState.CORE_MIT_MODE)
-        self.assertEqual(service._target_command("位置"), CmdId.CMD_MIT_POS)
+        self.assertEqual(service._target_command("位置"), CmdId.CMD_MIT_CTRL)
         w.control_page.set_mode(eCoreState.CORE_IDLE)
 
         packet = service.serial._build_packet(CmdId.CMD_CONNECT, b"")
@@ -512,20 +515,21 @@ class UITest(unittest.TestCase):
                          [(m.id, v) for m, v in records])
 
         status_values = [1, 0, 0, 48.0, 40.0, 41.0]
+        heartbeat = codec.pack_heartbeat(status_values)
+        self.assertEqual(codec.unpack_heartbeat(heartbeat), status_values)
+
         wave_ids = [Didx.DATA_POSITION]
-        heartbeat = codec.pack_heartbeat(status_values, wave_ids, [3.14])
-        got_status, got_wave = codec.unpack_heartbeat(heartbeat, wave_ids)
-        self.assertEqual(got_status, status_values)
+        data_stream = codec.pack_data_stream(wave_ids, [3.14])
+        got_wave = codec.unpack_data_stream(data_stream, wave_ids)
         self.assertAlmostEqual(got_wave[0], 3.14, places=5)
         with self.assertRaises(ValueError):
             codec.pack_stream_set(list(range(6)))
 
-        self.assertEqual(len(codec.pack_openloop(0.5, 1.0)), 8)
+        self.assertEqual(len(codec.pack_openloop_ctrl(False, 0.5, 1.0)), 7)
         self.assertEqual(len(codec.pack_current_torque(True, 2.0)), 5)
         self.assertEqual(len(codec.pack_single(1.0)), 4)
-        self.assertEqual(len(codec.pack_mit_full(1, 2, 3, 4, 5)), 20)
+        self.assertEqual(len(codec.pack_mit_ctrl(1, 2, 3)), 8)
         self.assertEqual(len(codec.pack_mit_config(1, 2)), 8)
-        self.assertEqual(len(codec.pack_mit_vt(3, 4)), 8)
         self.assertEqual(codec.pack_connect(True), b"\x01")
         self.assertEqual(len(codec.pack_iap_erase(1024)), 4)
         self.assertEqual(len(codec.pack_iap_write(0, b"x" * 120)), 124)

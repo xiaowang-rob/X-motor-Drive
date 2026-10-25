@@ -9,16 +9,6 @@
 typedef struct
 {
     eCoreState mode;
-    eCmdTarget tag;
-
-    bool ext_sw; // 拓展bool
-
-    float value; // 指令值
-} tCmd;
-
-typedef struct
-{
-    eCoreState mode;
     struct // 两帧
     {
         bool theta_or_vel; // 角度还是速度
@@ -45,7 +35,6 @@ typedef struct
     {
         float kp;     // 刚度
         float kd;     // 阻尼
-        bool traj;    // traj 开关
         float pos;    // 位置 (rad)
         float vel;    // pvt vel
         float tau_ff; // 转矩前馈
@@ -105,11 +94,9 @@ void core_init(void);
 void core_reset(void);
 void current_filter_init(float cfalpha);
 void core_disable(void);
-bool core_cmd_set(tCmd *cmd);
-void core_ov_cmd_set(float ud, float uq, float theta_e);
-void core_ot_cmd_set_theta(float theta_e);
-void core_ot_cmd_set_vel(float vel);
-
+void core_cmd_set(tCmdValue *cmd);
+void core_set_pos_zero(void);
+void core_set_pos_limit(void);
 void core_enter_fault(eFault fault);
 void core_enter_warning(eWarning warning);
 

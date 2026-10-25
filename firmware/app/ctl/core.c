@@ -59,7 +59,7 @@ void core_init(void)
     // foc初始化
     ctrl_foc_init(&ctrl, &g_param, g_slotcon.t_high, core.fb.vmax);
     // pid控制器初始化
-    ctrl_pid_init(&ctrl, &g_param, g_param.pvc_enable, g_slotcon.t_med, g_slotcon.t_low);
+    ctrl_pid_init(&ctrl, &g_param, g_param.pos_pidmode, g_slotcon.t_med, g_slotcon.t_low);
     // mit控制器初始化
     ctrl_mit_init(&ctrl, &g_param);
 
@@ -119,93 +119,66 @@ void core_disable(void)
 // 0xb1 corestate valueid 0/1 value
 // 控制模式 - 传输开始 - 参数值id - 辅助bool - value
 // 核心使能和指令写入
-bool core_cmd_set(tCmd *cmd)
+void core_cmd_set(tCmdValue *cmd)
 {
     // 非法输入
     if (cmd->mode < CORE_OPENLOOP || cmd->mode > CORE_MIT_MODE)
-        return false;
-    if (core.state == CORE_FAULT || core.state == CORE_WARNING)
-        return false;
-    core.state = cmd->mode;
+    {
+        core_enter_warning(WARNING_INVALID_INPUT);
+    }
+    if (cmd->mode != core.state)
+    {
+        if (core.state != CORE_IDLE)
+        {
+            core_enter_warning(WARNING_INVALID_INPUT);
+        }
+        core.state = cmd->mode;
+    }
+
     core.enable = true;
     switch (cmd->mode)
     {
     case CORE_OPENLOOP:
-        switch (cmd->val)
+        if (cmd->openloop.theta_or_vel)
+            core.ref.vel_elec = cmd->openloop.value;
+        else
         {
-        case CMD_ID:
-            /* code */
-            break;
-
-        default: // 非法输入
-            return false;
+            core.ref.theta_elec = cmd->openloop.value;
+            core.ref.vel_elec = 0;
         }
-        break;
+        core.ref.duty = cmd->openloop.duty;
     case CORE_CURRENT_MODE:
-        core.ref.iq = cmd->iq;
-        if (core.ot_enable)
+        if (cmd->current_ctrl.cur_or_tau)
         {
-            core.ref.id = cmd->id;
-            core.ref.vel_elec = cmd->vel_elec;
-        }
-        break;
-    case CORE_PID_SPEED:
-        traj_set_target(&traj, cmd->vel);
-        break;
-    case CORE_PID_POSITION:
-        if (traj.cfg.type == TRAJ_DISABLE)
-        {
-            core.ref.pos = cmd->pos;
-        }
-        else if (traj.cfg.type == TRAJ_PVT)
-        {
-            traj_pvt_add_target(&traj, cmd->pos, cmd->vel, cmd->tp);
+            core.ref.tau = cmd->current_ctrl.value;
+            core.ref.iq = core.ref.tau / g_param.motor_ke;
         }
         else
-            traj_set_target(&traj, cmd->pos);
+        {
+            core.ref.iq = cmd->current_ctrl.value;
+        }
+
+        break;
+    case CORE_PID_SPEED:
+        traj_set_target(&traj, cmd->vel_pid_ctrl.vel);
+        break;
+    case CORE_PID_POSITION:
+        traj_set_target(&traj, cmd->pos_pid_ctrl.pos);
         break;
     case CORE_MIT_MODE:
         if (traj.cfg.type == TRAJ_DISABLE)
         {
-            core.ref.tau_ff = cmd->tau_ff;
-            core.ref.vel = cmd->vel;
-            core.ref.pos = cmd->pos;
-        }
-        else if (traj.cfg.type == TRAJ_PVT)
-        {
-            traj_pvt_add_target(&traj, cmd->pos, cmd->vel, cmd->tp);
+            core.ref.tau_ff = cmd->mit_ctrl.tau_ff;
+            core.ref.vel = cmd->mit_ctrl.vel;
+            core.ref.pos = cmd->mit_ctrl.pos;
         }
         else
-            traj_set_target(&traj, cmd->pos);
+            traj_set_target(&traj, cmd->mit_ctrl.pos);
         break;
     default:
-        return false;
+        core_enter_warning(WARNING_INVALID_INPUT);
+        break;
     }
-    return true;
-}
-// 开环电压指令输入
-void core_ov_cmd_set(float ud, float uq, float theta_e)
-{
-    core.fb.ud = ud;
-    core.fb.uq = uq;
-    core.fb.theta_elec = theta_e;
-    core.oc_enable = true;
-    core.enable = true;
-}
-// 角度开环指令输入
-void core_ot_cmd_set_theta(float theta_e)
-{
-
-    core.ref.vel_elec = 0.0f;
-    core.fb.theta_elec = theta_e;
-    core.ot_enable = true;
-    core.enable = true;
-}
-void core_ot_cmd_set_vel(float vel)
-{
-    core.ref.vel_elec = vel;
-    core.ot_enable = true;
-    core.enable = true;
 }
 
 // 核心进入错误状态
@@ -226,6 +199,24 @@ void core_enter_warning(eWarning warning)
     core.state = CORE_WARNING;
     core.warning = warning;
     gate_drv_enable(&g_gate, false);
+}
+// 设置零点
+void core_set_pos_zero(void)
+{
+    if (core.state != CORE_IDLE)
+    {
+        core_enter_warning(WARNING_INVALID_INPUT);
+    }
+    obs_set_zero(&obs);
+}
+// 设置限位
+void core_set_pos_limit(void)
+{
+    if (core.state != CORE_IDLE)
+    {
+        core_enter_warning(WARNING_INVALID_INPUT);
+    }
+    obs_set_pos_limit(&obs);
 }
 // // 整定辅助函数 内环参数更新
 // void tune_cl_param_update(float alpha, float beta)
@@ -334,25 +325,22 @@ void obs_foc_task(float ts)
 void traj_task(float ts)
 {
     // 电流模式 整定 其他状态不需要轨迹规划
-    if (core.state <= CURRENT_MODE)
+    if (core.state <= CORE_CURRENT_MODE)
         return;
     traj_Update(&traj, ts);
-    if (core.state == MIT_MODE)
+    if (traj.cfg.type == TRAJ_DISABLE)
+        return;
+    if (core.state == CORE_MIT_MODE)
     {
-        if (traj.cfg.type == TRAJ_DISABLE)
-            return;
-
         // 使用内置轨迹规划器 输出轨迹信息
         core.ref.pos = traj.out.value;
         core.ref.vel = traj.out.rate_d1;
         core.ref.tau_ff = g_param.motor_j * traj.out.rate_d2 + g_param.motor_b * traj.out.rate_d1;
     }
-    else if (core.state == PID_SPEED)
+    else if (core.state == CORE_PID_SPEED)
         core.ref.vel = traj.out.value;
-    else if (core.state == PID_POSITION)
+    else if (core.state == CORE_PID_POSITION)
     {
-        if (traj.cfg.type == TRAJ_DISABLE)
-            return;
         core.ref.pos = traj.out.value;
     }
 }
@@ -360,18 +348,18 @@ void traj_task(float ts)
 // 跑pid速度环/mit
 void vl_pid_mit_task(float ts)
 {
-    if (core.state == PID_SPEED)
+    if (core.state == CORE_PID_SPEED)
     { // 速度环pid控制 或 位置环
         core.ref.iq = pid_vl_update(&ctrl, core.ref.vel, core.fb.vel);
     }
-    else if (core.state == PID_POSITION)
+    else if (core.state == CORE_PID_POSITION)
     {
-        if (ctrl.pos_pvc)
+        if (ctrl.pos_pvc == POS_PID_PVC)
             core.ref.iq = pid_vl_update(&ctrl, core.ref.vel, core.fb.vel);
         else
             core.ref.iq = pid_pl_update(&ctrl, core.ref.pos, core.fb.pos);
     }
-    else if (core.state == MIT_MODE)
+    else if (core.state == CORE_MIT_MODE)
     {
         core.ref.tau = mit_con_update(&ctrl, core.ref.tau_ff, core.ref.pos, core.fb.pos,
                                       core.ref.vel, core.fb.vel);
@@ -382,7 +370,7 @@ void vl_pid_mit_task(float ts)
 // 弱磁控制
 void weak_mag_task(float ts)
 {
-    if (core.state == PID_SPEED)
+    if (core.state == CORE_PID_SPEED)
     {
         float vout;
         arm_sqrt_f32((core.fb.ud * core.fb.ud + core.fb.uq * core.fb.uq), &vout);
@@ -397,7 +385,7 @@ void weak_mag_task(float ts)
 // pid位置环
 void pl_pid_task(float ts)
 {
-    if (core.state == PID_POSITION && ctrl.pos_pvc)
+    if (core.state == CORE_PID_POSITION && ctrl.pos_pvc == POS_PID_PVC)
     { // 位置环pid pvc控制
         core.ref.vel = foc_pidpl_update(&ctrl, core.ref.pos, core.fb.pos);
     }

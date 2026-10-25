@@ -177,7 +177,11 @@ class DeviceService(QObject):
             self._iap_worker.push_frame(cmd_id, payload)
         try:
             if cmd_id == CmdId.CMD_HEARTBEAT:
-                self._handle_stream(payload)
+                self._handle_heartbeat(payload)
+                return
+
+            if cmd_id == CmdId.CMD_DATA_STREAM:
+                self._handle_data_stream(payload)
                 return
 
             if cmd_id == CmdId.CMD_PARAM_READ:
@@ -187,18 +191,10 @@ class DeviceService(QObject):
                     self._host(f"读取 {meta.name} = {value}")
                 return
 
-            if cmd_id == CmdId.CMD_PARAM_ALLREAD:
-                start, records = codec.unpack_params_all_read(payload)
-                for meta, value in records:
-                    self.config_page.set_protocol_parameter(meta.id, value)
-                if not records:
-                    self._host(f"参数批量读取完成（起点 {start}）")
-                return
-
             if cmd_id in (
-                CmdId.CMD_PARAM_WRITE, CmdId.CMD_PARAM_ALLWRITE,
+                CmdId.CMD_PARAM_WRITE,
                 CmdId.CMD_PARAM_SAVE, CmdId.CMD_PARAM_RELOAD,
-                CmdId.CMD_PARAM_ALLRELOAD, CmdId.CMD_DATA_STREAM_SET,
+                CmdId.CMD_DATA_STREAM_SET,
             ):
                 if payload:
                     self._host(
@@ -250,11 +246,15 @@ class DeviceService(QObject):
     def _decode_text(payload):
         return payload.rstrip(b"\x00\xff").decode("utf-8", errors="ignore").strip()
 
-    def _handle_stream(self, payload):
-        status_values, values = codec.unpack_heartbeat(
-            payload, self._stream_channels)
+    def _handle_heartbeat(self, payload):
+        """心跳只更新状态；连接状态由串口层收到任意回包判断。"""
+        status_values = codec.unpack_heartbeat(payload)
         for channel_id, value in zip(STATUS_CHANNELS, status_values):
             self._update_observed(channel_id, value)
+
+    def _handle_data_stream(self, payload):
+        """示波数据流独立于心跳，按订阅顺序喂给波形。"""
+        values = codec.unpack_data_stream(payload, self._stream_channels)
         for row, channel_id in self._wave_map.items():
             if channel_id not in self._stream_channels:
                 continue
@@ -293,19 +293,41 @@ class DeviceService(QObject):
         if not meta:
             return
         self._send_payload(
-            CmdId.CMD_PARAM_READ, bytes([meta.id]), f"读取参数 {meta.name}")
+            CmdId.CMD_PARAM_READ, codec.pack_param_read(meta), f"读取参数 {meta.name}")
+
+    def _send_parameter_write(self, meta, value):
+        try:
+            payload = codec.pack_param(meta, value)
+        except (TypeError, ValueError, struct_error) as error:
+            self._host(f"{meta.name} 编码失败：{error}")
+            return False
+        return self._send_payload(
+            CmdId.CMD_PARAM_WRITE, payload, f"写入参数 {meta.name} = {value}")
 
     def _write_parameter(self, protocol_id, value):
         meta = PARAMETERS.get(protocol_id)
         if not meta:
             return
-        try:
-            payload = codec.pack_param(meta, value)
-        except (TypeError, ValueError, struct_error) as error:
-            self._host(f"{meta.name} 编码失败：{error}")
-            return
+        if self._send_parameter_write(meta, value):
+            self._apply_parameters()
+
+    def _apply_parameters(self):
         self._send_payload(
-            CmdId.CMD_PARAM_WRITE, payload, f"写入参数 {meta.name} = {value}")
+            CmdId.CMD_PARAM_WRITE,
+            codec.special_request("CMD_PARAM_WRITE", "apply"),
+            "应用参数",
+        )
+
+
+    def _read_all_parameters(self):
+        if not self._connected:
+            self._host("未连接，忽略：轮询读取全部参数")
+            return
+        params = sorted(PARAMETERS.values(), key=lambda item: item.id)
+        self._host(f"开始轮询读取 {len(params)} 个参数")
+        for meta in params:
+            self._send_payload(
+                CmdId.CMD_PARAM_READ, codec.pack_param_read(meta), f"读取参数 {meta.name}")
 
     def _default_parameter(self, protocol_id):
         meta = PARAMETERS.get(protocol_id)
@@ -339,13 +361,13 @@ class DeviceService(QObject):
         elif action == "delete_config":
             self._delete_config()
         elif action == "read_parameters":
-            self._send_payload(CmdId.CMD_PARAM_ALLREAD, b"", "读取全部参数")
+            self._read_all_parameters()
         elif action == "write_parameters":
             self._write_all_parameters()
         elif action == "save_to_device":
             self._send_empty(CmdId.CMD_PARAM_SAVE, "保存参数")
         elif action == "restore_defaults":
-            self._send_empty(CmdId.CMD_PARAM_ALLRELOAD, "恢复默认参数")
+            self._reload_all_parameters()
             self._load_config("default", announce=True)
 
     def _handle_control_action(self, action, payload):
@@ -376,6 +398,8 @@ class DeviceService(QObject):
             self._set_subscription()
         elif action == "disable":
             self._send_empty(CmdId.CMD_DISABLE, "释放电机")
+        elif action == "enable":
+            self._send_enable_control()
         elif action == "set_zero":
             self._send_empty(CmdId.CMD_SET_ZERO_POS, "设置零点")
         elif action == "set_limit":
@@ -397,36 +421,65 @@ class DeviceService(QObject):
         value = float(value)
         if channel == "位置":
             if mode == eCoreState.CORE_MIT_MODE:
-                return CmdId.CMD_MIT_POS, codec.pack_mit_full(
-                    self._parameter_value(Pidx.PARAM_MIT_KP, 0.0),
-                    self._parameter_value(Pidx.PARAM_MIT_KD, 0.0),
-                    value,
-                    0.0,
-                    0.0,
-                )
-            return CmdId.CMD_PID_POS, codec.pack_single(value)
+                return CmdId.CMD_MIT_CTRL, codec.pack_mit_ctrl(value)
+            return CmdId.CMD_PID_POS_CTRL, codec.pack_single(value)
         if channel == "速度":
-            return CmdId.CMD_PID_VEL, codec.pack_single(value)
+            return CmdId.CMD_PID_VEL_CTRL, codec.pack_single(value)
         if channel in ("电流", "力矩"):
             is_torque = (
                 channel == "力矩"
                 or self.control_page.current_torque_kind.currentData() == 1
             )
-            return CmdId.CMD_CUR_TAU_MODE, codec.pack_current_torque(is_torque, value)
-        if channel == "开环角度":
-            duty = self.control_page.openloop_duty.value()
-            return CmdId.CMD_OPENLOOP_THETA, codec.pack_openloop(duty, value)
-        if channel == "开环速度":
-            duty = self.control_page.openloop_duty.value()
-            return CmdId.CMD_OPENLOOP_VEL, codec.pack_openloop(duty, value)
-        if channel == "占空比":
-            duty = value
-            if self.control_page.openloop_kind.currentData() == 0:
-                return CmdId.CMD_OPENLOOP_THETA, codec.pack_openloop(
-                    duty, self.control_page.openloop_control.value())
-            return CmdId.CMD_OPENLOOP_VEL, codec.pack_openloop(
-                duty, self.control_page.openloop_control.value())
+            return CmdId.CMD_CUR_TAU_CTRL, codec.pack_current_torque(is_torque, value)
+        if channel in ("开环角度", "开环速度", "占空比"):
+            if channel == "占空比":
+                duty = value
+                is_velocity = self.control_page.openloop_kind.currentData() == 1
+                angle_or_velocity = self.control_page.openloop_control.value()
+            else:
+                duty = self.control_page.openloop_duty.value()
+                is_velocity = channel == "开环速度"
+                angle_or_velocity = value
+            return CmdId.CMD_OPENLOOP_CTRL, codec.pack_openloop_ctrl(
+                is_velocity, duty, angle_or_velocity)
         return None, b""
+
+    def _send_enable_control(self):
+        """使能按钮直接发送当前模式的控制命令。"""
+        mode = self.control_page.get_mode()
+        if mode == eCoreState.CORE_OPENLOOP:
+            is_velocity = self.control_page.openloop_kind.currentData() == 1
+            payload = codec.pack_openloop_ctrl(
+                is_velocity,
+                self.control_page.openloop_duty.value(),
+                self.control_page.openloop_control.value(),
+            )
+            self._send_payload(CmdId.CMD_OPENLOOP_CTRL, payload, "使能/开环控制")
+        elif mode == eCoreState.CORE_CURRENT_MODE:
+            is_torque = self.control_page.current_torque_kind.currentData() == 1
+            payload = codec.pack_current_torque(
+                is_torque, self.control_page.current_torque_control.value())
+            self._send_payload(CmdId.CMD_CUR_TAU_CTRL, payload, "使能/电流力矩控制")
+        elif mode == eCoreState.CORE_PID_SPEED:
+            self._send_payload(
+                CmdId.CMD_PID_VEL_CTRL,
+                codec.pack_single(self.control_page.speed_control.value()),
+                "使能/PID速度控制",
+            )
+        elif mode == eCoreState.CORE_PID_POSITION:
+            self._send_payload(
+                CmdId.CMD_PID_POS_CTRL,
+                codec.pack_single(self.control_page.position_control.value()),
+                "使能/PID位置控制",
+            )
+        elif mode == eCoreState.CORE_MIT_MODE:
+            self._send_payload(
+                CmdId.CMD_MIT_CTRL,
+                codec.pack_mit_ctrl(self.control_page.mit_position.value()),
+                "使能/MIT控制",
+            )
+        else:
+            self._host("当前页面没有可发送的控制命令")
 
     def _parameter_value(self, protocol_id, fallback=0.0):
         try:
@@ -438,31 +491,28 @@ class DeviceService(QObject):
         return self._build_target_payload(channel, 0.0)[0]
 
     def _write_all_parameters(self):
+        if not self._connected:
+            self._host("未连接，忽略：写入全部参数")
+            return
         values = self._collect_config_values()
         records = [
             (meta, values.get(meta.id_name, meta.default))
             for meta in sorted(PARAMETERS.values(), key=lambda item: item.id)
         ]
-        chunk = []
-        payload_size = 2
+        self._host(f"开始逐个写入 {len(records)} 个参数")
         for meta, value in records:
-            size = codec.value_size(meta)
-            if chunk and payload_size + size > 128:
-                self._send_payload(
-                    CmdId.CMD_PARAM_ALLWRITE,
-                    codec.pack_params_all_write(chunk),
-                    f"批量写入 {chunk[0][0].id_name}..{chunk[-1][0].id_name}",
-                )
-                chunk = []
-                payload_size = 2
-            chunk.append((meta, value))
-            payload_size += size
-        if chunk:
-            self._send_payload(
-                CmdId.CMD_PARAM_ALLWRITE,
-                codec.pack_params_all_write(chunk),
-                f"批量写入 {chunk[0][0].id_name}..{chunk[-1][0].id_name}",
-            )
+            self._send_parameter_write(meta, value)
+        self._apply_parameters()
+
+    def _reload_all_parameters(self):
+        if not self._connected:
+            self._host("未连接，忽略：重置全部参数")
+            return
+        self._send_payload(
+            CmdId.CMD_PARAM_RELOAD,
+            codec.special_request("CMD_PARAM_RELOAD", "all"),
+            "重置全部参数",
+        )
 
     def _set_subscription(self):
         channels = []

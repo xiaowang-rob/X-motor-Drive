@@ -131,7 +131,7 @@ void obs_tim_task(tObs *obs, float ts, float *theta_r,
     }
 }
 
-static void obs_set_zero(tObs *obs)
+void obs_set_zero(tObs *obs)
 {
 
     switch (obs->type)
@@ -159,8 +159,10 @@ static void obs_set_zero(tObs *obs)
     }
 }
 
-void obs_set_max_min(tObs *obs, float max_pos, float min_pos)
+void obs_set_pos_limit(tObs *obs)
 {
-    obs->pacc.max_pos = max_pos;
-    obs->pacc.min_pos = min_pos;
+    if (obs->pos > 0)
+        obs->pacc.max_pos = obs->pos;
+    else
+        obs->pacc.min_pos = obs->pos;
 }
