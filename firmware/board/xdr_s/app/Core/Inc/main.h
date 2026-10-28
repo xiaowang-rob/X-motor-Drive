@@ -29,6 +29,21 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include "stm32g4xx_hal.h"
 
+#include "stm32g4xx_ll_adc.h"
+#include "stm32g4xx_ll_dma.h"
+#include "stm32g4xx_ll_rcc.h"
+#include "stm32g4xx_ll_bus.h"
+#include "stm32g4xx_ll_crs.h"
+#include "stm32g4xx_ll_system.h"
+#include "stm32g4xx_ll_exti.h"
+#include "stm32g4xx_ll_cortex.h"
+#include "stm32g4xx_ll_utils.h"
+#include "stm32g4xx_ll_pwr.h"
+#include "stm32g4xx_ll_spi.h"
+#include "stm32g4xx_ll_tim.h"
+#include "stm32g4xx_ll_usart.h"
+#include "stm32g4xx_ll_gpio.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -57,18 +72,12 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define LED0_Pin GPIO_PIN_4
-#define LED0_GPIO_Port GPIOA
-#define LED1_Pin GPIO_PIN_5
-#define LED1_GPIO_Port GPIOA
-#define EN12V_Pin GPIO_PIN_0
-#define EN12V_GPIO_Port GPIOB
-#define USBCS_Pin GPIO_PIN_15
-#define USBCS_GPIO_Port GPIOA
-#define INTCS_Pin GPIO_PIN_6
-#define INTCS_GPIO_Port GPIOB
-#define EXTCS_Pin GPIO_PIN_7
+#define EXTCS_Pin LL_GPIO_PIN_0
 #define EXTCS_GPIO_Port GPIOB
+#define INTCS_Pin LL_GPIO_PIN_1
+#define INTCS_GPIO_Port GPIOB
+#define USBCS_Pin LL_GPIO_PIN_15
+#define USBCS_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 

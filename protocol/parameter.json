@@ -49,14 +49,6 @@
       "default": 3
     },
     {
-      "field": "motor_rated_velocity",
-      "name": "额定速度",
-      "id_name": "PARAM_MOTOR_RATED_VELOCITY",
-      "unit": "rad/s",
-      "val_type": "FLD_F32",
-      "default": 100
-    },
-    {
       "field": "motor_rs",
       "name": "定子电阻(Rs)",
       "id_name": "PARAM_MOTOR_RS",
@@ -499,6 +491,14 @@
       "default": 0.0
     },
     {
+      "field": "velocity_limit",
+      "name": "速度限制",
+      "id_name": "PARAM_VELOCITY_LIMIT",
+      "unit": "rad/s",
+      "val_type": "FLD_F32",
+      "default": 500
+    },
+    {
       "field": "pos_pidmode",
       "name": "位置环模式",
       "id_name": "PARAM_POS_PIDMODE",
@@ -551,6 +551,52 @@
       "unit": "0~1",
       "val_type": "FLD_F32",
       "default": 0.5
+    },
+    {
+      "field": "pos_limit_mode",
+      "name": "位置限制模式",
+      "id_name": "PARAM_POS_LIMIT_MODE",
+      "unit": "",
+      "val_type": "FLD_U8",
+      "default": 0,
+      "options": {
+        "enum_name": "ePosLimitMode",
+        "comment": "位置限制模式",
+        "items": [
+          {
+            "id_name": "POS_LIMIT_DISABLE",
+            "comment": "禁用"
+          },
+          {
+            "id_name": "POS_LIMIT_MIN",
+            "comment": "最小位置限制"
+          },
+          {
+            "id_name": "POS_LIMIT_MAX",
+            "comment": "最大位置限制"
+          },
+          {
+            "id_name": "POS_LIMIT_BOTH",
+            "comment": "双端位置限制"
+          }
+        ]
+      }
+    },
+    {
+      "field": "pos_min_limit",
+      "name": "最小位置",
+      "id_name": "PARAM_POS_MIN_LIMIT",
+      "unit": "rad",
+      "val_type": "FLD_F32",
+      "default": -15000
+    },
+    {
+      "field": "pos_max_limit",
+      "name": "最大位置",
+      "id_name": "PARAM_POS_MAX_LIMIT",
+      "unit": "rad",
+      "val_type": "FLD_F32",
+      "default": 15000
     },
     {
       "field": "mit_kp",
@@ -609,9 +655,9 @@
       "default": 0.0
     },
     {
-      "field": "traj_type",
-      "name": "轨迹类型",
-      "id_name": "PARAM_TRAJ_TYPE",
+      "field": "traj_mode",
+      "name": "轨迹规划器模式",
+      "id_name": "PARAM_TRAJ_MODE",
       "unit": "",
       "val_type": "FLD_U8",
       "default": 0,
@@ -683,76 +729,28 @@
       "default": 26
     },
     {
-      "field": "current_threshold",
-      "name": "过流阈值",
-      "id_name": "PARAM_CURRENT_THRESHOLD",
-      "unit": "A",
+      "field": "overtemp_threshold",
+      "name": "过温阈值",
+      "id_name": "PARAM_OVERTEMP_THRESHOLD",
+      "unit": "℃",
       "val_type": "FLD_F32",
-      "default": 30
+      "default": 80
     },
     {
-      "field": "elec_tolerance",
-      "name": "电气超限容忍度",
-      "id_name": "PARAM_ELEC_TOLERANCE",
+      "field": "pro_tolerance",
+      "name": "保护超限容忍度",
+      "id_name": "PARAM_PRO_TOLERANCE",
       "unit": "0~1",
       "val_type": "FLD_F32",
       "default": 0.1
     },
     {
-      "field": "elec_tolerance_time_ms",
-      "name": "电气超限容忍时间",
-      "id_name": "PARAM_ELEC_TOLERANCE_TIME_MS",
+      "field": "pro_tolerance_time_ms",
+      "name": "保护超限容忍时间",
+      "id_name": "PARAM_PRO_TOLERANCE_TIME_MS",
       "unit": "ms",
       "val_type": "FLD_F32",
       "default": 1
-    },
-    {
-      "field": "vel_limit",
-      "name": "速度限制",
-      "id_name": "PARAM_VEL_LIMIT",
-      "unit": "rad/s",
-      "val_type": "FLD_F32",
-      "default": 500
-    },
-    {
-      "field": "pos_min_limit",
-      "name": "最小位置",
-      "id_name": "PARAM_POS_MIN_LIMIT",
-      "unit": "rad",
-      "val_type": "FLD_F32",
-      "default": -15000
-    },
-    {
-      "field": "pos_max_limit",
-      "name": "最大位置",
-      "id_name": "PARAM_POS_MAX_LIMIT",
-      "unit": "rad",
-      "val_type": "FLD_F32",
-      "default": 15000
-    },
-    {
-      "field": "tau_limit",
-      "name": "力矩限制",
-      "id_name": "PARAM_TAU_LIMIT",
-      "unit": "N·m",
-      "val_type": "FLD_F32",
-      "default": 10
-    },
-    {
-      "field": "motion_tolerance",
-      "name": "运动超限容忍度",
-      "id_name": "PARAM_MOTION_TOLERANCE",
-      "unit": "0~1",
-      "val_type": "FLD_F32",
-      "default": 0.1
-    },
-    {
-      "field": "motion_tolerance_time_ms",
-      "name": "运动超限容忍时间",
-      "id_name": "PARAM_MOTION_TOLERANCE_TIME_MS",
-      "unit": "ms",
-      "val_type": "FLD_F32",
-      "default": 10
     },
     {
       "field": "can_rate",

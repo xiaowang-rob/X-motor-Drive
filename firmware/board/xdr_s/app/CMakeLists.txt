@@ -1,105 +1,116 @@
-# ============================================================
-# XDr-S / xdr_s 板级 CMakeLists.txt
-#
-# 由顶层 firmware/CMakeLists.txt 以 add_subdirectory(board/<BOARD>/<FW_TYPE>) 引入。
-#
-# 提供目标：
-#   stm32_hal    厂商 HAL 库（含 CMSIS 头路径、USE_HAL_DRIVER/STM32G474xx 定义）
-#   stm32_core   CubeMX 外设初始化（Core/Src）
-#   stm32_usb    USB Device 中间件（含 usbd_cdc_if 等应用层）
-#   board_dsp    CMSIS-DSP 头路径与预编译库
-#   board_hw     板级资源（本板暂无板根 *.c 与独立 usb 描述符，占位 INTERFACE）
-#   board_drv    本板芯片驱动（drv/）+ 板级支撑层（bsp/）
-#
-# 另向父作用域暴露 BOARD_STARTUP（启动文件，交给可执行目标而非静态库）。
-# ============================================================
+cmake_minimum_required(VERSION 3.22)
 
-# ── HAL 库 ──
-file(GLOB_RECURSE HAL_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32G4xx_HAL_Driver/Src/*.c
-)
-add_library(stm32_hal STATIC ${HAL_SOURCES})
-target_include_directories(stm32_hal PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32G4xx_HAL_Driver/Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32G4xx_HAL_Driver/Inc/Legacy
+#
+# This file is generated only once,
+# and is not re-generated if converter is called multiple times.
+#
+# User is free to modify the file as much as necessary
+#
+
+# Setup compiler settings
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS ON)
+
+
+# Define the build type
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Debug")
+endif()
+
+# Set the project name
+set(CMAKE_PROJECT_NAME XDr-S)
+
+# Enable compile command to ease indexing with e.g. clangd
+set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
+
+# Core project settings
+project(${CMAKE_PROJECT_NAME})
+message("Build type: " ${CMAKE_BUILD_TYPE})
+
+# Enable CMake support for ASM and C languages
+enable_language(C ASM)
+
+# Create an executable object type
+add_executable(${CMAKE_PROJECT_NAME})
+
+# Add STM32CubeMX generated sources
+add_subdirectory(cmake/stm32cubemx)
+
+# ── xfoc 算法库（仓库根 firmware/xfoc）──
+# 各板独立编译，xfoc 只编一次、链进本板的 XDr-S。
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../xfoc ${CMAKE_BINARY_DIR}/xfoc)
+
+# xfoc 的平台头会间接引用 main.h 和 HAL；通过 CubeMX 接口目标获取
+# Core/Inc、HAL/CMSIS 路径及芯片宏。该目标仅携带编译配置，不引入板级实现。
+target_link_libraries(xfoc PRIVATE stm32cubemx)
+
+# 板级平台契约头与 CMSIS-DSP 路径只在 xfoc 内部可见。
+target_include_directories(xfoc PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/pwm
+    ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/ST/ARM/DSP/Inc
+    # ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/ST/STM32_USB_Device_Library/Class/CustomHID/Inc
+    # ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/ST/STM32_USB_Device_Library/Core/Inc
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Include
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32G4xx/Include
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Inc
-)
-target_compile_definitions(stm32_hal PUBLIC
-    USE_HAL_DRIVER
-    STM32G474xx
-    $<$<CONFIG:Debug>:DEBUG>
 )
 
-# ── CubeMX 外设初始化 ──
-file(GLOB CORE_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/*.c
-)
-add_library(stm32_core STATIC ${CORE_SOURCES})
-target_include_directories(stm32_core PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/App      # main.c 引 usb_device.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/Target
-    ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/ST/STM32_USB_Device_Library/Core/Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc
-)
-target_link_libraries(stm32_core PUBLIC stm32_hal)
-
-# ── USB Device 库 ──
-# 注：xdr_p 有板级 usb/usbd_desc.c（含 VID/PID），本板暂无，故保留 CubeMX 的
-#     USB_Device/App/usbd_desc.c 参与编译。
-file(GLOB USB_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/App/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/Target/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Src/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/ST/STM32_USB_Device_Library/Core/Src/*.c
-)
-add_library(stm32_usb STATIC ${USB_SOURCES})
-target_include_directories(stm32_usb PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/App
-    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/Target
-    ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/ST/STM32_USB_Device_Library/Core/Inc
-)
-target_link_libraries(stm32_usb PUBLIC stm32_hal)
-
-# ── CMSIS-DSP（头路径 + 预编译库） ──
-add_library(board_dsp INTERFACE)
-target_include_directories(board_dsp INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/ST/ARM/DSP/Inc
-)
-target_link_libraries(board_dsp INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/ST/ARM/DSP/Lib/libarm_cortexM4lf_math.a
+# Link directories setup
+target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
+    # Add user defined library search paths
 )
 
-# ── 板级资源（占位） ──
-# 本板暂无板根 *.c 与独立 USB 描述符；后续新增板级源文件时改回 STATIC：
-#   file(GLOB BOARD_ROOT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.c)
-#   add_library(board_hw STATIC ${BOARD_ROOT_SOURCES})
-add_library(board_hw INTERFACE)
-target_include_directories(board_hw INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}          # 板级头
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Inc
-)
-target_link_libraries(board_hw INTERFACE stm32_hal stm32_core stm32_usb)
-
-# 板级启动文件：交给顶层可执行目标（放进静态库会因归档未被引用而丢失向量表）
-set(BOARD_STARTUP ${CMAKE_CURRENT_SOURCE_DIR}/startup_stm32g474xx.s PARENT_SCOPE)
-
-# ── 本板芯片驱动层（drv/）+ 板级支撑层（bsp/） ──
-# bsp：时间/临界区/功率级节拍中断等"驱动之下的地基"。
-# drv：芯片驱动，只用 bsp 与 HAL 外设类型。
-file(GLOB DRV_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/drv/*.c
+# Add sources to executable
+# 板级 bsp 驱动：各子目录扁平 include（"bsp_adc.h" 等），
+# 源文件与头文件都在 bsp/ 下，按目录收进来即可。
+file(GLOB BSP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bsp/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/sample/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/bus/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/enc/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/flash/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/led/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/pwm/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/uart/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/usb/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/usb/app/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/usb/Core/Src/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/usb/target/*.c
 )
-add_library(board_drv STATIC ${DRV_SOURCES})
-target_include_directories(board_drv PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/drv
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${BSP_SOURCES})
+
+# Add include paths
+# bsp 各层使用扁平 include（"bsp_adc.h" / "bsp_bus.h" 等），
+# 因此根目录和各子目录都进搜索路径；Core/Inc 由 stm32cubemx
+# 这个 INTERFACE target 的 PUBLIC include 自动带进来。
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/bsp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Inc
-    ${APP_INCLUDE_DIRS}                  # 驱动 include app/abs 的语义化契约头
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/sample
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/bus
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/enc
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/flash
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/led
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/pwm
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/uart
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/usb
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/usb/app
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/usb/Core/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/usb/target
 )
-target_link_libraries(board_drv PUBLIC stm32_hal stm32_core stm32_usb board_hw board_dsp)
+
+# Add project symbols (macros)
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
+    # Add user defined symbols
+)
+
+# Remove wrong libob.a library dependency when using cpp files
+list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
+
+# Add linked libraries
+target_link_libraries(${CMAKE_PROJECT_NAME}
+    stm32cubemx
+    xfoc
+
+    # Add user defined libraries
+)

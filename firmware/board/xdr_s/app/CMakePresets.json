@@ -4,8 +4,8 @@
         {
             "name": "default",
             "hidden": true,
-            "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build/${presetName}",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/../../../build/xdr_s-app",
 		    "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
             "cacheVariables": {
             }

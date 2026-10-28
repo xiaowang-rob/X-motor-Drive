@@ -12,11 +12,14 @@ XDr 统一构建脚本
 两个维度：board（xdr_p | xdr_s） × type（app | bl）。
 
 项目结构（构建单元在 firmware/ 下）：
-  firmware/board/<board>/<type>/  板级：HAL + CubeMX Core + USB + drv + startup
-  firmware/app/                   应用侧：abs / app / ctl / srv / utils
+  firmware/board/<board>/<type>/  板级：HAL + CubeMX Core + USB + bsp + startup
+  firmware/xfoc/                  应用算法库：abs / ctl / srv / utils
   firmware/bootload/              引导固件（--type=bl）
-  firmware/build/<board>-<type>/  CMake 构建目录（与 CMakePresets 的 preset 名一致）
+  firmware/build/<board>-<type>/  CMake 构建目录（与板级 CMakePresets 共用）
   firmware/firmware_out/          输出 bin/hex
+
+构建入口是各板自己的 CubeMX 工程（board/<board>/<type>），xfoc 作为
+静态库由板级 CMakeLists 通过 add_subdirectory 引入。
 """
 import json
 import re
@@ -125,8 +128,21 @@ def _load_board_config(board, fw_type, debugger=None):
 
 
 def _build_dir(board, fw_type):
-    """构建目录：firmware/build/<board>-<type>（与 CMakePresets 中的同名 preset 共用）"""
+    """构建目录：firmware/build/<board>-<type>（与板级 CMakePresets 共用）"""
     return BUILD_ROOT / f"{board}-{fw_type}"
+
+
+# 板级 CubeMX 工程的 CMake target 名，决定 ELF 文件名
+ELF_BASE = {
+    "xdr_p": "XDr-P",
+    "xdr_s": "XDr-S",
+}
+
+
+def _elf_name(board, fw_type):
+    """板级可执行目标的 ELF 文件名（与板级 project()/目标名一致）"""
+    base = ELF_BASE[board]
+    return f"{base}-BL.elf" if fw_type == "bl" else f"{base}.elf"
 
 
 def _stream(proc):
@@ -166,7 +182,7 @@ def _stream(proc):
                 print(f"  \033[31m✗ {line.strip()}\033[0m")
             elif has_warn:
                 short = line.strip()
-                m = re.search(r"((?:app|board|platform|bl)/\S+:\d+)", short)
+                m = re.search(r"((?:app|board|platform|bl|xfoc)/\S+:\d+)", short)
                 if m:
                     short = f"{m.group(1)}{short[m.end():]}"
                 print(f"  \033[33m⚠ {short}\033[0m")
@@ -183,7 +199,7 @@ def _stream(proc):
 def cmd_build(board, fw_type):
     """编译固件"""
     desc = BOARDS[board]
-    elf_name = "XDr-BL.elf" if fw_type == "bl" else "XDr.elf"
+    elf_name = _elf_name(board, fw_type)
     board_dir = _board_dir(board, fw_type)
 
     # 编译类型：来自 project.json，默认 Debug
@@ -191,7 +207,7 @@ def cmd_build(board, fw_type):
 
     print(f"\n  \033[1m{desc} ({fw_type})\033[0m")
     print(f"  板级: board/{board}/{fw_type}")
-    print(f"  固件: {'bootload/' if fw_type == 'bl' else 'app/'}")
+    print(f"  固件: {'bootload/' if fw_type == 'bl' else 'xfoc/'}")
     print(f"  编译类型: {build_type}")
     print()
 
@@ -213,9 +229,9 @@ def cmd_build(board, fw_type):
     # CMake 配置（幂等：每次运行都执行，参数变化即时生效）
     print("  \033[36mCMake 配置...\033[0m")
     r = subprocess.run([
-        "cmake", f"-B{build_dir}", f"-S{PROJECT_ROOT}",
+        "cmake", f"-B{build_dir}", f"-S{board_dir}",
+        "-G", "Unix Makefiles",
         f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
-        f"-DBOARD={board}", f"-DFW_TYPE={fw_type}",
         f"-DCMAKE_BUILD_TYPE={build_type}",
     ], capture_output=True, text=True)
     if r.returncode != 0:
@@ -374,12 +390,12 @@ def main():
         cmd_build(board, fw_type)
     elif cmd == "flash":
         cfg = _load_board_config(board, fw_type, debugger)
-        elf = _build_dir(board, fw_type) / flash_core.elf_name(PROJECT_ROOT, fw_type)
+        elf = _build_dir(board, fw_type) / flash_core.elf_name(PROJECT_ROOT, fw_type, board)
         flash_core.cmd_flash(cfg, elf)
     elif cmd == "bf":
         cmd_build(board, fw_type)
         cfg = _load_board_config(board, fw_type, debugger)
-        elf = _build_dir(board, fw_type) / flash_core.elf_name(PROJECT_ROOT, fw_type)
+        elf = _build_dir(board, fw_type) / flash_core.elf_name(PROJECT_ROOT, fw_type, board)
         flash_core.cmd_flash(cfg, elf)
     elif cmd == "erase":
         cfg = _load_board_config(board, fw_type, debugger)

@@ -15,21 +15,21 @@
 #include "usart.h"
 
 // ---------- 本板配置 ----------
-#define UART_MCU_RX_BUFFER_SIZE 128U
+#define MCU_UART_RX_SIZE 128U
 
 // ---------- 实例 ----------
 struct tUartMcu
 {
-    UART_HandleTypeDef *huart;                  // 外设
-    uint8_t rx_buffer[UART_MCU_RX_BUFFER_SIZE]; // DMA 接收缓冲
-    uint16_t rx_buffer_size;                    // 缓冲长度
-    uart_rx_done_cb rx_cb;                      // 收字节回调（由 uart_com 注册）
-    void *rx_ctx;                               // 回调上下文（uart_com 实例）
+    UART_HandleTypeDef *huart;           // 外设
+    uint8_t rx_buffer[MCU_UART_RX_SIZE]; // DMA 接收缓冲
+    uint16_t rx_buffer_size;             // 缓冲长度
+    uart_rx_done_cb rx_cb;               // 收字节回调（由 uart_com 注册）
+    void *rx_ctx;                        // 回调上下文（uart_com 实例）
 };
 
 tUartMcu g_uart1 = {
     .huart = &huart1,
-    .rx_buffer_size = UART_MCU_RX_BUFFER_SIZE,
+    .rx_buffer_size = MCU_UART_RX_SIZE,
     .rx_cb = NULL,
     .rx_ctx = NULL,
 };

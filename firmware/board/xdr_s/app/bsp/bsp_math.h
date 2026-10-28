@@ -23,53 +23,37 @@
 // 内联函数--小函数 经常调用 -- 牺牲flash 提高代码调用效率
 
 // 限幅
-static inline float CLAMP(float val, float min, float max)
-{
+static inline float CLAMP(float val, float min, float max) {
     return (val < min) ? min : ((val > max) ? max : val);
 }
 // 快速绝对值
-static inline float FABSF(float x)
-{
-    return __builtin_fabsf(x);
-}
+static inline float FABSF(float x) { return __builtin_fabsf(x); }
 
 // 快速开方（CMSIS-DSP 单精度）
-static inline float SQRTF(float x)
-{
+static inline float SQRTF(float x) {
     float r;
     arm_sqrt_f32(x, &r);
     return r;
 }
 // 快速符号函数
-static inline float FSIGN(float x)
-{
+static inline float FSIGN(float x) {
     return (x > 0.0f) - (x < 0.0f); // 分支消除
 }
 // 快速浮点数四舍五入
-static inline uint32_t FROUNDF(float x)
-{
-    return (uint32_t)(x + 0.5f);
-}
+static inline uint32_t FROUNDF(float x) { return (uint32_t)(x + 0.5f); }
 
 // 快速sin
-static inline float FAST_SIN(float x)
-{
-    return arm_sin_f32(x);
-}
+static inline float FAST_SIN(float x) { return arm_sin_f32(x); }
 
 // 快速cos
-static inline float FAST_COS(float x)
-{
-    return arm_cos_f32(x);
-}
+static inline float FAST_COS(float x) { return arm_cos_f32(x); }
 // 将角度标准化到 [0, 2π) 范围
 //
 // 性能：不用 fmodf —— 后者在 Cortex-M4 上是库调用（几十~上百周期），
 // 而本函数常出现在 PLL / 电角度归一这类高频路径上。
 // 改用"常量倒数 + 取整"：1 次乘法 + 1 次浮点转整数 + 1~2 次加法。
 // 适用前提：|angle| < 2π·2^31（远超任何实际角度）。
-static inline float normalize_angle_2pi(float angle)
-{
+static inline float normalize_angle_2pi(float angle) {
     float turns = angle * MATH_INV_2PI; // 换算成"圈"
     turns -= (float)(int32_t)turns;     // 取小数部分（int32_t 转换向零取整）
     if (turns < 0.0f)
@@ -78,47 +62,14 @@ static inline float normalize_angle_2pi(float angle)
 }
 
 // 将角度标准化到 [-π, π] 范围
-static inline float normalize_angle_pi(float angle)
-{
+static inline float normalize_angle_pi(float angle) {
     return normalize_angle_2pi(angle + MATH_PI) - MATH_PI;
 }
 
 // arm_sin_cos 弧度版：输入角度为 rad，内部转 deg 后调用 arm_sin_cos_f32
-static inline void arm_sin_cos_rad_f32(float theta_rad, float *pSinVal, float *pCosVal)
-{
+static inline void arm_sin_cos_rad_f32(float theta_rad, float *pSinVal,
+                                       float *pCosVal) {
     arm_sin_cos_f32(theta_rad * F180_PI, pSinVal, pCosVal);
-}
-
-// Clark 变换 (abc → αβ)(等幅值)
-// ia, ib, ic: 三相电流或电压; alpha, beta: 输出的 αβ 轴分量
-static inline void clarke_transform(float ia, float ib, float ic, float *alpha, float *beta)
-{
-    // 使用幅值不变变换（系数 2/3）
-    // 简化电流 ia+ib+ic=0
-    *alpha = ia;
-    *beta = MATH_INSQRT3 * (ib - ic);
-}
-// Clark 反变换 (αβ → abc)(等幅值)
-// alpha, beta: αβ 轴分量; ia, ib, ic: 输出的三相值
-static inline void inv_clarke_transform(float alpha, float beta, float *ia, float *ib, float *ic)
-{
-    *ia = alpha;
-    *ib = -0.5f * alpha + MATH_SQRT3_2 * beta;
-    *ic = -0.5f * alpha - MATH_SQRT3_2 * beta;
-}
-// Park 变换 (αβ → dq)
-// alpha, beta: αβ 轴分量; sin/cos: 电角度; d, q: 输出的 dq 轴分量
-static inline void park_transform(float alpha, float beta, float sin_angle, float cos_angle, float *d, float *q)
-{
-    *d = alpha * cos_angle + beta * sin_angle;
-    *q = -alpha * sin_angle + beta * cos_angle;
-}
-// Park 反变换 (dq → αβ)
-// d, q: dq 轴分量; sin/cos: 电角度; alpha, beta: 输出的 αβ 轴分量
-static inline void inv_park_transform(float d, float q, float sin_angle, float cos_angle, float *alpha, float *beta)
-{
-    *alpha = d * cos_angle - q * sin_angle;
-    *beta = d * sin_angle + q * cos_angle;
 }
 
 // 普通函数--大型函数 调用少，不需要牺牲体积

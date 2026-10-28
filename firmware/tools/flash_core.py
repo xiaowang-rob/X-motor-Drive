@@ -12,12 +12,12 @@ from utils import get_cmake_project_name
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
-def elf_name(project_root, fw_type):
-    """根据固件类型获取 ELF 文件名（与 CMake 目标名一致）"""
-    name = get_cmake_project_name(project_root)
+def elf_name(project_root, fw_type, board=None):
+    """根据板卡与固件类型获取 ELF 文件名（与板级 CMake 目标名一致）"""
+    base = {"xdr_p": "XDr-P", "xdr_s": "XDr-S"}.get(board or "", "XDr")
     if fw_type == "bl":
-        return f"{name}-BL.elf"
-    return f"{name}.elf"
+        return f"{base}-BL.elf"
+    return f"{base}.elf"
 
 
 def _check_debugger(cfg):

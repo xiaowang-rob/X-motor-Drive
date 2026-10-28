@@ -19,8 +19,8 @@ def _default_target():
     cfg_path = REPO_ROOT / "project.json"
     if cfg_path.exists():
         cfg = json.loads(cfg_path.read_text())
-        return cfg.get("board", "xdr_p_app"), cfg.get("fw_type", "app")
-    return "xdr_p_app", "app"
+        return cfg.get("board", "xdr_s"), cfg.get("fw_type", "app")
+    return "xdr_s", "app"
 
 
 def main():
@@ -30,7 +30,7 @@ def main():
 
     board, fw_type = _default_target()
     elf = (PROJECT_ROOT / "build" / f"{board}-{fw_type}"
-           / flash_core.elf_name(PROJECT_ROOT, fw_type))
+           / flash_core.elf_name(PROJECT_ROOT, fw_type, board))
     if not elf.exists():
         print(f"ELF 不存在（{elf}），需要先编译")
         sys.exit(1)

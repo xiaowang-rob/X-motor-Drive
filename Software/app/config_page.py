@@ -1,4 +1,5 @@
 """参数配置中心：协议驱动的参数卡片与固定校准栏。"""
+
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget
 from qfluentwidgets import CaptionLabel, FluentIcon as FIF, HorizontalSeparator
 from qfluentwidgets.components.navigation import SegmentedWidget
@@ -6,9 +7,13 @@ from qfluentwidgets.components.navigation import SegmentedWidget
 from protocol import CmdId, Pidx
 from app.calibration_card import CalibrationCard, CalibrationSpec
 from app.ui_components import (
-    TabbedPage, PlainCard, ScrollCard, SurfaceCard, CompactComboBox, icon_action,
+    TabbedPage,
+    PlainCard,
+    ScrollCard,
+    SurfaceCard,
+    CompactComboBox,
+    icon_action,
 )
-
 
 # ============================================================
 # 参数页面分组：字段顺序、页面名称都在这里配置。
@@ -19,7 +24,6 @@ MOTOR_PARAMS = (
     Pidx.PARAM_MOTOR_POLEPAIRS,
     Pidx.PARAM_MOTOR_KV,
     Pidx.PARAM_MOTOR_RATED_CURRENT,
-    Pidx.PARAM_MOTOR_RATED_VELOCITY,
     Pidx.PARAM_MOTOR_RS,
     Pidx.PARAM_MOTOR_LD,
     Pidx.PARAM_MOTOR_LQ,
@@ -38,53 +42,72 @@ MOTOR_PARAMS = (
 )
 
 OBSERVER_PAGES = (
-    ("通用", (
-        Pidx.PARAM_ROTOR_OBS,
-        Pidx.PARAM_ABS_POS_OBS,
-        Pidx.PARAM_THETA_OFFSET,
-        Pidx.PARAM_POSITIVE_DIR,
-        Pidx.PARAM_THETA_SOURCE,
-        Pidx.PARAM_VEL_SOURCE,
-    )),
+    (
+        "通用",
+        (
+            Pidx.PARAM_ROTOR_OBS,
+            Pidx.PARAM_ABS_POS_OBS,
+            Pidx.PARAM_THETA_OFFSET,
+            Pidx.PARAM_POSITIVE_DIR,
+            Pidx.PARAM_THETA_SOURCE,
+            Pidx.PARAM_VEL_SOURCE,
+        ),
+    ),
     ("无感观测器", (Pidx.PARAM_HFI_SMO_THRESHOLD,)),
-    ("HALL 编码器", (
-        Pidx.PARAM_HALL_TABLE_0,
-        Pidx.PARAM_HALL_TABLE_1,
-        Pidx.PARAM_HALL_TABLE_2,
-        Pidx.PARAM_HALL_TABLE_3,
-        Pidx.PARAM_HALL_TABLE_4,
-        Pidx.PARAM_HALL_TABLE_5,
-        Pidx.PARAM_HALL_TABLE_6,
-        Pidx.PARAM_HALL_TABLE_7,
-    )),
+    (
+        "HALL 编码器",
+        (
+            Pidx.PARAM_HALL_TABLE_0,
+            Pidx.PARAM_HALL_TABLE_1,
+            Pidx.PARAM_HALL_TABLE_2,
+            Pidx.PARAM_HALL_TABLE_3,
+            Pidx.PARAM_HALL_TABLE_4,
+            Pidx.PARAM_HALL_TABLE_5,
+            Pidx.PARAM_HALL_TABLE_6,
+            Pidx.PARAM_HALL_TABLE_7,
+        ),
+    ),
     ("ABI 编码器", (Pidx.PARAM_ABI_COUNT,)),
-    ("SIN/COS 编码器", (
-        Pidx.PARAM_SIN_AMP,
-        Pidx.PARAM_COS_AMP,
-        Pidx.PARAM_SIN_OFFSET,
-        Pidx.PARAM_COS_OFFSET,
-        Pidx.PARAM_SINCOS_FL,
-    )),
+    (
+        "SIN/COS 编码器",
+        (
+            Pidx.PARAM_SIN_AMP,
+            Pidx.PARAM_COS_AMP,
+            Pidx.PARAM_SIN_OFFSET,
+            Pidx.PARAM_COS_OFFSET,
+            Pidx.PARAM_SINCOS_FL,
+        ),
+    ),
     ("SPI 编码器", (Pidx.PARAM_ENC_CHIP,)),
 )
 
 CONTROLLER_PAGES = (
-    ("PID", (
-        Pidx.PARAM_VLKP,
-        Pidx.PARAM_VLKI,
-        Pidx.PARAM_POS_PIDMODE,
-        Pidx.PARAM_PLKP,
-        Pidx.PARAM_PLKI,
-        Pidx.PARAM_PLKD,
-        Pidx.PARAM_PLALPHA,
-    )),
-    ("MIT", (
-        Pidx.PARAM_MIT_KP,
-        Pidx.PARAM_MIT_KD,
-        Pidx.PARAM_MIT_KPMAX,
-        Pidx.PARAM_MIT_KDMAX,
-        Pidx.PARAM_MIT_TMAX,
-    )),
+    (
+        "PID",
+        (
+            Pidx.PARAM_VLKP,
+            Pidx.PARAM_VLKI,
+            Pidx.PARAM_VELOCITY_LIMIT,
+            Pidx.PARAM_POS_PIDMODE,
+            Pidx.PARAM_PLKP,
+            Pidx.PARAM_PLKI,
+            Pidx.PARAM_PLKD,
+            Pidx.PARAM_PLALPHA,
+            Pidx.PARAM_POS_LIMIT_MODE,
+            Pidx.PARAM_POS_MIN_LIMIT,
+            Pidx.PARAM_POS_MAX_LIMIT,
+        ),
+    ),
+    (
+        "MIT",
+        (
+            Pidx.PARAM_MIT_KP,
+            Pidx.PARAM_MIT_KD,
+            Pidx.PARAM_MIT_KPMAX,
+            Pidx.PARAM_MIT_KDMAX,
+            Pidx.PARAM_MIT_TMAX,
+        ),
+    ),
     ("高级", (Pidx.PARAM_FWLKP, Pidx.PARAM_FWLKI)),
 )
 
@@ -103,21 +126,11 @@ COMMUNICATION_PARAMS = (
 )
 
 PROTECTION_PAGES = (
-    ("电气保护", (
-        Pidx.PARAM_UNDERVOLTAGE_THRESHOLD,
-        Pidx.PARAM_OVERVOLTAGE_THRESHOLD,
-        Pidx.PARAM_CURRENT_THRESHOLD,
-        Pidx.PARAM_ELEC_TOLERANCE,
-        Pidx.PARAM_ELEC_TOLERANCE_TIME_MS,
-    )),
-    ("运动保护", (
-        Pidx.PARAM_VEL_LIMIT,
-        Pidx.PARAM_POS_MIN_LIMIT,
-        Pidx.PARAM_POS_MAX_LIMIT,
-        Pidx.PARAM_TAU_LIMIT,
-        Pidx.PARAM_MOTION_TOLERANCE,
-        Pidx.PARAM_MOTION_TOLERANCE_TIME_MS,
-    )),
+    Pidx.PARAM_UNDERVOLTAGE_THRESHOLD,
+    Pidx.PARAM_OVERVOLTAGE_THRESHOLD,
+    Pidx.PARAM_OVERTEMP_THRESHOLD,
+    Pidx.PARAM_PRO_TOLERANCE,
+    Pidx.PARAM_PRO_TOLERANCE_TIME_MS,
 )
 
 # 校准卡片配置：fields 为协议参数，actions 为 (命令 ID, 按钮文字)。
@@ -166,6 +179,7 @@ CALIBRATIONS = {
 
 class SideStack(QWidget):
     """使用 Fluent 分段控件的页内导航。"""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
@@ -246,13 +260,20 @@ class ConfigPage(TabbedPage):
         self.config_file.setAccessibleName("配置文件")
         self.config_file.setToolTip("配置文件：" + self.config_file.currentText())
         self.config_file.currentTextChanged.connect(
-            lambda text: self.config_file.setToolTip("配置文件：" + text))
+            lambda text: self.config_file.setToolTip("配置文件：" + text)
+        )
         actions.addWidget(self.config_file)
         self.action_buttons = []
-        for icon, text in [(FIF.FOLDER, "加载配置"), (FIF.SAVE_AS, "另存配置"),
-                           (FIF.DELETE, "删除配置"), (None, ""),
-                           (FIF.DOWNLOAD, "读取参数"), (FIF.UP, "写入参数"),
-                           (FIF.SAVE, "保存参数"), (FIF.SYNC, "恢复默认参数")]:
+        for icon, text in [
+            (FIF.FOLDER, "加载配置"),
+            (FIF.SAVE_AS, "另存配置"),
+            (FIF.DELETE, "删除配置"),
+            (None, ""),
+            (FIF.DOWNLOAD, "读取参数"),
+            (FIF.UP, "写入参数"),
+            (FIF.SAVE, "保存参数"),
+            (FIF.SYNC, "恢复默认参数"),
+        ]:
             if icon is None:
                 actions.addWidget(HorizontalSeparator())
                 continue
@@ -270,9 +291,18 @@ class ConfigPage(TabbedPage):
         self._build_communication()
         self._build_protection()
         self.bind_parameters()
-        for button, action in zip(self.action_buttons, (
-                "load_config", "save_config_as", "delete_config", "read_parameters",
-                "write_parameters", "save_to_device", "restore_defaults")):
+        for button, action in zip(
+            self.action_buttons,
+            (
+                "load_config",
+                "save_config_as",
+                "delete_config",
+                "read_parameters",
+                "write_parameters",
+                "save_to_device",
+                "restore_defaults",
+            ),
+        ):
             self.bind_action(button, action, lambda: self.config_file.currentText())
         for card in self.findChildren(CalibrationCard):
             card.action_requested.connect(self.action_requested)
@@ -336,9 +366,6 @@ class ConfigPage(TabbedPage):
 
     def _build_protection(self):
         layout = self.add_tab("protection", "保护")
-        self.protection_nav = SideStack()
-        for title, params in PROTECTION_PAGES:
-            card = ScrollCard(title)
-            card.add_protocol_fields(*params)
-            self.protection_nav.add_page(title, page_with(card))
-        layout.addWidget(self.protection_nav, 1)
+        self.protection_scroll = ScrollCard("保护")
+        self.protection_scroll.add_protocol_fields(*PROTECTION_PAGES)
+        layout.addWidget(self.protection_scroll, 1)

@@ -21,7 +21,7 @@
 #   python3 tools/build.py build --board=xdr_s --type=app
 #
 # 目录：
-#   board/<BOARD>/<FW_TYPE>/  板级：HAL + CubeMX Core + USB 中间件 + drv 驱动 + startup
+#   board/<BOARD>/<FW_TYPE>/  板级：HAL + CubeMX Core + USB 中间件 + bsp 驱动 + startup
 #   app/                      应用侧：abs 抽象 / app 组装 / ctl 控制 / srv 服务 / utils 工具
 #   bootload/                 引导固件源码（FW_TYPE=bl）
 #   ../protocol/              上下位机通讯协议头
@@ -73,7 +73,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
 # ── 应用侧头文件搜索路径 ──
 # 注：应用侧源码使用扁平 include（如 "device.h" / "bsp_math.h" / "encoder_drivers.h"），
-#     因此各分层目录、板级 bsp/ 与 drv/ 目录都需进入搜索路径。
+#     因此各分层目录与板级 bsp/ 子目录都需进入搜索路径。
 #
 # 板级 bsp/ 必须在此列出：应用侧各层只链接 stm32_hal / board_dsp（见 fw_add_layer），
 # 拿不到 board_drv 的 PUBLIC include 传播，而 app/ 下确实直接引用板级地基头
@@ -86,7 +86,14 @@ set(APP_INCLUDE_DIRS
     ${FW_ROOT}/app/utils
     ${BOARD_DIR}
     ${BOARD_DIR}/bsp
-    ${BOARD_DIR}/drv
+    ${BOARD_DIR}/bsp/bus
+    ${BOARD_DIR}/bsp/enc
+    ${BOARD_DIR}/bsp/flash
+    ${BOARD_DIR}/bsp/pwm
+    ${BOARD_DIR}/bsp/led
+    ${BOARD_DIR}/bsp/adc
+    ${BOARD_DIR}/bsp/uart
+    ${BOARD_DIR}/bsp/usb
     ${PROTOCOL_DIR}
 )
 
@@ -103,7 +110,7 @@ function(fw_add_layer name dir)
     list(LENGTH LAYER_SOURCES _n)
     add_library(${name} OBJECT ${LAYER_SOURCES})
     target_include_directories(${name} PUBLIC ${APP_INCLUDE_DIRS})
-    # 只取 include/宏（stm32_hal/board_dsp）；drv 的头已由 APP_INCLUDE_DIRS 覆盖，
+    # 只取 include/宏（stm32_hal/board_dsp）；bsp 的头已由 APP_INCLUDE_DIRS 覆盖，
     # 其实现符号在最终可执行目标处链接，避免分层编译被板级目标阻塞。
     target_link_libraries(${name} PUBLIC stm32_hal board_dsp)
     message(STATUS "    分层 ${name}: ${_n} 个源文件  (${dir})")

@@ -145,11 +145,11 @@ bool dev_base_init(void)
         return false;
 
     // 采样前端（见 sen_mcu.c）
-    if (!sense_init(&g_sense))
+    if (!sample_init(&g_sense))
         return false;
 
     // 电流采样点：跟随功率级 PWM 周期（提前一个计数）
-    sense_set_sample_point(&g_sense, g_gate.pwm_period - 1U);
+    sample_set_sample_point(&g_sense, g_gate.pwm_period - 1U);
 
     // 状态反馈（见 led_gpio.c / led_ws28xx.c）
     if (!led_init(&g_led_0) || !led_init(&g_led_1) || !rgb_init(&g_rgb))

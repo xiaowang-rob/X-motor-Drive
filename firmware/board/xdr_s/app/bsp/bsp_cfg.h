@@ -2,15 +2,28 @@
 #define __BSP_CFG_H
 
 #include "device.h"
+#include "parameter_list.h"
 
-#include "bus_com.h"  // tBusDriver
-#include "encoder.h"  // tEncoder
-#include "flash.h"    // tFlash / tFlashUnit
-#include "gate_drv.h" // tGateDrv
-#include "iap.h"      // tIAP
-#include "led.h"      // tLed
-#include "sense.h"    // tSense
-#include "uart_com.h" // tUartDriver
+// USB vendor HID 配置（设备身份与 report 传输参数）
+#define BSP_USB_VID 0x0483
+#define BSP_USB_PID 0x5750
+#define BSP_USB_LANGID 1033U
+#define BSP_USB_MANUFACTURER "wxd"
+#define BSP_USB_PRODUCT "XDr-S"
+#define BSP_USB_CONFIGURATION "Vendor HID Config"
+#define BSP_USB_INTERFACE "Vendor HID Interface"
+#define BSP_USB_REPORT_SIZE 64U
+#define BSP_USB_REPORT_DESC_SIZE 27U
+#define BSP_USB_POLL_INTERVAL 5U
+
+#include "bus_com.h"
+#include "encoder.h"
+#include "flash.h"
+#include "iap.h"
+#include "led.h"
+#include "pwm.h"
+#include "sample.h"
+#include "uart_com.h"
 
 // ---------- 固件信息 ----------
 #define AUTHOR "wxd"
@@ -36,12 +49,12 @@ extern const float T_DIED;     // 死区时间
 // ============================================================
 // bsp_cfg.h — 本板装配层：全板设备对象与启动入口
 //
-// 装配范式：每个设备**单独定义**一个对象，并在定义处就地挂上
-//           ops 与 handle（见 bsp_cfg.c）。没有聚合结构体。
+// 装配范式：每个设备单独定义业务对象，初始化时传入 BSP 的
+//           类型化句柄（ops + dev），见 bsp_cfg.c。
 // 分层职责：
 //   - 本层是**唯一** include 板级驱动出口头（xxx_drv / 芯片驱动）的地方；
 //   - 业务层只引用下面这些设备对象，不触碰驱动；
-//   - abs 层只认 ops + 不透明 handle。
+//   - abs 层只认类型化句柄，不解析不透明 dev。
 // ============================================================
 
 // ---- 存储 ----
@@ -61,7 +74,7 @@ extern tLed g_led; // 板载 LED0
 // ---- 通讯 ----
 extern tBusDriver g_can;   // 总线式（FDCAN）
 extern tUartDriver g_uart; // MCU 串口
-extern tUartDriver g_usb;  // USB CDC 虚拟串口
+extern tUartDriver g_usb;  // USB vendor HID，保留 UART 帧适配
 
 // ---- 传感器 ----
 extern tEncoder g_enc; // 编码器
