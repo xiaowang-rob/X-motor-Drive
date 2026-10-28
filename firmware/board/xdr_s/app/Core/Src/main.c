@@ -73,7 +73,7 @@ void SystemClock_Config(void);
 int main(void) {
 
     /* USER CODE BEGIN 1 */
-    mcu_iap_app_init();
+    // mcu_iap_app_init();
     /* USER CODE END 1 */
 
     /* MCU

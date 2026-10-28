@@ -9,9 +9,9 @@
 // ---------- 实例 ----------
 typedef struct tMcuUart {
     uint8_t rx_buffer[MCU_UART_RX_SIZE]; // DMA 接收缓冲
-    volatile uint16_t s_rx_last_pos;     // RX 上次交给回调的“位置”（DMA 写指针）
-    uart_rx_done_cb rx_cb;               // 收字节回调（由 uart_com 注册）
-    void *rx_ctx;                        // 回调上下文（uart_com 实例）
+    volatile uint16_t s_rx_last_pos; // RX 上次交给回调的“位置”（DMA 写指针）
+    uart_rx_done_cb rx_cb;           // 收字节回调（由 uart_com 注册）
+    void *rx_ctx;                    // 回调上下文（uart_com 实例）
 } tMcuUart;
 
 tMcuUart mcu_uart2 = {
@@ -20,12 +20,12 @@ tMcuUart mcu_uart2 = {
     .rx_ctx = NULL,
 };
 
-
 // ---- 中断 ----
 
 void USART2_IRQHandler(void) {
     /* ============ IDLE：线路空闲，一帧（或一段）结束 ============ */
-    if (LL_USART_IsActiveFlag_IDLE(USART2) && LL_USART_IsEnabledIT_IDLE(USART2)) {
+    if (LL_USART_IsActiveFlag_IDLE(USART2) &&
+        LL_USART_IsEnabledIT_IDLE(USART2)) {
         LL_USART_ClearFlag_IDLE(USART2);
 
         /* DMA 剩余计数 → 当前写指针位置 */
@@ -89,9 +89,12 @@ static bool mcu_uart_open(void *handle) {
 
     /* 2. 装载地址和长度 */
     LL_DMA_SetDataLength(MCU_UART_DMA, MCU_UART_DMA_CH, MCU_UART_RX_SIZE);
-    LL_DMA_SetPeriphAddress(MCU_UART_DMA, MCU_UART_DMA_CH,
-                            LL_USART_DMA_GetRegAddr(MCU_UART, LL_USART_DMA_REG_DATA_RECEIVE));
-    LL_DMA_SetMemoryAddress(MCU_UART_DMA, MCU_UART_DMA_CH, (uint32_t)mcu_uart2.rx_buffer);
+    LL_DMA_SetPeriphAddress(
+        MCU_UART_DMA,
+        MCU_UART_DMA_CH,
+        LL_USART_DMA_GetRegAddr(MCU_UART, LL_USART_DMA_REG_DATA_RECEIVE));
+    LL_DMA_SetMemoryAddress(
+        MCU_UART_DMA, MCU_UART_DMA_CH, (uint32_t)mcu_uart2.rx_buffer);
 
     /* 3. 清残留标志（HT/TC/IDLE），否则首次进 ISR 会误触发 */
     LL_DMA_ClearFlag_HT2(MCU_UART_DMA);
@@ -127,8 +130,10 @@ static bool mcu_uart_send(void *handle, const uint8_t *data, uint16_t len) {
     LL_DMA_ClearFlag_TC3(MCU_UART_DMA);
 
     LL_DMA_SetDataLength(MCU_UART_DMA, LL_DMA_CHANNEL_3, len);
-    LL_DMA_SetPeriphAddress(MCU_UART_DMA, LL_DMA_CHANNEL_3,
-                            LL_USART_DMA_GetRegAddr(MCU_UART, LL_USART_DMA_REG_DATA_TRANSMIT));
+    LL_DMA_SetPeriphAddress(
+        MCU_UART_DMA,
+        LL_DMA_CHANNEL_3,
+        LL_USART_DMA_GetRegAddr(MCU_UART, LL_USART_DMA_REG_DATA_TRANSMIT));
     LL_DMA_SetMemoryAddress(MCU_UART_DMA, LL_DMA_CHANNEL_3, (uint32_t)data);
 
     /* 使能 DMAT（传输完成中断）以便关闭 DMAT 请求 */

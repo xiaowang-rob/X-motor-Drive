@@ -147,52 +147,22 @@ def _elf_name(board, fw_type):
 
 def _stream(proc):
     """流式显示编译输出，返回 (errors, warnings, elapsed)"""
-    progress_re = re.compile(r"^\s*\[\s*(\d+)[%/]\d*\]\s+(Building|Linking)")
-    error_re = re.compile(r"(error:|undefined reference)", re.IGNORECASE)
+    error_re = re.compile(r"(error:|undefined reference|multiple definition)", re.IGNORECASE)
     warning_re = re.compile(r"warning:", re.IGNORECASE)
 
     errors = warnings = 0
-    last_progress = False
     t0 = time.time()
 
     for raw in proc.stdout:
-        line = raw.rstrip("\n\r")
-        if not line:
-            continue
-
-        is_progress = bool(progress_re.match(line))
-        has_err = bool(error_re.search(line))
-        has_warn = bool(warning_re.search(line))
-
-        if has_err:
+        # 原样输出，保留诊断上下文、源码行、插入符和链接器信息。
+        print(raw, end="", flush=True)
+        if error_re.search(raw):
             errors += 1
-        if has_warn:
+        if warning_re.search(raw):
             warnings += 1
-
-        if is_progress and not has_err and not has_warn:
-            m = progress_re.match(line)
-            pct = m.group(1) if m else "??"
-            print(f"\r  \033[36m编译中...\033[0m {pct}%  \033[90m({int(time.time()-t0)}s)\033[0m", end="", flush=True)
-            last_progress = True
-        else:
-            if last_progress:
-                print()
-                last_progress = False
-            if has_err:
-                print(f"  \033[31m✗ {line.strip()}\033[0m")
-            elif has_warn:
-                short = line.strip()
-                m = re.search(r"((?:app|board|platform|bl|xfoc)/\S+:\d+)", short)
-                if m:
-                    short = f"{m.group(1)}{short[m.end():]}"
-                print(f"  \033[33m⚠ {short}\033[0m")
-            elif "Linking" in line:
-                print(f"  \033[32m⟶ Linking...\033[0m")
 
     proc.wait()
     elapsed = time.time() - t0
-    if last_progress:
-        print()
     return errors, warnings, elapsed
 
 
@@ -233,11 +203,10 @@ def cmd_build(board, fw_type):
         "-G", "Unix Makefiles",
         f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
         f"-DCMAKE_BUILD_TYPE={build_type}",
-    ], capture_output=True, text=True)
+    ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    print(r.stdout, end="", flush=True)
     if r.returncode != 0:
         print(f"  \033[31m✗ CMake 配置失败:\033[0m")
-        for line in (r.stdout + r.stderr).splitlines():
-            print(f"    {line}")
         sys.exit(r.returncode)
 
     # 编译

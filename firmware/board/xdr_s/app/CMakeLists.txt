@@ -69,6 +69,10 @@ file(GLOB BSP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/bsp/sample/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bsp/bus/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bsp/enc/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/enc/abi/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/enc/hall/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/enc/sincos/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp/enc/spi/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bsp/flash/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bsp/led/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bsp/pwm/*.c
@@ -108,9 +112,15 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
 list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 
 # Add linked libraries
+# target_link_libraries(${CMAKE_PROJECT_NAME}
+#     stm32cubemx
+#     xfoc
+
+#     # Add user defined libraries
+# )
 target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
     xfoc
-
-    # Add user defined libraries
+    :libarm_cortexM4lf_math.a
+    ${TOOLCHAIN_LINK_LIBRARIES}
 )

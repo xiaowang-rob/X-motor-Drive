@@ -1,4 +1,4 @@
-#include "bsp_tim_encs.h"
+#include "bsp_enc_tim.h"
 #include "tim.h"
 
 static bool hall_enc_open(void *handle);

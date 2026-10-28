@@ -12,8 +12,8 @@ bool xfoc_start(void) {
     if (!param_init(&g_flash))
         return false;
     // 3、初始化日志服务 读日志
-    if (!log_init(&g_flash))
-        return false;
+    // if (!log_init(&g_flash))
+    //     return false;
     // 4、启动副通讯 usb/uart
     if (!uart_start(&g_usb, UART_PACKET_HEAD, UART_PACKET_TAIL))
         return false;

@@ -1,4 +1,4 @@
-#include "bsp_adc_encs.h"
+#include "bsp_enc_adc.h"
 
 #include "adc.h"
 #include "bsp_math.h"

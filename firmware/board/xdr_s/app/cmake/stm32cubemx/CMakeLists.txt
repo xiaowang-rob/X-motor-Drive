@@ -79,15 +79,19 @@ set(MX_LINK_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/ST/ARM/DSP/Lib
 )
 # Project static libraries
-set(MX_LINK_LIBS 
- "-Wl,--start-group" 
-	:libarm_cortexM4lf_math.a
- "-Wl,--end-group"
+set(MX_LINK_LIBS
     STM32_Drivers
-    ${TOOLCHAIN_LINK_LIBRARIES}
+)
+
+# set(MX_LINK_LIBS 
+#  "-Wl,--start-group" 
+# 	:libarm_cortexM4lf_math.a
+#  "-Wl,--end-group"
+#     STM32_Drivers
+#     ${TOOLCHAIN_LINK_LIBRARIES}
     
 	
-)
+# )
 # Interface library for includes and symbols
 add_library(stm32cubemx INTERFACE)
 target_include_directories(stm32cubemx INTERFACE ${MX_Include_Dirs})

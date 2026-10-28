@@ -14,12 +14,10 @@
 #include "bsp_cfg.h"
 
 // ---- 板级驱动出口（仅本层 include） ----
-#include "bsp_adc_encs.h"
 #include "bsp_bus.h"
+#include "bsp_enc.h"
 #include "bsp_flash.h"
 #include "bsp_led.h"
-#include "bsp_spi_encs.h"
-#include "bsp_tim_encs.h"
 
 #include "bsp_adc.h"
 #include "bsp_pwm.h"

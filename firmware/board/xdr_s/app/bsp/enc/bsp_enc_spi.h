@@ -1,16 +1,9 @@
-#ifndef __BSP_SPI_ENCS_H
-#define __BSP_SPI_ENCS_H
+#ifndef __BSP_ENC_SPI_H
+#define __BSP_ENC_SPI_H
 
-#include "encoder.h"
-#include "parameter_list.h"
+#include "bsp_enc.h"
 
-#include "gpio.h"
-
-// spi encoder handle
-tEncDevHandle *Get_SPI_ENCHandle(eSpiEncList chip);
-// 内置 encoder
-tEncDevHandle *Get_INT_ENCHandle(void);
-
+typedef struct SpiEncDev tSpiEncDev;
 // 芯片协议层：只描述模式、分辨率和一次同步读角，不持有物理实例。
 // read 在公共驱动独占总线且已配置模式后调用。
 typedef struct {
@@ -20,17 +13,6 @@ typedef struct {
     uint16_t resolution;
     bool (*read)(tSpiEncDev *dev, uint16_t *raw);
 } tSpiEncChipOps;
-
-typedef struct SPI_ENCODER_DEVICE {
-    struct {
-        GPIO_TypeDef *port;
-        uint32_t pin;
-    } cs;
-    eSpiEncList chip;
-    const tSpiEncChipOps *chip_ops;
-    float rad_per_lsb;
-    bool inited;
-} tSpiEncDev;
 
 extern const tSpiEncChipOps spi_mt6816_ops;
 extern const tSpiEncChipOps spi_mt6835_ops;
@@ -42,4 +24,4 @@ extern const tSpiEncChipOps spi_as5047_ops;
 bool enc_spi_transfer(tSpiEncDev *dev, const uint8_t *tx, uint8_t *rx,
                       uint16_t len);
 
-#endif // __BSP_SPI_ENCS_H
+#endif // __BSP_ENC_SPI_H

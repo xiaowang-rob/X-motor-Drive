@@ -1,8 +1,7 @@
 // MT6816：Mode3/16bit，两次独立 CS 帧读取 0x03、0x04 寄存器。
-#include "bsp_spi_encs.h"
+#include "bsp_enc_spi.h"
 
-static bool parity_odd(uint16_t value)
-{
+static bool parity_odd(uint16_t value) {
     value ^= (uint16_t)(value >> 8);
     value ^= (uint16_t)(value >> 4);
     value ^= (uint16_t)(value >> 2);
@@ -10,8 +9,7 @@ static bool parity_odd(uint16_t value)
     return (value & 1U) != 0U;
 }
 
-static bool mt6816_read(tSpiEncDev *dev, uint16_t *raw)
-{
+static bool mt6816_read(tSpiEncDev *dev, uint16_t *raw) {
     const uint8_t tx_high[2] = {0xFFU, 0x83U};
     const uint8_t tx_low[2] = {0xFFU, 0x84U};
     uint8_t high[2], low[2];
@@ -29,7 +27,9 @@ static bool mt6816_read(tSpiEncDev *dev, uint16_t *raw)
 }
 
 const tSpiEncChipOps spi_mt6816_ops = {
-    .cpol = 1U, .cpha = 1U, .data_bits = 16U,
+    .cpol = 1U,
+    .cpha = 1U,
+    .data_bits = 16U,
     .resolution = 16384U,
     .read = mt6816_read,
 };

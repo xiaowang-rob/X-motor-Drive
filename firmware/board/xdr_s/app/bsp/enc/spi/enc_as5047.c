@@ -1,8 +1,7 @@
 // AS5047：Mode1/16bit；读命令与 NOP 各占一个 CS 帧。
-#include "bsp_spi_encs.h"
+#include "bsp_enc_spi.h"
 
-static bool parity_odd(uint16_t value)
-{
+static bool parity_odd(uint16_t value) {
     value ^= (uint16_t)(value >> 8);
     value ^= (uint16_t)(value >> 4);
     value ^= (uint16_t)(value >> 2);
@@ -10,8 +9,7 @@ static bool parity_odd(uint16_t value)
     return (value & 1U) != 0U;
 }
 
-static bool as5047_read(tSpiEncDev *dev, uint16_t *raw)
-{
+static bool as5047_read(tSpiEncDev *dev, uint16_t *raw) {
     // 0xFFFF：读 0x3FFF，含偶校验位；0x0000：NOP。
     const uint8_t tx_read[2] = {0xFFU, 0xFFU};
     const uint8_t tx_nop[2] = {0x00U, 0x00U};
@@ -28,7 +26,9 @@ static bool as5047_read(tSpiEncDev *dev, uint16_t *raw)
 }
 
 const tSpiEncChipOps spi_as5047_ops = {
-    .cpol = 0U, .cpha = 1U, .data_bits = 16U,
+    .cpol = 0U,
+    .cpha = 1U,
+    .data_bits = 16U,
     .resolution = 16384U,
     .read = as5047_read,
 };

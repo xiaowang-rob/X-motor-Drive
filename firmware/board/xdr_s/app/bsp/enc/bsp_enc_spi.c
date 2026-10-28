@@ -1,9 +1,21 @@
 // SPI 编码器专用驱动；芯片协议保持不变。
 
+#include "bsp_enc_spi.h"
 #include "bsp_math.h"
 #include "bsp_mcu.h"
-#include "bsp_spi_encs.h"
+#include "gpio.h"
 #include "spi.h"
+
+struct SpiEncDev {
+    struct {
+        GPIO_TypeDef *port;
+        uint32_t pin;
+    } cs;
+    eSpiEncList chip;
+    const tSpiEncChipOps *chip_ops;
+    float rad_per_lsb;
+    bool inited;
+};
 
 static const tSpiEncChipOps *enc_chip_ops(eSpiEncList chip);
 static bool spi_enc_open(void *handle);

@@ -1,15 +1,14 @@
 #ifndef __PARAMETERS_H
 #define __PARAMETERS_H
 
-#include "parameter_list.h"
 #include "flash.h"
-#include <stdint.h>
+#include "parameter_list.h"
 #include <stdbool.h>
+#include <stdint.h>
 
-tParameter g_param;
+extern tParameter g_param;
 
-typedef struct
-{
+typedef struct {
     void *ptr;    // 字段地址（&结构体.字段）
     uint8_t type; // eFieldType
     float def;    // 默认值
