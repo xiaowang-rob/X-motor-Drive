@@ -7,8 +7,6 @@
 
 #include "encoder.h"
 
-#include "bsp_math.h"
-
 bool encoder_init(tEncoder *enc, const tEncDevHandle *handle) {
     if (!enc || !handle)
         return false;

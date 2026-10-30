@@ -1,6 +1,6 @@
 {
     "cortex-debug.variableUseNaturalFormat": true,
-    "cmake.sourceDirectory": "/home/wxd/github/X-motor-Drive/firmware",
+    "cmake.sourceDirectory": "${workspaceFolder}/firmware_new",
     "C_Cpp.errorSquiggles": "enabled",
     "python-envs.defaultEnvManager": "ms-python.python:system"
 }

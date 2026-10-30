@@ -1,0 +1,27 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "xdr_s-app",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/build/xdr_s-app/Debug",
+            "cacheVariables": {
+                "BOARD": "xdr_s",
+                "FW_TYPE": "app",
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "xdr_s-app-release",
+            "inherits": "xdr_s-app",
+            "binaryDir": "${sourceDir}/build/xdr_s-app/Release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ],
+    "buildPresets": [
+        {"name": "xdr_s-app", "configurePreset": "xdr_s-app"},
+        {"name": "xdr_s-app-release", "configurePreset": "xdr_s-app-release"}
+    ]
+}

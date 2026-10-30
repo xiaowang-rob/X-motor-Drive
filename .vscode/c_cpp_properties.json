@@ -2,37 +2,51 @@
     // IntelliSense 走 CMake 生成的 compile_commands.json，而不是让扩展自己猜 includePath。
     // 注意：该文件在 .gitignore 里（.vscode/ 被忽略），属本地配置。
     // 切换板卡/固件类型时，把下面的 compileCommands 换成对应构建目录即可：
-    //   xdr_s-app → firmware/build/xdr_s-app/compile_commands.json
-    //   xdr_p-app → firmware/build/xdr_p-app/compile_commands.json
+    //   xdr_s-app → firmware_new/build/xdr_s-app/Debug/compile_commands.json
+    //   xdr_p-app → firmware_new/build/xdr_p-app/Debug/compile_commands.json
     "version": 4,
     "configurations": [
         {
             "name": "XDr-S (xdr_s-app)",
-            "compileCommands": "${workspaceFolder}/firmware/build/xdr_s-app/compile_commands.json",
+            "compileCommands": "${workspaceFolder}/firmware_new/build/xdr_s-app/Debug/compile_commands.json",
             "compilerPath": "/usr/local/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi/bin/arm-none-eabi-gcc",
-            "compilerArgs": ["-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"],
+            "compilerArgs": [
+                "-mcpu=cortex-m4",
+                "-mfpu=fpv4-sp-d16",
+                "-mfloat-abi=hard"
+            ],
             "cStandard": "gnu11",
             "intelliSenseMode": "linux-gcc-arm",
             // 未匹配编译数据库时，使用与 xdr_s-app 一致的目标宏和搜索路径。
-            "defines": ["DEBUG", "STM32G474xx", "USE_FULL_LL_DRIVER", "USE_HAL_DRIVER"],
+            "defines": [
+                "DEBUG",
+                "STM32G474xx",
+                "USE_FULL_LL_DRIVER",
+                "USE_HAL_DRIVER"
+            ],
             "includePath": [
                 // ARM GCC 标准头兜底，避免编译器探测未生效时找不到 stddef.h。
                 "/usr/local/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi/lib/gcc/arm-none-eabi/15.2.1/include",
                 "/usr/local/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi/lib/gcc/arm-none-eabi/15.2.1/include-fixed",
                 "/usr/local/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi/arm-none-eabi/include",
-                "${workspaceFolder}/firmware/board/xdr_s/app/Core/Inc",
-                "${workspaceFolder}/firmware/board/xdr_s/app/Drivers/STM32G4xx_HAL_Driver/Inc",
-                "${workspaceFolder}/firmware/board/xdr_s/app/Drivers/STM32G4xx_HAL_Driver/Inc/Legacy",
-                "${workspaceFolder}/firmware/board/xdr_s/app/Drivers/CMSIS/Device/ST/STM32G4xx/Include",
-                "${workspaceFolder}/firmware/board/xdr_s/app/Drivers/CMSIS/Include",
-                "${workspaceFolder}/firmware/xfoc/abs",
-                "${workspaceFolder}/firmware/xfoc",
-                "${workspaceFolder}/firmware/xfoc/ctl",
-                "${workspaceFolder}/firmware/xfoc/srv",
-                "${workspaceFolder}/firmware/xfoc/utils",
-                "${workspaceFolder}/firmware/board/xdr_s/app",
-                "${workspaceFolder}/firmware/board/xdr_s/app/bsp",
-                "${workspaceFolder}/firmware/protocol"
+                "${workspaceFolder}/firmware_new/board/xdr_s/app/Core/Inc",
+                "${workspaceFolder}/firmware_new/board/xdr_s/app/Drivers/STM32G4xx_HAL_Driver/Inc",
+                "${workspaceFolder}/firmware_new/board/xdr_s/app/Drivers/STM32G4xx_HAL_Driver/Inc/Legacy",
+                "${workspaceFolder}/firmware_new/board/xdr_s/app/Drivers/CMSIS/Device/ST/STM32G4xx/Include",
+                "${workspaceFolder}/firmware_new/board/xdr_s/app/Drivers/CMSIS/Include",
+                "${workspaceFolder}/firmware_new/app",
+                "${workspaceFolder}/firmware_new/bootload",
+                "${workspaceFolder}/firmware_new/math",
+                "${workspaceFolder}/firmware_new/services",
+                "${workspaceFolder}/firmware_new/services/abs",
+                "${workspaceFolder}/firmware_new/services/utils",
+                "${workspaceFolder}/firmware_new/xfoc/abs",
+                "${workspaceFolder}/firmware_new/xfoc",
+                "${workspaceFolder}/firmware_new/xfoc/ctl",
+                "${workspaceFolder}/firmware_new/xfoc/utils",
+                "${workspaceFolder}/firmware_new/board/xdr_s/app",
+                "${workspaceFolder}/firmware_new/board/xdr_s/app/bsp",
+                "${workspaceFolder}/firmware_new/protocol"
             ]
         }
     ]

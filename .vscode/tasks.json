@@ -4,7 +4,7 @@
         {
             "label": "编译",
             "type": "shell",
-            "command": "python3 firmware/tools/build.py build",
+            "command": "python3 firmware_new/build_tools/build.py build",
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -20,7 +20,7 @@
         {
             "label": "重编译",
             "type": "shell",
-            "command": "python3 firmware/tools/build.py clean && python3 firmware/tools/build.py build",
+            "command": "python3 firmware_new/build_tools/build.py clean && python3 firmware_new/build_tools/build.py build",
             "group": "build",
             "problemMatcher": [
                 "$gcc"
@@ -33,7 +33,7 @@
         {
             "label": "烧录",
             "type": "shell",
-            "command": "python3 firmware/tools/build.py flash",
+            "command": "python3 firmware_new/build_tools/build.py flash",
             "group": "test",
             "problemMatcher": [],
             "icon": {
@@ -44,7 +44,7 @@
         {
             "label": "编译并烧录",
             "type": "shell",
-            "command": "python3 firmware/tools/build.py bf",
+            "command": "python3 firmware_new/build_tools/build.py bf",
             "group": "build",
             "problemMatcher": [
                 "$gcc"
@@ -57,7 +57,7 @@
         {
             "label": "擦除",
             "type": "shell",
-            "command": "python3 firmware/tools/build.py erase",
+            "command": "python3 firmware_new/build_tools/build.py erase",
             "problemMatcher": [],
             "icon": {
                 "id": "trash",
@@ -67,7 +67,7 @@
         {
             "label": "清理",
             "type": "shell",
-            "command": "python3 firmware/tools/build.py clean",
+            "command": "python3 firmware_new/build_tools/build.py clean",
             "problemMatcher": []
         },
         {
@@ -75,7 +75,7 @@
             "type": "shell",
             "command": "python3",
             "args": [
-                "${workspaceFolder}/firmware/tools/check_flash.py"
+                "${workspaceFolder}/firmware_new/build_tools/check_flash.py"
             ],
             "group": "build",
             "problemMatcher": []
@@ -85,7 +85,7 @@
             "type": "shell",
             "command": "python3.13",
             "args": [
-                "${workspaceFolder}/Software/start.py"
+                "${workspaceFolder}/software/start.py"
             ],
             "group": "build",
             "problemMatcher": [],

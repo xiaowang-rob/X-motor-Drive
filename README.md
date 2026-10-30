@@ -111,5 +111,5 @@ firmware/xfoc/
 当前板级编译命令：
 
 ```bash
-python3 firmware/tools/build.py build --board=xdr_s --type=app
+python3 firmware_new/build_tools/build.py build --board=xdr_s --type=app
 ```

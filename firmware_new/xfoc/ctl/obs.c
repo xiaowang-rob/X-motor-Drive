@@ -1,0 +1,162 @@
+#include "obs.h"
+#include "bsp_cfg.h"
+#include "bsp_math.h"
+
+#include "parameters.h"
+
+// 位置累积
+static float pos_accumulate(tPosAcc *acc, float theta) {
+    float angle_delta = theta - acc->last_angle;
+    if (angle_delta < -MATH_PI)
+        acc->num_turns++;
+    else if (angle_delta > MATH_PI)
+        acc->num_turns--;
+    acc->last_angle = theta;
+    return (theta - acc->zero_angle) + acc->num_turns * MATH_2PI;
+}
+
+#define ENCODER_PLL_KP 80.0f
+#define ENCODER_PLL_KI 2000.0f
+#define ENCODER_PLL_INTEG_LIMIT 0.1745f // 积分限值  ±10°
+#define ENCODER_VEL_PHYS_LIMIT 1046.0f  // rad/s 物理上限（≈10k rpm）
+
+#define HFISMO_PLL_KP 80.0f
+#define HFISMO_PLL_KI 2000.0f
+#define HFISMO_PLL_INTEG_LIMIT 0.1745f // 积分限值  ±10°
+#define HFISMO_VEL_PHYS_LIMIT 2000.0f  // rad/s 物理上限（≈10k rpm）
+
+// 观测器初始化
+bool obs_init(tObs *obs) {
+    obs->rotor_obs = (eObsList)g_param.rotor_obs;
+    obs->abs_obs = (eObsList)g_param.abs_pos_obs;
+    obs->spi_enc_chip = (eSpiEncList)g_param.enc_chip;
+
+    memset(&obs->pacc, 0, sizeof(tPosAcc));
+
+    switch (obs->rotor_obs) {
+    case OBS_NONE:
+
+        break;
+    case OBS_ENC_HALL:
+
+        break;
+    case OBS_INT_ENC:
+        // TODO:内置编码器
+    case OBS_ENC_SPI:
+        // 配置编码器设备驱动
+        if (!bsp_enc_init(obs->rotor_obs, obs->spi_enc_chip))
+            return false;
+    case OBS_ENC_ABI:
+    case OBS_ENC_SINCOS:
+
+        pll_init(&obs->pll,
+                 ENCODER_PLL_KP,
+                 ENCODER_PLL_KI,
+                 ENCODER_PLL_INTEG_LIMIT,
+                 ENCODER_VEL_PHYS_LIMIT);
+        break;
+    case OBS_HFI_SMO:
+
+        pll_init(&obs->pll,
+                 HFISMO_PLL_KP,
+                 HFISMO_PLL_KI,
+                 HFISMO_PLL_INTEG_LIMIT,
+                 HFISMO_VEL_PHYS_LIMIT);
+        break;
+    default:
+        break;
+    }
+    return true;
+}
+
+bool obs_loop_task(tObs *obs) {
+    switch (obs->rotor_obs) {
+    case OBS_NONE:
+        break;
+    case OBS_ENC_HALL:
+
+        break;
+    case OBS_INT_ENC:
+        // TODO:内置编码器
+        break;
+    case OBS_ENC_SPI:
+    case OBS_ENC_SINCOS:
+        // TODO:这里暂时只是外部编码器 后续可以改
+        encoder_task(&g_enc);
+        obs->theta_r = g_enc.sample.angle_rad;
+        return g_enc.dstate == DEV_RUNNING;
+
+    case OBS_ENC_ABI:
+        break;
+
+    case OBS_HFI_SMO:
+        break;
+    default:
+        break;
+    }
+    return true;
+}
+
+void obs_tim_task(tObs *obs, float ts, float *theta_r, float *theta_e,
+                  float *vel, float *pos) {
+
+    switch (obs->rotor_obs) {
+    case OBS_NONE:
+
+        break;
+    case OBS_ENC_SPI:
+    case OBS_ENC_SINCOS: {
+        // TODO:20khz pll跟随1khz角度变化 需要1khz的角度突变处理
+        *pos = pos_accumulate(&obs->pacc, obs->theta_r);
+        pll_update(&obs->pll, *pos, ts);
+
+        *theta_r = obs->pll.theta;
+        *theta_e = (*theta_r - g_param.theta_offset) * g_param.motor_polepairs *
+                   (g_param.positive_dir ? 1 : -1);
+        *theta_e = normalize_angle_2pi(*theta_e);
+        *vel = obs->pll.vel;
+        break;
+    }
+    case OBS_ENC_ABI:
+        // TODO:ABZ编码器适配
+        break;
+
+    case OBS_HFI_SMO:
+        // TODO:HFI+SMO
+        break;
+    default:
+        break;
+    }
+}
+
+void obs_set_zero(tObs *obs) {
+
+    switch (obs->rotor_obs) {
+    case OBS_NONE:
+
+        break;
+    case OBS_ENC_SPI:
+    case OBS_ENC_SINCOS: {
+        obs->pacc.zero_angle = obs->theta_r;
+        obs->pacc.num_turns = 0;
+        obs->pacc.last_angle = obs->theta_r;
+        break;
+    }
+    case OBS_ENC_ABI:
+        // TODO:ABZ编码器适配
+        break;
+
+    case OBS_HFI_SMO:
+        // TODO:HFI+SMO
+        break;
+    default:
+        break;
+    }
+}
+
+void obs_set_pos_limit(tObs *obs) {
+    if (obs->pos > 0)
+        obs->pacc.max_pos = obs->pos;
+    else
+        obs->pacc.min_pos = obs->pos;
+}
