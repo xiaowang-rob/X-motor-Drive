@@ -29,9 +29,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "app_main.h"
 #include "bsp_cfg.h"
 #include "bsp_flash.h"
-#include "xfoc_main.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -73,7 +73,7 @@ void SystemClock_Config(void);
 int main(void) {
 
     /* USER CODE BEGIN 1 */
-    // mcu_iap_app_init();
+    mcu_iap_app_init();
     /* USER CODE END 1 */
 
     /* MCU
@@ -110,9 +110,9 @@ int main(void) {
     if (!bsp_base_init())
         Error_Handler();
 
-    // 2、启动xdr foc驱动
-    if (!xfoc_start())
-        Error_Handler();
+    // 2、初始化 启动
+    app_main_init();
+    app_main_start();
     /* USER CODE END 2 */
 
     /* Infinite loop */

@@ -481,9 +481,12 @@
     {
       "id_name": "CMD_IAP_ENTER",
       "id": "0xA1",
-      "comment": "进入IAP模式",
-      "request": [],
-      "response": "none"
+      "comment": "保存目标版本和大小后进入IAP模式；保存失败不得复位",
+      "request": [
+        {"name": "version", "type": "FLD_U32", "size": 4, "offset": 0},
+        {"name": "size", "type": "FLD_U32", "size": 4, "offset": 4}
+      ],
+      "response": "feedback"
     },
     {
       "id_name": "CMD_IAP_ERASE_FLASH",

@@ -1,8 +1,7 @@
 #ifndef __BSP_FLASH_H
 #define __BSP_FLASH_H
 
-#include "flash.h"
-#include "iap.h"
+#include "storage.h"
 
 // ============================================================
 //  Flash 介质驱动
@@ -11,16 +10,12 @@
 // ============================================================
 
 // 驱动实例
-const tFlashDevHandle *Get_MCU_FlashHandle(void);
+const tStorageDevHandle *Get_MCU_FlashHandle(void);
 
 // 驱动 ops（abs/flash.h 的 tFlashOps）
-extern const tFlashOps fla_mcu_ops;
+extern const tStorageOps fla_mcu_ops;
 
-extern const tIAPPartition g_bl_parts;
-extern const tIAPPartition g_app_parts;
-
+// MCU IAP 应用初始化函数
+// 在 IAP 应用启动时调用，用于初始化 MCU IAP 应用环境
 void mcu_iap_app_init(void);
-bool mcu_iap_jump_bl(void);
-bool mcu_iap_jump_app(void);
-
 #endif // __BSP_FLASH_H

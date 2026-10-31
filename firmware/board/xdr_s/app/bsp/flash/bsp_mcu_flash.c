@@ -1,7 +1,7 @@
 // ============================================================
 // 内部 MCU Flash 介质驱动
 //
-// STM32G474CB，128KB Flash（64 页 × 2KB）：
+// STM32G474CB，128KB Flash（32 页 × 4KB，单Bank）：
 //   - read  ：直接内存读（存储器映射）
 //   - write ：按 double-word(64bit) 编程（G4 只能 64bit 对齐编程，
 //             F4 的 byte/word 编程在 G4 上不存在）
@@ -12,27 +12,29 @@
 
 #include "stm32g4xx_hal.h" // FLASH 编程接口（HAL 总头按 conf 决定是否展开）
 
-#define FLASH_START_ADDR 0x08000000U                          // Flash 起始地址
-#define FLASH_CAPACITY (128U * 1024U)                         // Flash 容量 (bytes)
-#define FLASH_PAGE_BYTES 2048U                                // 页大小（G4：2KB）
-#define FLASH_TOTAL_PAGES (FLASH_CAPACITY / FLASH_PAGE_BYTES) // 64 页
+#define FLASH_START_ADDR 0x08000000U  // Flash 起始地址
+#define FLASH_CAPACITY (128U * 1024U) // Flash 容量 (bytes)
+#define FLASH_PAGE_BYTES                                                       \
+    4096U // 页大小（双Bank G4：2KB）页大小（单Bank G4：4KB）
+#define FLASH_TOTAL_PAGES (FLASH_CAPACITY / FLASH_PAGE_BYTES) // 32页
 
-#define MCU_NUM_PAGE_BL 24U  // Bootloader 页数
-#define MCU_NUM_PAGE_APP 37U // App 页数
-#define MCU_NUM_PAGE_USR 3U  // 用户数据页数
+#define MCU_NUM_PAGE_BL 8U   // 32 KiB Bootloader
+#define MCU_NUM_PAGE_USR 4U  // 16 KiB 用户数据
+#define MCU_NUM_PAGE_APP 20U // App 页数
 
 #define BL_FIRST_PAGE 0U
-#define APP_FIRST_PAGE (BL_FIRST_PAGE + MCU_NUM_PAGE_BL)
-#define USR_FIRST_PAGE (APP_FIRST_PAGE + MCU_NUM_PAGE_APP)
+#define USR_FIRST_PAGE (BL_FIRST_PAGE + MCU_NUM_PAGE_BL)
+#define APP_FIRST_PAGE (USR_FIRST_PAGE + MCU_NUM_PAGE_USR)
 
 #define PAGE_ADDR(p) (FLASH_START_ADDR + (p) * FLASH_PAGE_BYTES)
 
 // 分区几何（编译期常量）
 #define BL_START_ADDR PAGE_ADDR(BL_FIRST_PAGE)
-#define APP_START_ADDR PAGE_ADDR(APP_FIRST_PAGE)
 #define USR_START_ADDR PAGE_ADDR(USR_FIRST_PAGE)
-#define BL_SIZE (APP_START_ADDR - BL_START_ADDR)
-#define APP_SIZE (USR_START_ADDR - APP_START_ADDR)
+#define APP_START_ADDR PAGE_ADDR(APP_FIRST_PAGE)
+
+#define BL_SIZE (USR_START_ADDR - BL_START_ADDR)
+#define APP_SIZE ((FLASH_START_ADDR + FLASH_CAPACITY) - (APP_START_ADDR))
 
 // ---------- 实例 ----------
 typedef struct tMcuFlash {
@@ -54,15 +56,15 @@ static uint32_t pages_per_bank(void) {
     return FLASH_TOTAL_PAGES;
 }
 
-static void page_to_bank_page(uint32_t page, uint32_t *bank, uint32_t *bank_page) {
+static void page_to_bank_page(uint32_t page, uint32_t *bank,
+                              uint32_t *bank_page) {
 #if defined(FLASH_OPTR_DBANK)
     if (READ_BIT(FLASH->OPTR, FLASH_OPTR_DBANK) != 0U) {
         uint32_t per_bank = FLASH_TOTAL_PAGES / 2U;
         if (page < per_bank) {
             *bank = FLASH_BANK_1;
             *bank_page = page;
-        }
-        else {
+        } else {
             *bank = FLASH_BANK_2;
             *bank_page = page - per_bank;
         }
@@ -75,7 +77,8 @@ static void page_to_bank_page(uint32_t page, uint32_t *bank, uint32_t *bank_page
 
 // ---------- 地址 → 页索引（0..63）；越界返回 -1 ----------
 static int page_index_at(uint32_t addr) {
-    if (addr < FLASH_START_ADDR || addr > (FLASH_START_ADDR + FLASH_CAPACITY - 1U))
+    if (addr < FLASH_START_ADDR ||
+        addr > (FLASH_START_ADDR + FLASH_CAPACITY - 1U))
         return -1;
     return (int)((addr - FLASH_START_ADDR) / FLASH_PAGE_BYTES);
 }
@@ -116,7 +119,8 @@ static bool fla_mcu_open(void *handle) {
     return true; // 内部 Flash 无需初始化
 }
 
-static bool fla_mcu_read(void *handle, uint32_t addr, uint8_t *data, uint32_t len) {
+static bool fla_mcu_read(void *handle, uint32_t addr, uint8_t *data,
+                         uint32_t len) {
     const tMcuFlash *inst = (const tMcuFlash *)handle;
     if (!inst || !data || len == 0U)
         return false;
@@ -129,7 +133,8 @@ static bool fla_mcu_read(void *handle, uint32_t addr, uint8_t *data, uint32_t le
 
 // G4 只能按 64bit(double-word) 对齐编程：要求 addr 8 字节对齐，
 // 尾部不足 8 字节处补 0xFF 后整 double-word 写入（目标须已擦除）。
-static bool fla_mcu_write(void *handle, uint32_t addr, const uint8_t *data, uint32_t len) {
+static bool fla_mcu_write(void *handle, uint32_t addr, const uint8_t *data,
+                          uint32_t len) {
     const tMcuFlash *inst = (const tMcuFlash *)handle;
     if (!inst || !data || len == 0U)
         return false;
@@ -149,7 +154,8 @@ static bool fla_mcu_write(void *handle, uint32_t addr, const uint8_t *data, uint
         uint64_t dword = 0U;
         for (uint32_t b = 0U; b < 8U; b++)
             dword |= (uint64_t)data[i + b] << (8U * b);
-        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, addr + i, dword) != HAL_OK)
+        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, addr + i, dword) !=
+            HAL_OK)
             ok = false;
     }
 
@@ -160,7 +166,8 @@ static bool fla_mcu_write(void *handle, uint32_t addr, const uint8_t *data, uint
             dword &= ~((uint64_t)0xFFU << (8U * b));
             dword |= (uint64_t)data[i + b] << (8U * b);
         }
-        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, addr + i, dword) != HAL_OK)
+        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, addr + i, dword) !=
+            HAL_OK)
             ok = false;
     }
 
@@ -230,45 +237,15 @@ static uint32_t fla_mcu_sector_size(void *handle, uint8_t sec_id) {
     return FLASH_PAGE_BYTES;
 }
 
-// ---------- IAP：分区表 + 平台跳转 ----------
-
-const tIAPPartition g_bl_parts = {
-    .base = BL_START_ADDR,
-    .size = BL_SIZE,
-};
-const tIAPPartition g_app_parts = {
-    .base = APP_START_ADDR,
-    .size = APP_SIZE,
-};
-
-// MCU App 初始化：复位向量表偏移至 BL 之后，承接bl跳转app 中断必须恢复（重启后）
+// MCU App 初始化：复位向量表偏移至 BL 之后，承接bl跳转app
+// 中断必须恢复（重启后）
 void mcu_iap_app_init(void) {
     SCB->VTOR = APP_START_ADDR;
     __enable_irq();
 }
 
-// 平台跳转：BL → 软复位；APP → 切向量表后跳转
-bool mcu_iap_jump_bl(void) {
-    NVIC_SystemReset();
-    return true;
-}
-bool mcu_iap_jump_app(void) {
-
-    // 校验目标向量表位于内部 flash 区（粗略防护）
-    if ((APP_START_ADDR & 0xFFF00000U) != 0x08000000U)
-        return false;
-
-    __disable_irq();
-    SCB->VTOR = APP_START_ADDR;
-    __set_MSP(*(volatile uint32_t *)APP_START_ADDR);                  // 目标固件栈顶
-    uint32_t reset_vec = *(volatile uint32_t *)(APP_START_ADDR + 4U); // 复位向量
-    void (*jump)(void) = (void (*)(void))reset_vec;
-    jump();
-    return true; // 不可达
-}
-
 // ---- 驱动出口 ----
-const tFlashOps fla_mcu_ops = {
+const tStorageOps mcu_fla_ops = {
     .open = fla_mcu_open,
     .read = fla_mcu_read,
     .write = fla_mcu_write,
@@ -279,9 +256,9 @@ const tFlashOps fla_mcu_ops = {
     .sector_size = fla_mcu_sector_size,
 };
 
-static const tFlashDevHandle s_dev_handle = {
-    .ops = &fla_mcu_ops,
+static const tStorageDevHandle s_dev_handle = {
+    .ops = &mcu_fla_ops,
     .dev = &mcu_fla,
 };
 
-const tFlashDevHandle *Get_MCU_FlashHandle(void) { return &s_dev_handle; }
+const tStorageDevHandle *Get_MCU_FlashHandle(void) { return &s_dev_handle; }

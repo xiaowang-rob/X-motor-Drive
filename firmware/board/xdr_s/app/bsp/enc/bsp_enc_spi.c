@@ -1,10 +1,10 @@
 // SPI 编码器专用驱动；芯片协议保持不变。
 
 #include "bsp_enc_spi.h"
-#include "bsp_math.h"
 #include "bsp_mcu.h"
 #include "gpio.h"
 #include "spi.h"
+#include "xmath.h"
 
 struct SpiEncDev {
     struct {
@@ -30,10 +30,10 @@ const tEncoderOps spi_enc_ops = {
     .abort = spi_enc_abort,
 };
 
-tSpiEncDev spi_enc_int = {
+static tSpiEncDev spi_enc_int = {
     .cs = {.port = INTCS_GPIO_Port, .pin = INTCS_Pin},
 };
-tSpiEncDev spi_enc_ext = {
+static tSpiEncDev spi_enc_ext = {
     .cs = {.port = EXTCS_GPIO_Port, .pin = EXTCS_Pin},
 };
 
@@ -47,12 +47,12 @@ const tEncDevHandle SPI_ENCHandle = {
     .ops = &spi_enc_ops,
 };
 
-tEncDevHandle *Get_INT_ENCHandle(void) {
+const tEncDevHandle *Get_INT_ENCHandle(void) {
     spi_enc_int.chip = ENC_MT6816;
     spi_enc_int.chip_ops = enc_chip_ops(ENC_MT6816);
     return &INT_ENCHandle;
 }
-tEncDevHandle *Get_SPI_ENCHandle(eSpiEncList chip) {
+const tEncDevHandle *Get_SPI_ENCHandle(eSpiEncList chip) {
     spi_enc_ext.chip = chip;
     spi_enc_ext.chip_ops = enc_chip_ops(chip);
     return &SPI_ENCHandle;
@@ -121,7 +121,7 @@ static bool spi_enc_open(void *handle) {
     if (ok) {
 
         dev->inited = true;
-        dev->rad_per_lsb = MATH_2PI / (float)dev->chip_ops->resolution;
+        dev->rad_per_lsb = XMATH_2PI / (float)dev->chip_ops->resolution;
     }
     enc_spi_unlock();
     return ok;

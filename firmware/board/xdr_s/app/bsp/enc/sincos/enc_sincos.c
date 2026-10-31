@@ -1,7 +1,7 @@
 #include "bsp_enc_adc.h"
 
 #include "adc.h"
-#include "bsp_math.h"
+#include "xmath.h"
 
 static bool sincos_open(void *handle);
 static bool sincos_close(void *handle);
@@ -37,7 +37,7 @@ const tEncDevHandle SINCOS_ENCHandle = {
     .dev = &sincos_enc,
     .ops = &bsp_sincos_enc_ops,
 };
-tEncDevHandle *Get_SINCOS_ENCHandle(void) { return &SINCOS_ENCHandle; }
+const tEncDevHandle *Get_SINCOS_ENCHandle(void) { return &SINCOS_ENCHandle; }
 
 static bool sincos_open(void *handle) {
     if (!handle)

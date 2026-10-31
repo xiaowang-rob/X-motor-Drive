@@ -12,7 +12,7 @@ typedef struct tGpioLed {
     bool active_level;  // 触发电平（true 高电平点亮）
 } tGpioLed;
 
-tGpioLed gpio_led = {.port = GPIOA, .pin = GPIO_PIN_4, .active_level = false};
+tGpioLed gpio_led = {.port = GPIOB, .pin = GPIO_PIN_11, .active_level = false};
 // ---------- 驱动接口（tLedOps） ----------
 
 static bool led_gpio_open(void *handle) {
@@ -22,7 +22,9 @@ static bool led_gpio_open(void *handle) {
     return true;
 }
 
-static void led_gpio_set(void *handle, bool active) {
+static void led_gpio_set(void *handle, tRGBColor color, uint8_t brightness) {
+    (void)color;
+    bool active = brightness != 0U;
     const tGpioLed *led = (const tGpioLed *)handle;
     if (!led)
         return;
@@ -32,23 +34,16 @@ static void led_gpio_set(void *handle, bool active) {
         LL_GPIO_ResetOutputPin(led->port, led->pin);
 }
 
-static void led_gpio_toggle(void *handle) {
-    const tGpioLed *led = (const tGpioLed *)handle;
-    if (!led)
-        return;
-    LL_GPIO_TogglePin(led->port, led->pin);
-}
-
 // ---- 驱动出口 ----
 const tLedOps led_gpio_ops = {
     .open = led_gpio_open,
     .set = led_gpio_set,
-    .toggle = led_gpio_toggle,
 };
 
 static const tLedDevHandle s_dev_handle = {
     .ops = &led_gpio_ops,
     .dev = &gpio_led,
+    .type = LED_TYPE_LED,
 };
 
 const tLedDevHandle *Get_Gpio_LEDHandle(void) { return &s_dev_handle; }

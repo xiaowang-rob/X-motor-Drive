@@ -31,3 +31,6 @@ docs/
 
 # AI/工具运行痕迹
 .reasonix/
+.agents/
+.codex/
+.vscode/

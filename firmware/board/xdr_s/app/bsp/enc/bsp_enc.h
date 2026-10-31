@@ -5,14 +5,14 @@
 #include "parameter_list.h"
 
 // sincos encoder
-tEncDevHandle *Get_SINCOS_ENCHandle(void);
+const tEncDevHandle *Get_SINCOS_ENCHandle(void);
 // spi encoder handle
-tEncDevHandle *Get_SPI_ENCHandle(eSpiEncList chip);
+const tEncDevHandle *Get_SPI_ENCHandle(eSpiEncList chip);
 // 内置 encoder
-tEncDevHandle *Get_INT_ENCHandle(void);
+const tEncDevHandle *Get_INT_ENCHandle(void);
 // abi encoder
-tEncDevHandle *Get_ABI_ENCHandle(void);
+const tEncDevHandle *Get_ABI_ENCHandle(void);
 // hall encoder
-tEncDevHandle *Get_HALL_ENCHandle(void);
+const tEncDevHandle *Get_HALL_ENCHandle(void);
 
 #endif

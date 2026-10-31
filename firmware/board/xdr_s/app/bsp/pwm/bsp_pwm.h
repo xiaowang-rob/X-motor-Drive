@@ -25,9 +25,6 @@ void bsp_pwm_irq(void);
 void pwm_register_callback(void (*up_cb)(void), void (*down_cb)(void));
 
 // 驱动句柄
-const tGateDevHandle *Get_MCU_PWMHandle(void);
-
-// 驱动 ops（abs/pwm.h 的 tGateOps）
-extern const tGateOps fd6288q_ops;
+const tPwmDevHandle *Get_MCU_PWMHandle(void);
 
 #endif // __BSP_PWM_H

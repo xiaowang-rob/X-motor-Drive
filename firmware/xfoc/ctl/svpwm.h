@@ -1,15 +1,10 @@
 #ifndef __SVPWM_H
 #define __SVPWM_H
 
-#include <stdint.h>
-typedef struct
-{
-    uint16_t tic_pwm; // pwm arr
-    float vbus;       // 母线电压
+#include "pwm.h"
+typedef struct {
+    tPwmDrv *pwm_drv;
     float k;
-    uint16_t ticTs;
-    uint16_t ticTn;
-    uint16_t ticTd;
     uint8_t index;
 
     volatile uint8_t sector;
@@ -19,8 +14,7 @@ typedef struct
 } tSvpwm;
 
 // SVPWM 核心接口
-void svpwm_init(tSvpwm *sv, uint16_t tic_pwm, float Vbus,
-                float tpwm, float ts, float tn, float td);
+void svpwm_init(tSvpwm *sv, tPwmDrv *drv, float Vbus);
 void svpwm_update(tSvpwm *sv, float ua, float ub);
 void svpwm_vbus_calibration(tSvpwm *sv, float Vbus);
 uint16_t svpwm_sp_calibration(tSvpwm *sv);

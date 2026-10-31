@@ -6,13 +6,43 @@ import subprocess
 import tempfile
 import unittest
 
-from gen_protocol import _payload_macros, _render_c_headers
+from gen_protocol import _payload_macros, _render_c_headers, _render_devices
 from schema import load_json, normalize
 
 SOURCE = Path(__file__).resolve().parent
 
 
 class GeneratorTest(unittest.TestCase):
+    def test_device_ids_and_version_encoding(self):
+        doc = load_json(SOURCE / "devices.json")
+        header, module = _render_devices(doc)
+        namespace = {}
+        exec(module, namespace)
+        expected = {"XDR_S_APP": 0x5760, "XDR_S_BL": 0x5761,
+                    "XDR_P_APP": 0x5770, "XDR_P_BL": 0x5771}
+        for name, pid in expected.items():
+            self.assertEqual(namespace[name + "_USB_VID"], 0x0483)
+            self.assertEqual(namespace[name + "_USB_PID"], pid)
+            self.assertIn(f"#define {name}_USB_PID 0x{pid:04X}U", header)
+        encode = namespace["VERSION_ENCODE"]
+        cases = [(1, 2, 3), (0, 0, 0), (255, 255, 255), (256, 257, 258), (-1, -2, -3)]
+        with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as directory:
+            source = Path(directory) / "version.c"
+            program = Path(directory) / "version"
+            assertions = "\n".join(
+                f'_Static_assert(VERSION_ENCODE({a}, {b}, {c}) == {encode(a, b, c)}U, "version");'
+                for a, b, c in cases)
+            source.write_text(header + assertions + "\nint main(void) { return 0; }\n")
+            subprocess.run(["cc", "-std=c11", str(source), "-o", str(program)], check=True)
+            subprocess.run([str(program)], check=True)
+        self.assertEqual(encode(1, 2, 3), 0x010203)
+
+    def test_invalid_usb_id(self):
+        doc = load_json(SOURCE / "devices.json")
+        doc["devices"]["xdr_s"]["app"]["pid"] = 0x10000
+        with self.assertRaises(ValueError):
+            _render_devices(doc)
+
     def setUp(self):
         self.source = load_json(SOURCE / "cmd.json")
         self.types = load_json(SOURCE / "fieldvaluetype.json")

@@ -1,76 +1,41 @@
 {
-  "version": 3,
-  "configurePresets": [
-    {
-      "name": "base",
-      "hidden": true,
-      "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/build/${presetName}",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
-    },
-    {
-      "name": "xdr_p-app",
-      "displayName": "XDr-P  APP",
-      "description": "应用固件：firmware/app + firmware/board/xdr_p/app",
-      "inherits": "base",
-      "toolchainFile": "${sourceDir}/board/xdr_p/app/cmake/gcc-arm-none-eabi.cmake",
-      "cacheVariables": {
-        "BOARD": "xdr_p",
-        "FW_TYPE": "app"
-      }
-    },
-    {
-      "name": "xdr_p-bl",
-      "displayName": "XDr-P  BL",
-      "description": "引导固件：firmware/bootload + firmware/board/xdr_p/bl",
-      "inherits": "base",
-      "toolchainFile": "${sourceDir}/board/xdr_p/bl/cmake/gcc-arm-none-eabi.cmake",
-      "cacheVariables": {
-        "BOARD": "xdr_p",
-        "FW_TYPE": "bl"
-      }
-    },
-    {
-      "name": "xdr_s-app",
-      "displayName": "XDr-S  APP",
-      "description": "应用固件：firmware/app + firmware/board/xdr_s/app",
-      "inherits": "base",
-      "toolchainFile": "${sourceDir}/board/xdr_s/app/cmake/gcc-arm-none-eabi.cmake",
-      "cacheVariables": {
-        "BOARD": "xdr_s",
-        "FW_TYPE": "app"
-      }
-    },
-    {
-      "name": "xdr_s-bl",
-      "displayName": "XDr-S  BL",
-      "description": "引导固件：firmware/bootload + firmware/board/xdr_s/bl",
-      "inherits": "base",
-      "toolchainFile": "${sourceDir}/board/xdr_s/bl/cmake/gcc-arm-none-eabi.cmake",
-      "cacheVariables": {
-        "BOARD": "xdr_s",
-        "FW_TYPE": "bl"
-      }
-    }
-  ],
-  "buildPresets": [
-    {
-      "name": "xdr_p-app",
-      "configurePreset": "xdr_p-app"
-    },
-    {
-      "name": "xdr_p-bl",
-      "configurePreset": "xdr_p-bl"
-    },
-    {
-      "name": "xdr_s-app",
-      "configurePreset": "xdr_s-app"
-    },
-    {
-      "name": "xdr_s-bl",
-      "configurePreset": "xdr_s-bl"
-    }
-  ]
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "xdr_s-app",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/build/xdr_s-app/Debug",
+            "cacheVariables": {
+                "BOARD": "xdr_s",
+                "FW_TYPE": "app",
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "xdr_s-app-release",
+            "inherits": "xdr_s-app",
+            "binaryDir": "${sourceDir}/build/xdr_s-app/Release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+        ,{
+            "name": "xdr_s-bl",
+            "inherits": "xdr_s-app",
+            "binaryDir": "${sourceDir}/build/xdr_s-bl/Debug",
+            "cacheVariables": {"FW_TYPE": "bl"}
+        },
+        {
+            "name": "xdr_s-bl-release",
+            "inherits": "xdr_s-bl",
+            "binaryDir": "${sourceDir}/build/xdr_s-bl/Release",
+            "cacheVariables": {"CMAKE_BUILD_TYPE": "Release"}
+        }
+    ],
+    "buildPresets": [
+        {"name": "xdr_s-app", "configurePreset": "xdr_s-app"},
+        {"name": "xdr_s-app-release", "configurePreset": "xdr_s-app-release"},
+        {"name": "xdr_s-bl", "configurePreset": "xdr_s-bl"},
+        {"name": "xdr_s-bl-release", "configurePreset": "xdr_s-bl-release"}
+    ]
 }

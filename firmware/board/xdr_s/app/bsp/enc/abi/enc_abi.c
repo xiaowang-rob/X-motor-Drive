@@ -36,11 +36,11 @@ typedef struct ABI_ENCODER_DEVICE {
 
 tAbiEncDev abi_enc;
 
-const static tEncDevHandle abi_enc_handle = {
+const tEncDevHandle abi_enc_handle = {
     .ops = &abi_enc_ops,
     .dev = &abi_enc,
 };
-tEncDevHandle *Get_ABI_ENCHandle(void) { return &abi_enc_handle; };
+const tEncDevHandle *Get_ABI_ENCHandle(void) { return &abi_enc_handle; };
 
 static bool abi_enc_open(void *handle) {
     if (abi_cfg.counts_per_rev > 65535U)

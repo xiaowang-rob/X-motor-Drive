@@ -9,9 +9,9 @@
 //
 // 实现 abs/pwm.h 的 tGateOps。
 // ============================================================
-#include "bsp_pwm.h"
-
+#include "bsp_adc.h"
 #include "bsp_mcu.h"
+#include "bsp_pwm.h"
 
 // ---------- 实例 ----------
 typedef struct tMcuPwm {
@@ -61,15 +61,16 @@ void pwm_register_callback(void (*up_cb)(void), void (*down_cb)(void)) {
 
 // ---------- 驱动接口（tGateOps） ----------
 
-static bool fd6288q_open(void *handle, uint32_t *pwm_period) {
+static void mcu_pwm_open(void *handle, tPwmCfg *cfg) {
     tMcuPwm *inst = (tMcuPwm *)handle;
-    if (!inst || !inst->htim || !pwm_period)
-        return false;
-    *pwm_period = PWM_ARR;
-    return true;
+    if (!inst)
+        return;
+    cfg->pwm_arr = PWM_ARR, cfg->ticTd = GATE_T_DIED * PWM_FREQ * PWM_ARR;
+    cfg->ticTn = GATE_T_NOISE * PWM_FREQ * PWM_ARR;
+    cfg->ticTs = ADC_T_SAMPLE_CUR * PWM_FREQ * PWM_ARR;
 }
 
-static void fd6288q_power(void *handle, bool on) {
+static void gate_drv_power(void *handle, bool on) {
     tMcuPwm *inst = (tMcuPwm *)handle;
     if (!inst)
         return;
@@ -77,7 +78,7 @@ static void fd6288q_power(void *handle, bool on) {
         inst->pwr_port, inst->pwr_pin, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
-static void fd6288q_enable(void *handle, bool en) {
+static void mcu_pwm_enable(void *handle, bool en) {
     tMcuPwm *inst = (tMcuPwm *)handle;
     if (!inst || !inst->htim)
         return;
@@ -96,7 +97,7 @@ static void fd6288q_enable(void *handle, bool en) {
 
 // 三相占空比：20kHz 热路径，直写 CCR 寄存器，绕开 __HAL_TIM_SetCompare
 // 的通道判断
-static void fd6288q_set_compare(void *handle, uint16_t ticA, uint16_t ticB,
+static void mcu_pwm_set_compare(void *handle, uint16_t ticA, uint16_t ticB,
                                 uint16_t ticC) {
     const tMcuPwm *inst = (const tMcuPwm *)handle;
     if (!inst || !inst->htim)
@@ -108,16 +109,16 @@ static void fd6288q_set_compare(void *handle, uint16_t ticA, uint16_t ticB,
 }
 
 // ---- 驱动出口 ----
-const tGateOps fd6288q_ops = {
-    .open = fd6288q_open,
-    .power = fd6288q_power,
-    .enable = fd6288q_enable,
-    .set_compare = fd6288q_set_compare,
+const tPwmOps mcu_pwm_ops = {
+    .open = mcu_pwm_open,
+    .power = gate_drv_power,
+    .enable = mcu_pwm_enable,
+    .set_compare = mcu_pwm_set_compare,
 };
 
-static const tGateDevHandle s_dev_handle = {
-    .ops = &fd6288q_ops,
+static const tPwmDevHandle s_dev_handle = {
+    .ops = &mcu_pwm_ops,
     .dev = &mcu_pwm,
 };
 
-const tGateDevHandle *Get_MCU_PWMHandle(void) { return &s_dev_handle; }
+const tPwmDevHandle *Get_MCU_PWMHandle(void) { return &s_dev_handle; }

@@ -7,8 +7,7 @@ void ctrl_foc_init(tCtrl *con, tParameter *param, float t_cl, float vmax) {
 }
 
 // pid初始化
-void ctrl_pid_init(tCtrl *con, tParameter *param, uint8_t pvc, float t_ml,
-                   float t_ll) {
+void ctrl_pid_init(tCtrl *con, tParameter *param, float t_ml, float t_ll) {
     pi_init(&con->PI_vel,
             param->vlkp,
             param->vlki,
@@ -19,8 +18,8 @@ void ctrl_pid_init(tCtrl *con, tParameter *param, uint8_t pvc, float t_ml,
             param->vlki,
             param->motor_rated_current,
             t_ml);
-    con->pos_pvc = pvc;
-    if (pvc == POS_PID_PC)
+    con->pos_pvc = param->pos_pidmode;
+    if (con->pos_pvc == POS_PID_PC)
         pid_init(&con->PID_pos,
                  param->plkp,
                  param->plki,

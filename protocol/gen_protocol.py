@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """从 protocol/*.json 生成 Python 布局常量和 C 固定 payload 宏。
 
-直接生成 Software/protocol/ 的 Python 模块及 firmware/protocol/ 的 C 头文件。
+直接生成 software/protocol/ 的 Python 模块及 firmware/protocol/ 的 C 头文件。
 C 固定 payload 宏并入 cmd_list.h；动态 payload 和 Python 编解码由应用实现。
 使用 --check 可检查当前生成文件是否与 JSON 一致。
 """
@@ -12,7 +12,7 @@ from schema import load_json, normalize
 
 SRC_DIR = Path(__file__).resolve().parent
 ROOT = SRC_DIR.parent
-PY_OUT = ROOT / "Software" / "protocol"
+PY_OUT = ROOT / "software" / "protocol"
 C_OUT = ROOT / "firmware" / "protocol"
 NOTE = "# 此文件由 protocol/gen_protocol.py 自动生成，请勿手动修改"
 
@@ -295,6 +295,28 @@ def _render_c_headers(types, params, obs, doc):
     return outputs
 
 
+def _render_devices(doc):
+    c_lines = ["#include <stdint.h>", "", "#define VERSION_ENCODE(major, minor, patch) " + chr(92),
+               "    ((((uint32_t)(major) & 0xFFU) << 16) |  " + chr(92),
+               "     (((uint32_t)(minor) & 0xFFU) << 8)  |  " + chr(92),
+               "     ((uint32_t)(patch) & 0xFFU))", ""]
+    py_lines = [NOTE, "", "def VERSION_ENCODE(major, minor, patch):",
+                "    return ((major & 0xFF) << 16) | ((minor & 0xFF) << 8) | (patch & 0xFF)", ""]
+    for series, modes in doc["devices"].items():
+        if not series.isidentifier():
+            raise ValueError(f"非法设备系列名: {series}")
+        for mode in ("app", "bl"):
+            for kind in ("vid", "pid"):
+                raw = modes[mode][kind]
+                value = int(raw, 0) if isinstance(raw, str) else raw
+                if type(value) is not int or not 0 <= value <= 0xFFFF:
+                    raise ValueError(f"非法 USB {kind}: {series}/{mode}: {raw}")
+                name = f"{series}_{mode}_USB_{kind}".upper()
+                c_lines.append(f"#define {name} 0x{value:04X}U")
+                py_lines.append(f"{name} = 0x{value:04X}")
+    return _c_header("PROTO_DEVICES_H", c_lines), "\n".join(py_lines) + "\n"
+
+
 def _write(path, content, check):
     if check:
         if not path.exists() or path.read_text(encoding="utf-8") != content:
@@ -319,6 +341,9 @@ def main():
     }
     outputs.update({C_OUT / name: content
                     for name, content in _render_c_headers(types, params, obs, doc).items()})
+    devices_h, devices_py = _render_devices(load_json(SRC_DIR / "devices.json"))
+    outputs[C_OUT / "devices.h"] = devices_h
+    outputs[PY_OUT / "devices.py"] = devices_py
     for path, content in outputs.items():
         _write(path, content, args.check)
 

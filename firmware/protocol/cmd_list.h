@@ -29,7 +29,7 @@ typedef enum
     CMD_DISABLE = 0xBB, /* 释放电机 */
     CMD_SET_ZERO_POS = 0xBD, /* 设置零点 */
     CMD_SET_LIMIT_POS = 0xBE, /* 以当前位置设置极限位置 */
-    CMD_IAP_ENTER = 0xA1, /* 进入IAP模式 */
+    CMD_IAP_ENTER = 0xA1, /* 保存目标版本和大小后进入IAP模式；保存失败不得复位 */
     CMD_IAP_ERASE_FLASH = 0xA2, /* 擦除Flash */
     CMD_IAP_WRITE_FLASH = 0xA3, /* 写入Flash */
     CMD_IAP_VERIFY_FLASH = 0xA4, /* 校验Flash */
@@ -184,6 +184,18 @@ typedef enum
         memcpy(&_proto_kd, _proto_packet + 4, 4); \
         (kp) = _proto_kp; \
         (kd) = _proto_kd; \
+        (_out_length) = 8; \
+    } while (0)
+
+#define DEPACK_IAP_ENTER_REQUEST(_out_length, _packet, version, size) \
+    do { \
+        const uint8_t *_proto_packet = (_packet); \
+        uint32_t _proto_version; \
+        memcpy(&_proto_version, _proto_packet + 0, 4); \
+        uint32_t _proto_size; \
+        memcpy(&_proto_size, _proto_packet + 4, 4); \
+        (version) = _proto_version; \
+        (size) = _proto_size; \
         (_out_length) = 8; \
     } while (0)
 

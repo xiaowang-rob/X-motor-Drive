@@ -3,7 +3,6 @@
 
 #include "parameter_list.h"
 #include <stdbool.h>
-#define TRAJ_PVT_MAX_POINTS 10
 
 //  配置参数
 typedef struct {
@@ -15,11 +14,6 @@ typedef struct {
 
 } tTraj_Config;
 
-typedef struct {
-    float p;
-    float v;
-    float t;
-} tPVTpoint;
 //  输出结果
 typedef struct {
     float value;   // 核心输出：平滑后的值
@@ -29,19 +23,18 @@ typedef struct {
 
 //  轨迹规划器
 typedef struct {
-    tTraj_Config cfg;                   // 配置参数
-    tTraj_Out out;                      // 输出结果
-    tPVTpoint pvt[TRAJ_PVT_MAX_POINTS]; // PVT点
-    float target;                       // 目标值
-    float current;                      // 当前规划值
-    float rate;                         // 一阶变化率
-    float rate_d2;                      // 二阶变化率(仅 S 型需要)
+    tTraj_Config cfg; // 配置参数
+    tTraj_Out out;    // 输出结果
+    float target;     // 目标值
+    float current;    // 当前规划值
+    float rate;       // 一阶变化率
+    float rate_d2;    // 二阶变化率(仅 S 型需要)
     bool busy;
 
 } tTraj;
 
 //  核心 API
-bool traj_init(tTraj *traj, tTraj_Config cfg);
+bool traj_init(tTraj *traj, tParameter *param);
 void traj_reset(tTraj *traj, float current_value);
 void traj_set_target(tTraj *traj, float target);
 void traj_Update(tTraj *traj, float dt);

@@ -27,31 +27,10 @@
 #include "parameter_list.h"
 
 const uint32_t TIC_PWM = 4249;
-const float F_PWM = PWM_FREQ;            // PWM频率
-const float T_PWM = 1 / F_PWM;           // PWM周期
-const float F_CON = F_PWM;               // 控制基频 (Hz)
-const float T_CON = T_PWM;               // 控制周期 (s)
-const float T_SAMPLE = ADC_T_SAMPLE_CUR; // 采样时间
-const float T_NOISE = GATE_T_NOISE;      // 开关噪声时间
-const float T_DIED = GATE_T_DIED;        // 死区时间
-
-// ---- 存储 ----
-tFlash g_flash;
-tIAP g_iap;
-
-// ---- 功率级 ----
-tGateDrv g_gate;
-
-// ---- 状态反馈 ----
-tLed g_led;
-
-// ---- 通讯 ----
-tBusDriver g_can;
-tUartDriver g_uart;
-tUartDriver g_usb;
-
-tEncoder g_enc;
-tSense g_sense;
+const float F_PWM = PWM_FREQ;  // PWM频率
+const float T_PWM = 1 / F_PWM; // PWM周期
+const float F_CON = F_PWM;     // 控制基频 (Hz)
+const float T_CON = T_PWM;     // 控制周期 (s)
 
 // ---------- 通讯缓冲（调用方提供，多路各自独立） ----------
 #define CAN_MP_BLOCKS 16U
@@ -79,46 +58,52 @@ static const tUartBuffer s_uart1_buf = {
 };
 
 static uint8_t s_usb_rxq[UART_RXQ_BYTES];
-static uint8_t s_usb_frame[UART_MAX_PKT_SIZE + 4];
-static uint8_t s_usb_tx[UART_MAX_PKT_SIZE + 5];
-static const tUartBuffer s_usb_buf = {
-    .rx_queue_buf = s_usb_rxq,
-    .rx_queue_size = UART_RXQ_BYTES,
-    .frame_buf = s_usb_frame,
-    .tx_buf = s_usb_tx,
+static const tUsbBuffer s_usb_buf = {
+    .rx_storage = s_usb_rxq,
+    .rx_slot_count = UART_RXQ_BYTES,
+    .rx_payload_size = UART_MAX_PKT_SIZE,
 };
+
+tBusDriver g_bus_can;
+tLed g_led;
+tStorage g_storage;
+tStorageUnit g_param_storage_unit;
+tStorageUnit g_log_storage_unit;
+tUartDriver g_uart;
+tUsbDriver g_usb;
+tEncoder g_enc;
+tPwmDrv g_pwm;
+tSample g_sample;
 
 // 板载设备初始化
 bool bsp_base_init(void) {
 
     // 存储：MCU 内部 Flash（介质几何与扇区操作见 bsp_mcu_flash.c）
-    if (!flash_init(&g_flash, Get_MCU_FlashHandle()))
+    if (!storage_init(&g_storage, Get_MCU_FlashHandle()))
         return false;
-    // IAP：复用同一介质 + 分区表 + 平台跳转（见 bsp_flash.h）
-    if (!iap_init(&g_iap, Get_MCU_FlashHandle(), &g_bl_parts, mcu_iap_jump_bl))
+    /* USR：前 3 页参数轮换，最后 1 页日志。策略由 storage 抽象层实现。 */
+    if (!storage_unit_register(&g_storage, &g_param_storage_unit, 0U, 3U) ||
+        !storage_unit_register(&g_storage, &g_log_storage_unit, 3U, 1U))
         return false;
 
     // 功率级（见 bsp_mcu_pwm.c）
-    if (!gate_drv_init(&g_gate, Get_MCU_PWMHandle()))
+    if (!pwm_init(&g_pwm, Get_MCU_PWMHandle()))
         return false;
 
     // 采样驱动启动电流及电压/温度 ADC。
-    if (!sample_init(&g_sense, Get_MCU_ADCHandle()))
+    if (!sample_init(&g_sample, Get_MCU_ADCHandle()))
         return false;
-
-    // 电流采样点：跟随功率级 PWM 周期（提前一个计数）
-    sample_set_sample_point(&g_sense, g_gate.pwm_period - 1U);
 
     // 状态反馈（见 bsp_gpio_led.c）
     if (!led_init(&g_led, Get_Gpio_LEDHandle()))
         return false;
 
     // 通讯（CAN、MCU UART、USB vendor HID 的 UART 帧兼容适配）
-    if (!bus_init(&g_can, Get_CanHandle(), &s_can_buf))
+    if (!bus_init(&g_bus_can, Get_CanHandle(), &s_can_buf))
         return false;
     if (!uart_init(&g_uart, Get_MCU_UsartHandle(), &s_uart1_buf))
         return false;
-    if (!uart_init(&g_usb, Get_MCU_USBHandle(), &s_usb_buf))
+    if (!usb_init(&g_usb, Get_USB_VendorHandle(), &s_usb_buf))
         return false;
 
     return true;

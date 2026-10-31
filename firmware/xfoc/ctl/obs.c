@@ -1,18 +1,16 @@
 #include "obs.h"
 #include "bsp_cfg.h"
-#include "bsp_math.h"
-
-#include "parameters.h"
+#include "xmath.h"
 
 // 位置累积
 static float pos_accumulate(tPosAcc *acc, float theta) {
     float angle_delta = theta - acc->last_angle;
-    if (angle_delta < -MATH_PI)
+    if (angle_delta < -XMATH_PI)
         acc->num_turns++;
-    else if (angle_delta > MATH_PI)
+    else if (angle_delta > XMATH_PI)
         acc->num_turns--;
     acc->last_angle = theta;
-    return (theta - acc->zero_angle) + acc->num_turns * MATH_2PI;
+    return (theta - acc->zero_angle) + acc->num_turns * XMATH_2PI;
 }
 
 #define ENCODER_PLL_KP 80.0f
@@ -26,10 +24,12 @@ static float pos_accumulate(tPosAcc *acc, float theta) {
 #define HFISMO_VEL_PHYS_LIMIT 2000.0f  // rad/s 物理上限（≈10k rpm）
 
 // 观测器初始化
-bool obs_init(tObs *obs) {
-    obs->rotor_obs = (eObsList)g_param.rotor_obs;
-    obs->abs_obs = (eObsList)g_param.abs_pos_obs;
-    obs->spi_enc_chip = (eSpiEncList)g_param.enc_chip;
+bool obs_init(tObs *obs, tParameter *param) {
+    obs->param = param;
+
+    obs->rotor_obs = (eObsList)param->rotor_obs;
+    obs->abs_obs = (eObsList)param->abs_pos_obs;
+    obs->spi_enc_chip = (eSpiEncList)param->enc_chip;
 
     memset(&obs->pacc, 0, sizeof(tPosAcc));
 
@@ -111,9 +111,10 @@ void obs_tim_task(tObs *obs, float ts, float *theta_r, float *theta_e,
         pll_update(&obs->pll, *pos, ts);
 
         *theta_r = obs->pll.theta;
-        *theta_e = (*theta_r - g_param.theta_offset) * g_param.motor_polepairs *
-                   (g_param.positive_dir ? 1 : -1);
-        *theta_e = normalize_angle_2pi(*theta_e);
+        *theta_e = (*theta_r - obs->param->theta_offset) *
+                   obs->param->motor_polepairs *
+                   (obs->param->positive_dir ? 1 : -1);
+        *theta_e = xmath_normalize_angle_2pi(*theta_e);
         *vel = obs->pll.vel;
         break;
     }

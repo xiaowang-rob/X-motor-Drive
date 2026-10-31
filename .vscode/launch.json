@@ -2,27 +2,20 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "调试",
+            "name": "调试（跟随 project.json）",
             "type": "cortex-debug",
             "request": "launch",
-            "executable": "${workspaceFolder}/build/current.elf",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/firmware/build/current.elf",
             "servertype": "openocd",
-            "gdbPath": "gdb-multiarch",
+            "gdbPath": "arm-none-eabi-gdb",
+            "objdumpPath": "arm-none-eabi-objdump",
             "runToEntryPoint": "main",
             "showDevDebugOutput": "raw",
-            "armToolchainPath": "/usr/bin",
-            "preLaunchCommands": [],
             "preLaunchTask": "编译",
             "configFiles": [
-                "interface/stlink.cfg",
-                "target/stm32f4x.cfg"
-            ],
-            "liveWatch": {
-                "enabled": true,
-                "samples": 100,
-                "period": 500
-            },
-            "svdFile": "${workspaceFolder}/platform/stm32f4xx/STM32F405.svd"
+                "${workspaceFolder}/firmware/build/debug_openocd.cfg"
+            ]
         }
     ]
 }

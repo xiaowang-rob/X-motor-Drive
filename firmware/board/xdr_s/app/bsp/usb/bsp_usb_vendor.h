@@ -4,11 +4,6 @@
 #include "uart_com.h"
 #include "usb_com.h"
 
-/* 驱动实例不透明；装配层通过类型化句柄访问。 */
-typedef struct tUsbVendor tUsbVendor;
-extern tUsbVendor g_uart_usb;
-const tUartDevHandle *Get_MCU_USBHandle(void);
-extern const tUartOps uart_usb_ops;
 /* Native message ops: same handle, payload delivered without a UART wrapper.
  * One RX subscriber only: registering either ops replaces the previous one. */
 extern const tUsbOps usb_vendor_ops;
@@ -43,8 +38,7 @@ const tUsbDevHandle *Get_USB_VendorHandle(void);
 bool bsp_usb_vendor_send(void *handle, const uint8_t *data, uint16_t len);
 bool bsp_usb_vendor_ready(void);
 
-typedef struct
-{
+typedef struct {
     uint32_t tx_messages; /* Queued, not necessarily delivered. */
     uint32_t tx_rejected;
     uint32_t tx_submit_errors;

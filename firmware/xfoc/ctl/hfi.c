@@ -2,9 +2,9 @@
 // 基于αβ轴脉振方波注入 + PLL跟踪
 //          全程角度制 (degree)，纯电气角度
 #include "hfi.h"
-#include "bsp_math.h"
 #include "control.h"
 #include "filter.h"
+#include "xmath.h"
 
 // ---------- 速度 LPF（2nd Butterworth fc=120Hz fs=20kHz，由
 // tools/filter_coeffs.py 生成） ----------
@@ -82,7 +82,7 @@ void hfi_step(float ialpha, float ibeta, float *u_alpha_h, float *u_beta_h,
 
     // 2. 位置误差解耦 (矢量叉乘)
     float sin_theta, cos_theta;
-    arm_sin_cos_rad_f32(g_hfi.theta_e, &sin_theta, &cos_theta);
+    xmath_sin_cos_rad_f32(g_hfi.theta_e, &sin_theta, &cos_theta);
 
     float pll_error =
         g_hfi.i_hf_alpha * sin_theta - g_hfi.i_hf_beta * cos_theta;
@@ -104,7 +104,7 @@ void hfi_step(float ialpha, float ibeta, float *u_alpha_h, float *u_beta_h,
     // 5. 角度更新 (积分 + 归一化)
     g_hfi.theta_e += g_hfi.vel_filtered * ts;
     // g_hfi.theta_e += g_hfi.vel_e * ts;
-    g_hfi.theta_e = normalize_angle_2pi(g_hfi.theta_e);
+    g_hfi.theta_e = xmath_normalize_angle_2pi(g_hfi.theta_e);
 
     // 6. 更新方波注入信号 (+1/-1 交替)
     g_hfi.inj_count++;
@@ -130,7 +130,7 @@ void hfi_detect_initial_position(float id, float *ualpha, float *ubeta) {
 
     float ud_ref;
     float sin_angle, cos_angle;
-    arm_sin_cos_rad_f32(g_hfi.theta_e, &sin_angle, &cos_angle);
+    xmath_sin_cos_rad_f32(g_hfi.theta_e, &sin_angle, &cos_angle);
 
     detect_timer++;
     g_hfi.id_h = (id - 2 * g_hfi.id_z[0] + g_hfi.id_z[1]) / 4;
@@ -143,20 +143,20 @@ void hfi_detect_initial_position(float id, float *ualpha, float *ubeta) {
         ud_ref = HFI_INIT_VOLT; // 正脉冲
     } else if (detect_timer < 610) {
         ud_ref = HFI_INIT_VOLT;
-        g_hfi.init_curr_pos += FABSF(g_hfi.id_h);
+        g_hfi.init_curr_pos += XFABSF(g_hfi.id_h);
     } else if (detect_timer < 1000) {
         ud_ref = 0.0f;
     } else if (detect_timer < 1200) {
         ud_ref = -HFI_INIT_VOLT; // 负脉冲
     } else if (detect_timer < 1210) {
         ud_ref = -HFI_INIT_VOLT;
-        g_hfi.init_curr_neg += FABSF(g_hfi.id_h);
+        g_hfi.init_curr_neg += XFABSF(g_hfi.id_h);
     } else // 判决：电流大的一侧为N极
     {
         ud_ref = 0.0f;
         if (g_hfi.init_curr_pos < g_hfi.init_curr_neg) {
-            g_hfi.theta_e += MATH_PI;
-            g_hfi.theta_e = normalize_angle_2pi(g_hfi.theta_e);
+            g_hfi.theta_e += XMATH_PI;
+            g_hfi.theta_e = xmath_normalize_angle_2pi(g_hfi.theta_e);
         }
         g_hfi.init_flag = true;
     }

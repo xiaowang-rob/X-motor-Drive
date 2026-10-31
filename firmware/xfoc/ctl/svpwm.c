@@ -1,22 +1,16 @@
 #include "svpwm.h"
-#include "bsp_math.h"
+#include "xmath.h"
 
-void svpwm_init(tSvpwm *sv, uint16_t tic_pwm, float Vbus, float tpwm, float ts,
-                float tn, float td) {
+void svpwm_init(tSvpwm *sv, tPwmDrv *drv, float Vbus) {
     memset(sv, 0, sizeof(tSvpwm));
-    sv->tic_pwm = tic_pwm;
-    sv->vbus = Vbus;
-    sv->k = MATH_SQRT3 * (float)sv->tic_pwm / Vbus;
-
-    sv->ticTs = ts * sv->tic_pwm / (tpwm); // 采样时间提前量（计数值）
-    sv->ticTn = tn * sv->tic_pwm / (tpwm); // 噪声时间（计数值）
-    sv->ticTd = td * sv->tic_pwm / (tpwm); // 死区时间（计数值）
+    sv->pwm_drv = drv;
+    sv->k = XMATH_SQRT3 * (float)drv->cfg.pwm_arr / Vbus;
 }
 
 void svpwm_update(tSvpwm *sv, float ua, float ub) {
     // 反clark变换，不是标准的，只是为了方便判断扇区
     float U1 = ub;
-    float U2 = MATH_SQRT3_2 * ua - 0.5f * ub;
+    float U2 = XMATH_SQRT3_2 * ua - 0.5f * ub;
     float U3 = -U2 - ub;
 
     uint8_t A = U1 > 0;
@@ -72,13 +66,13 @@ void svpwm_update(tSvpwm *sv, float ua, float ub) {
         break;
     }
 
-    if (T1 + T2 > sv->tic_pwm) {
-        float ratio = sv->tic_pwm / (T1 + T2);
+    if (T1 + T2 > sv->pwm_drv->cfg.pwm_arr) {
+        float ratio = sv->pwm_drv->cfg.pwm_arr / (T1 + T2);
         T1 *= ratio;
         T2 *= ratio;
         T0 = 0;
     } else {
-        T0 = sv->tic_pwm - T1 - T2;
+        T0 = sv->pwm_drv->cfg.pwm_arr - T1 - T2;
     }
     // 以七段式开关序列方式输出--更小的电流纹波和中心对称性（5段
     // 可以减小开关次数）
@@ -124,25 +118,27 @@ void svpwm_update(tSvpwm *sv, float ua, float ub) {
         sv->ticC = (uint16_t)t0;
         break;
     }
+    // 门极驱动输出
+    pwm_set_compare(sv->pwm_drv, sv->ticA, sv->ticB, sv->ticC);
 }
 
 // 电压参数校准
 void svpwm_vbus_calibration(tSvpwm *sv, float Vbus) {
-    sv->vbus = Vbus;
-    sv->k = MATH_SQRT3 * (float)sv->tic_pwm / Vbus;
+    sv->k = XMATH_SQRT3 * (float)sv->pwm_drv->cfg.pwm_arr / Vbus;
 }
 
 // 电流采样点校准 返回采样时机ccr
 uint16_t svpwm_sp_calibration(tSvpwm *sv) {
     uint16_t tic_ref; // 当前扇区的参考相计数
     uint16_t tic_out; // 目标点ccr
-    const uint16_t ticall = sv->ticTd + sv->ticTn + sv->ticTs;
-    const uint16_t tic_td_tn = sv->ticTd + sv->ticTn;
+    const uint16_t ticall = sv->pwm_drv->cfg.ticTd + sv->pwm_drv->cfg.ticTn +
+                            sv->pwm_drv->cfg.ticTs;
+    const uint16_t tic_td_tn = sv->pwm_drv->cfg.ticTd + sv->pwm_drv->cfg.ticTn;
     // 根据扇区确定参考相，并保存tic值
     switch (sv->sector) {
     case 0:
     case 7:
-        tic_ref = sv->tic_pwm / 2;
+        tic_ref = sv->pwm_drv->cfg.pwm_arr / 2;
         break;
     case 1:
     case 6:
@@ -158,7 +154,7 @@ uint16_t svpwm_sp_calibration(tSvpwm *sv) {
     }
 
     // 根据参考相占空比判断调制深度
-    if (tic_ref > sv->ticTd + sv->ticTn) {
+    if (tic_ref > sv->pwm_drv->cfg.ticTd + sv->pwm_drv->cfg.ticTn) {
         sv->index = 1; // 低调制
     } else if (ticall > 2 * tic_ref) {
         sv->index = 3; // 高调制
@@ -169,17 +165,17 @@ uint16_t svpwm_sp_calibration(tSvpwm *sv) {
     // 设置ADC采样触发点
     switch (sv->index) {
     case 1:
-        tic_out = tic_ref - sv->ticTs;
+        tic_out = tic_ref - sv->pwm_drv->cfg.ticTs;
         break;
     case 2:
-        tic_out = tic_ref + sv->ticTs;
+        tic_out = tic_ref + sv->pwm_drv->cfg.ticTs;
         break;
     case 3:
         // 确保减后不溢出（可根据实际需求加限幅）
         if (tic_ref >= tic_td_tn)
             tic_out = tic_ref - tic_td_tn;
         else
-            tic_out = sv->tic_pwm - 1; // 默认采样点
+            tic_out = sv->pwm_drv->cfg.pwm_arr - 1; // 默认采样点
         break;
     default:
         break;

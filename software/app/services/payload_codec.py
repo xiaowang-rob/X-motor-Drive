@@ -281,6 +281,15 @@ def pack_mit_ctrl(position, velocity=0.0, torque=0.0,
     return bytes(buf)
 
 
+def pack_iap_enter(version, size):
+    buf = bytearray(layout.CMD_IAP_ENTER_REQUEST_SIZE)
+    _pack(buf, "<I", layout.CMD_IAP_ENTER_REQUEST_VERSION_OFFSET,
+          _integer(version, 0, 0xFFFFFF))
+    _pack(buf, "<I", layout.CMD_IAP_ENTER_REQUEST_SIZE_OFFSET,
+          _integer(size, 8, 0xFFFFFFFF))
+    return bytes(buf)
+
+
 def pack_iap_erase(size):
     buf = bytearray(layout.CMD_IAP_ERASE_FLASH_REQUEST_SIZE)
     _pack(buf, "<I", layout.CMD_IAP_ERASE_FLASH_REQUEST_SIZE_OFFSET, _integer(size, 0, 0xFFFFFFFF))

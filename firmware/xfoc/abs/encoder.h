@@ -1,7 +1,7 @@
 #ifndef __ENCODER_H
 #define __ENCODER_H
 
-#include "device.h"
+#include "device_status.h"
 #include "parameter_list.h"
 
 // ============================================================
@@ -58,6 +58,8 @@ typedef struct {
 
     uint16_t valid_counter; // 数据有效性滑动指示（成功 -1 / 失败 +10）
 } tEncoder;
+
+extern tEncoder g_enc;
 
 // 启动对象：ops/handle 须已由装配层挂好（任一为空返回 false）
 bool encoder_init(tEncoder *enc, const tEncDevHandle *handle);

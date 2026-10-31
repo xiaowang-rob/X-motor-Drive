@@ -38,7 +38,7 @@ const tEncDevHandle HALL_ENCHandle = {
     .ops = &bsp_hall_enc_ops,
     .dev = &hall_enc,
 };
-tEncDevHandle *Get_HALL_ENCHandle(void) { return &HALL_ENCHandle; }
+const tEncDevHandle *Get_HALL_ENCHandle(void) { return &HALL_ENCHandle; }
 
 static uint8_t hall_state(void) {
     return ((GPIOA->IDR >> 6U) & 3U) | ((GPIOB->IDR & 1U) << 2U);

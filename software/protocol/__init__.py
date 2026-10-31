@@ -143,7 +143,7 @@ class CmdId:
     CMD_DISABLE = 187  # 释放电机
     CMD_SET_ZERO_POS = 189  # 设置零点
     CMD_SET_LIMIT_POS = 190  # 以当前位置设置极限位置
-    CMD_IAP_ENTER = 161  # 进入IAP模式
+    CMD_IAP_ENTER = 161  # 保存目标版本和大小后进入IAP模式；保存失败不得复位
     CMD_IAP_ERASE_FLASH = 162  # 擦除Flash
     CMD_IAP_WRITE_FLASH = 163  # 写入Flash
     CMD_IAP_VERIFY_FLASH = 164  # 校验Flash
