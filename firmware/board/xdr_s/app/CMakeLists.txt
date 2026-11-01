@@ -28,22 +28,26 @@ target_include_directories(board_headers INTERFACE
     "${FW_ROOT}/xfoc/utils"
     "${FW_ROOT}/app"
     "${CMAKE_CURRENT_SOURCE_DIR}/bsp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/sample"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/bus"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/enc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/flash"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/led"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/pwm"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/uart"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/usb"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/usb/app"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/usb/target"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/mcu"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/sample"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/bus"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/enc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/flash"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/led"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/pwm"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/uart"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/usb"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/usb/app"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/usb/target"
 )
 add_subdirectory(cmake/stm32cubemx)
 target_link_libraries(board_headers INTERFACE stm32cubemx protocol xmath)
 
 # 仅收集板级驱动；USB core 由 CubeMX 中间件目标单独编译。
-file(GLOB_RECURSE BSP_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/bsp/*.c")
+file(GLOB_RECURSE BSP_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/*.c"
+)
 add_library(bsp OBJECT ${BSP_SOURCES})
 target_link_libraries(bsp PUBLIC board_headers)
 target_link_libraries(${FW_TARGET} PRIVATE board_headers)

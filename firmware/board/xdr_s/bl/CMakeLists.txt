@@ -17,16 +17,23 @@ target_include_directories(board_headers INTERFACE
     "${FW_ROOT}/services/abs"
     "${FW_ROOT}/services/utils"
     "${CMAKE_CURRENT_SOURCE_DIR}/bsp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/flash"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/led"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/uart"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/usb"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/usb/app"
-    "${CMAKE_CURRENT_SOURCE_DIR}/bsp/usb/target"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/mcu"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/flash"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/led"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/uart"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/usb"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/usb/app"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/usb/target"
 )
 add_subdirectory(cmake/stm32cubemx)
 target_link_libraries(board_headers INTERFACE stm32cubemx protocol)
-file(GLOB_RECURSE BSP_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/bsp/*.c")
+# BL 只装配启动所需驱动，不编译 APP 的采样、PWM、CAN 和编码器。
+set(BSP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/bsp/bsp_cfg.c")
+foreach(driver mcu flash led uart usb)
+    file(GLOB_RECURSE DRIVER_SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/../bsp/${driver}/*.c")
+    list(APPEND BSP_SOURCES ${DRIVER_SOURCES})
+endforeach()
 add_library(bsp OBJECT ${BSP_SOURCES})
 target_link_libraries(bsp PUBLIC board_headers)
 target_link_libraries(${FW_TARGET} PRIVATE board_headers)

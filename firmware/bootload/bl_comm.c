@@ -37,13 +37,12 @@ void bl_comm_poll(void) {
         s_uart_reply.data_len = (uint8_t)len;
         s_uart_pending = len != 0;
     }
-    uint8_t message[129];
+    uint8_t message[128];
     tUsb_Frame usb_frame = {.data = message, .capacity = sizeof(message)};
-    if (!s_usb_pending && usb_process_frame(&g_usb, &usb_frame) &&
-        usb_frame.data_len > 0) {
+    if (!s_usb_pending && usb_process_frame(&g_usb, &usb_frame)) {
         uint16_t len = 0;
-        s_usb_reply[0] = message[0];
-        (void)bl_iap_command(message[0], message + 1, usb_frame.data_len - 1,
+        s_usb_reply[0] = usb_frame.id;
+        (void)bl_iap_command(usb_frame.id, usb_frame.data, usb_frame.data_len,
                              s_usb_reply + 1, &len);
         s_usb_reply_len = len + 1;
         s_usb_pending = len != 0;

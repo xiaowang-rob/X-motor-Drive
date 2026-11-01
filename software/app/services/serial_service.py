@@ -1,4 +1,4 @@
-"""串口传输层：端口扫描、连接、协议组帧/拆帧。
+"""设备扫描与串口传输层：USB/串口枚举、串口连接、协议组帧/拆帧。
 
 帧格式与固件 uart_com 一致：
   [head][id][len][payload...][crc8(id,len,payload)][tail]
@@ -21,15 +21,10 @@ except ImportError:  # pragma: no cover - 运行环境缺少 pyserial
 from protocol import CmdId, UartFrame
 
 
-DEVICE_CONFIG = {
-    "vendor_id": "0483",
-    "devices": {
-        "5741": {"name": "XDr-P", "full_name": "X motor Drive Power"},
-        "5742": {"name": "XDr-S", "full_name": "X motor Drive Standard"},
-        "5740": {"name": "XDr-bl", "full_name": "XDr Bootloader"},
-    },
-}
-KNOWN_DEVICE_NAMES = {info["name"] for info in DEVICE_CONFIG["devices"].values()}
+from app.services.usb_discovery import USB_DEVICES, scan_usb_devices
+
+
+KNOWN_DEVICE_NAMES = set(USB_DEVICES.values())
 MAX_PAYLOAD = 128
 AUTO_CONNECT = False  # 需要自动连接时改为 True
 HEARTBEAT_INTERVAL_MS = 200
@@ -73,20 +68,26 @@ class SerialService(QObject):
 
         if serial is None:
             self.error.emit("未安装 pyserial，串口功能不可用")
-        else:
-            QTimer.singleShot(0, self.scan_ports)
+        QTimer.singleShot(0, self.scan_ports)
 
     # ---------- 端口扫描 ----------
     def scan_ports(self):
-        if serial is None or self.is_connected:
+        if self.is_connected:
             return
+        entries = []
         try:
-            ports = list(serial.tools.list_ports.comports())
+            entries.extend(scan_usb_devices())
+            self._usb_scan_error = None
+        except Exception as error:
+            message = f"扫描 USB 失败：{error}"
+            if message != getattr(self, '_usb_scan_error', None):
+                self.error.emit(message)
+                self._usb_scan_error = message
+        try:
+            ports = list(serial.tools.list_ports.comports()) if serial is not None else []
         except Exception as error:
             self.error.emit(f"扫描串口失败：{error}")
-            return
-
-        entries = []
+            ports = []
         for port in ports:
             kind = self._identify_device(port)
             if kind == "unknown":
@@ -113,9 +114,8 @@ class SerialService(QObject):
     def _identify_device(port):
         hwid = (port.hwid or "").upper()
         desc = (port.description or "").upper()
-        vid = DEVICE_CONFIG["vendor_id"].upper()
-        for pid, info in DEVICE_CONFIG["devices"].items():
-            pid = pid.upper()
+        for (vendor_id, product_id), name in USB_DEVICES.items():
+            vid, pid = f"{vendor_id:04X}", f"{product_id:04X}"
             patterns = (
                 f"={vid}:{pid}",
                 f"VID:{vid}:PID:{pid}",
@@ -123,13 +123,16 @@ class SerialService(QObject):
                 f"{vid}:{pid}",
             )
             if any(pattern in hwid for pattern in patterns):
-                return info["name"]
+                return name
         if any(key in hwid or key in desc for key in ("BTH", "BLUETOOTH", "蓝牙", "RFCOMM")):
             return "bluetooth"
         return "unknown"
 
     # ---------- 连接 / 断开 ----------
     def connect_to(self, entry):
+        if entry and entry.get("transport") == "usb":
+            self.error.emit("已识别 USB 设备，USB 通信尚未接入")
+            return False
         if serial is None or not entry or self.is_connected:
             return False
         try:

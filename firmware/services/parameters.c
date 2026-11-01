@@ -3,7 +3,6 @@
 #include "crc.h" // crc32（参数持久化校验）
 
 tParameter g_param;
-#define param_unit g_param_storage_unit
 
 // ============================================================
 // ★ 唯一参数定义处
@@ -60,9 +59,7 @@ bool param_upgrade_set(uint32_t version, uint32_t size) {
     return upgrade_save(version, size);
 }
 
-bool param_upgrade_clear(void) {
-    return upgrade_save(PARAM_NO_FIRMWARE, 0U);
-}
+bool param_upgrade_clear(void) { return upgrade_save(PARAM_NO_FIRMWARE, 0U); }
 
 #define PARAM_BLOB_SIZE (sizeof(tParamHdr) + sizeof(tParameter))
 
@@ -91,15 +88,13 @@ bool field_write_raw(const tField *f, const uint8_t *src) {
 }
 
 // 参数服务初始化 注册存储单元 读出上次数值
-bool param_init(tStorage *storage) {
-    if (!storage || param_unit.storage != storage || !param_unit.writable)
-        return false;
+bool param_init(void) {
     g_param = param_default; // 唯一默认值来源
     s_new_firmware = PARAM_NO_FIRMWARE;
     s_firmware_size = 0U;
 
     uint8_t blob[PARAM_BLOB_SIZE];
-    if (storage_unit_read(&param_unit, blob, PARAM_BLOB_SIZE)) {
+    if (storage_read(&g_param_storage, blob, PARAM_BLOB_SIZE)) {
         tParamHdr hdr;
         memcpy(&hdr, blob, sizeof(hdr));
         if (hdr.size == (uint16_t)sizeof(tParameter)) {
@@ -113,14 +108,8 @@ bool param_init(tStorage *storage) {
                 /* 兼容旧 param_save 写出的全零元数据（无升级请求）。 */
                 if (s_new_firmware == 0U && s_firmware_size == 0U)
                     s_new_firmware = PARAM_NO_FIRMWARE;
-            } else {
-                return false;
             }
-        } else {
-            return false;
         }
-    } else if (param_unit.has_record) {
-        return false;
     }
     return true;
 }
@@ -136,7 +125,7 @@ bool param_save(void) {
     memcpy(blob, &hdr, sizeof(hdr));
     memcpy(blob + sizeof(hdr), &g_param, sizeof(tParameter));
 
-    return storage_unit_append(&param_unit, blob, PARAM_BLOB_SIZE);
+    return storage_append(&g_param_storage, blob, PARAM_BLOB_SIZE);
 }
 // 重置参数到默认值
 bool param_reset(void) {

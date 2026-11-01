@@ -23,6 +23,45 @@ class BuildTests(unittest.TestCase):
             self.assertEqual(build._elf_path('xdr_s', 'bl'),
                              build.PROJECT_ROOT / 'build/xdr_s-bl/Release/board/XDr-S-BL.elf')
 
+    def test_enable_bl_controls_build_and_flash(self):
+        for command in ('build', 'flash', 'bf'):
+            for target_source in ('config', 'cli'):
+                for enabled in (True, False, None):
+                    with self.subTest(command=command, source=target_source, enabled=enabled):
+                        config = {'fw_type': 'bl' if target_source == 'config' else 'app'}
+                        if enabled is not None:
+                            config['enable_bl'] = enabled
+                        argv = ['build.py', command]
+                        if target_source == 'cli':
+                            argv.append('--type=bl')
+                        with patch.object(build, '_project_cfg', config), patch.object(sys, 'argv', argv), patch.object(build, 'cmd_build') as compile_fw, patch.object(build, '_load_board_config', return_value={}) as board_config, patch.object(build.flash_core, 'cmd_flash') as flash:
+                            if enabled is False:
+                                with self.assertRaisesRegex(SystemExit, 'enable_bl=false'):
+                                    build.main()
+                                compile_fw.assert_not_called()
+                                board_config.assert_not_called()
+                                flash.assert_not_called()
+                            else:
+                                build.main()
+                                self.assertEqual(compile_fw.called, command in ('build', 'bf'))
+                                self.assertEqual(flash.called, command in ('flash', 'bf'))
+
+    def test_disabled_bl_allows_app(self):
+        for command in ('build', 'flash', 'bf'):
+            with self.subTest(command=command), patch.object(build, '_project_cfg', {'enable_bl': False, 'fw_type': 'bl'}), patch.object(sys, 'argv', ['build.py', command, '--type=app']), patch.object(build, 'cmd_build') as compile_fw, patch.object(build, '_load_board_config', return_value={}), patch.object(build.flash_core, 'cmd_flash') as flash:
+                build.main()
+                if command in ('build', 'bf'):
+                    compile_fw.assert_called_once_with('xdr_s', 'app')
+                if command in ('flash', 'bf'):
+                    self.assertEqual(flash.call_args.args[1], build._elf_path('xdr_s', 'app'))
+
+    def test_invalid_enable_bl_stops_before_build(self):
+        for value in ('false', 0, None):
+            with self.subTest(value=value), patch.object(build, '_project_cfg', {'enable_bl': value}), patch.object(sys, 'argv', ['build.py', 'build']), patch.object(build, 'cmd_build') as compile_fw:
+                with self.assertRaisesRegex(SystemExit, 'enable_bl 必须为 true 或 false'):
+                    build.main()
+                compile_fw.assert_not_called()
+
     def test_debug_files_follow_target(self):
         elf = build.PROJECT_ROOT / 'build/xdr_s-bl/Debug/board/XDr-S-BL.elf'
         with patch.object(build, '_load_board_config', return_value={'debugger_type': 'stlink', 'debugger': {'stlink': {'interface': 'interface/stlink.cfg', 'target': 'target/stm32g4x.cfg'}}}), patch.object(Path, 'mkdir'), patch.object(Path, 'exists', return_value=True), patch.object(build.shutil, 'copy2') as copy, patch.object(Path, 'write_text', autospec=True) as write:
@@ -79,6 +118,16 @@ class BuildTests(unittest.TestCase):
             build.main()
             self.assertEqual(flash.call_args.args[1], build._elf_path('xdr_s', 'app'))
 
+    def test_firmware_names_follow_headers(self):
+        self.assertEqual(build._firmware_name('xdr_s', 'app'), 'XDr-S_H1.0.0_F1.0.0')
+        self.assertEqual(build._firmware_name('xdr_s', 'bl'), 'XDr-S_H1.0.0_F1.0.0_BL')
+        values = {
+            'bsp_cfg.h': '#define HW_BOARD_NAME "Custom"\n#define HW_VERSION_MAJOR 2\n#define HW_VERSION_MINOR 3\n#define HW_VERSION_PATCH 4\n',
+            'app_main.h': '#define FW_VERSION_MAJOR 5\n#define FW_VERSION_MINOR 6\n#define FW_VERSION_PATCH 7\n',
+        }
+        with patch.object(Path, 'read_text', autospec=True, side_effect=lambda path, **kw: values[path.name]):
+            self.assertEqual(build._firmware_name('xdr_s', 'app'), 'Custom_H2.3.4_F5.6.7')
+
     def test_success_exports_and_debug_link(self):
         def run_result(args, **kwargs):
             if args[0] == 'arm-none-eabi-size':
@@ -96,6 +145,7 @@ class BuildTests(unittest.TestCase):
             for command in exports:
                 self.assertEqual(Path(command[-2]), build._elf_path('xdr_s', 'app'))
                 self.assertEqual(Path(command[-1]).parent, build.FIRMWARE_OUT)
+                self.assertEqual(Path(command[-1]).stem, 'XDr-S_H1.0.0_F1.0.0')
 
     def test_missing_board_stops_before_cmake(self):
         with patch.object(build.subprocess, 'run') as run, contextlib.redirect_stdout(io.StringIO()):

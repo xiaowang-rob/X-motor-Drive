@@ -4,14 +4,8 @@
 #include "storage.h"
 
 /* 板级注入 APP 分区与跳转能力，业务层不依赖 HAL。 */
-typedef struct {
-    uint32_t base;
-    uint32_t size;
-    bool (*is_valid)(void);
-    bool (*jump)(void);
-} tBlAppPartition;
+extern tStorage g_iap_storage;
 
-bool bl_iap_init(const tStorageDevHandle *storage, const tBlAppPartition *app);
 void bl_iap_start(void);
 bool bl_iap_should_boot(void);
 bool bl_iap_boot(void);

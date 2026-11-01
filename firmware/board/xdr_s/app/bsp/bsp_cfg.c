@@ -66,9 +66,8 @@ static const tUsbBuffer s_usb_buf = {
 
 tBusDriver g_bus_can;
 tLed g_led;
-tStorage g_storage;
-tStorageUnit g_param_storage_unit;
-tStorageUnit g_log_storage_unit;
+tStorage g_param_storage;
+tStorage g_log_storage;
 tUartDriver g_uart;
 tUsbDriver g_usb;
 tEncoder g_enc;
@@ -79,11 +78,9 @@ tSample g_sample;
 bool bsp_base_init(void) {
 
     // 存储：MCU 内部 Flash（介质几何与扇区操作见 bsp_mcu_flash.c）
-    if (!storage_init(&g_storage, Get_MCU_FlashHandle()))
-        return false;
-    /* USR：前 3 页参数轮换，最后 1 页日志。策略由 storage 抽象层实现。 */
-    if (!storage_unit_register(&g_storage, &g_param_storage_unit, 0U, 3U) ||
-        !storage_unit_register(&g_storage, &g_log_storage_unit, 3U, 1U))
+
+    if (!storage_init(&g_param_storage, Get_ParamPartHandle()) ||
+        !storage_init(&g_log_storage, Get_LogPartHandle()))
         return false;
 
     // 功率级（见 bsp_mcu_pwm.c）

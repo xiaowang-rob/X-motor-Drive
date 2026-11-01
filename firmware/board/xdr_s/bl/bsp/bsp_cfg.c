@@ -43,9 +43,8 @@ static const tUsbBuffer s_usb_buf = {
 };
 
 tLed g_led;
-tStorage g_storage;
-tStorageUnit g_param_storage_unit;
-tStorageUnit g_log_storage_unit;
+tStorage g_param_storage;
+tStorage g_iap_storage;
 tUartDriver g_uart;
 tUsbDriver g_usb;
 
@@ -53,14 +52,9 @@ tUsbDriver g_usb;
 bool bsp_base_init(void) {
 
     // 存储：MCU 内部 Flash（介质几何与扇区操作见 bsp_mcu_flash.c）
-    if (!storage_init(&g_storage, Get_MCU_FlashHandle()))
+    if (!storage_init(&g_param_storage, Get_ParamPartHandle()))
         return false;
-    /* 与 APP 相同：参数 3 页，日志 1 页，不能由注册顺序隐式分配。 */
-    if (!storage_unit_register(&g_storage, &g_param_storage_unit, 0U, 3U) ||
-        !storage_unit_register(&g_storage, &g_log_storage_unit, 3U, 1U))
-        return false;
-    // IAP：复用同一介质 + 分区表 + 平台跳转（见 bsp_flash.h）
-    if (!bl_iap_init(Get_MCU_FlashHandle(), &g_app_partition))
+    if (!storage_init(&g_iap_storage, Get_IapPartHandle()))
         return false;
 
     // 状态反馈（见 bsp_gpio_led.c）

@@ -100,10 +100,13 @@ bool usb_process_frame(tUsbDriver *usb, tUsb_Frame *frame) {
     size_t stride = (size_t)usb->rx_payload_size + 2U;
     const uint8_t *slot = usb->rx_storage + (read & (usb->rx_slot_count - 1U)) * stride;
     uint16_t len = (uint16_t)slot[0] | ((uint16_t)slot[1] << 8);
-    frame->data_len = len;
-    if (frame->data == NULL || frame->capacity < len)
+    frame->id = slot[2];
+    frame->data_len = (uint16_t)(len - 1U);
+    if (frame->data_len != 0U &&
+        (frame->data == NULL || frame->capacity < frame->data_len))
         return false; /* 不消费，调用方可以提供更大的输出缓冲重试。 */
-    memcpy(frame->data, slot + 2U, len);
+    if (frame->data_len != 0U)
+        memcpy(frame->data, slot + 3U, frame->data_len);
     atomic_store_explicit(&usb->rx_read, read + 1U, memory_order_release);
     return true;
 }

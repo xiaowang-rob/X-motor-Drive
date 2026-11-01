@@ -83,7 +83,7 @@
         {
             "label": "上位机",
             "type": "shell",
-            "command": "python3.13",
+            "command": "${workspaceFolder}/.venv/bin/python",
             "args": [
                 "${workspaceFolder}/software/start.py"
             ],

@@ -5,7 +5,7 @@
 #include <stdatomic.h>
 
 /* USB 是完整报文通道，不复用 UART 的帧头/帧尾解析器。
- * BSP 负责线格式、CRC16、序号及 64B Bulk 分片；本层只保存完整 payload，
+ * BSP 负责线格式、CRC16 及 64B Bulk 分片；本层保存 [command:u8][data...]，
  * 不再次增加 CRC 或复制 UART 外层。payload 内的业务格式由调用方决定。
  *
  * 单生产者（USB RX 中断）/单消费者（主循环），每个实例缓冲由调用方提供。
@@ -39,9 +39,10 @@ typedef struct {
 } tUsbBuffer;
 
 typedef struct {
-    uint8_t *data;     /* 调用方的输出缓冲。 */
-    uint16_t capacity; // 输出缓冲区容量
-    uint16_t data_len; /* 成功时实际长度；缓冲不足时返回所需长度且不出队。 */
+    uint8_t id;        /* 命令 ID，由内部消息首字节解出。 */
+    uint8_t *data;     /* 参数输出缓冲，不包含命令 ID；无参数时可为 NULL。 */
+    uint16_t capacity; /* 参数输出缓冲区容量。 */
+    uint16_t data_len; /* 参数长度；缓冲不足时返回所需长度且不出队。 */
 } tUsb_Frame;
 
 typedef struct {

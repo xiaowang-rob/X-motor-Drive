@@ -134,7 +134,8 @@ class DeviceService(QObject):
             self._host("请选择可用串口")
             return
         if not self.serial.connect_to(entry):
-            self._host("连接失败，请检查串口权限或设备状态")
+            if entry.get("transport") != "usb":
+                self._host("连接失败，请检查串口权限或设备状态")
 
     def _on_connected(self, entry):
         self._connected = True

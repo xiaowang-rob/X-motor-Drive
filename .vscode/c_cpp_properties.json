@@ -45,7 +45,7 @@
                 "${workspaceFolder}/firmware/xfoc/abs",
                 "${workspaceFolder}/firmware/xfoc",
                 "${workspaceFolder}/firmware/xfoc/ctl",
-                "${workspaceFolder}/firmware/xfoc/utils",
+                "${workspaceFolder}/firmware/board/xdr_s/bsp",
                 "${workspaceFolder}/firmware/board/xdr_s/app",
                 "${workspaceFolder}/firmware/board/xdr_s/app/bsp",
                 "${workspaceFolder}/firmware/protocol"

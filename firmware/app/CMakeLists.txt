@@ -5,7 +5,7 @@ file(GLOB APP_SERVICE_SOURCES CONFIGURE_DEPENDS
     "${SERVICES_DIR}/abs/*.c"
     "${SERVICES_DIR}/utils/*.c"
 )
-add_library(app OBJECT app_main.c ${APP_SERVICE_SOURCES})
+add_library(app OBJECT app_main.c app_comm.c ${APP_SERVICE_SOURCES})
 target_include_directories(app PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${SERVICES_DIR}"

@@ -1,6 +1,7 @@
 {
     "board": "xdr_s",
     "fw_type": "app",
+    "enable_bl": false,
     "build_type": "Debug",
     "debugger": "stlink"
 }

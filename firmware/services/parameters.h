@@ -21,9 +21,9 @@ void param_set(eParameter para, uint8_t *value);
 // 读取一个参数（value 收原始字节，len 出长度；id 越界时 len=0）
 void param_get(eParameter para, uint8_t *value, uint8_t *len);
 
-bool param_init(tStorage *storage); // 初始化存储单元、读取 、校验
-bool param_save(void);              // 保存进存储单元
-bool param_reset(void);             // 恢复默认值
+bool param_init(void);  // 初始化存储单元、读取 、校验
+bool param_save(void);  // 保存进存储单元
+bool param_reset(void); // 恢复默认值
 
 #define PARAM_NO_FIRMWARE UINT32_MAX
 /* 升级元数据保存在参数记录头中；设置/清除只有持久化成功才生效。 */

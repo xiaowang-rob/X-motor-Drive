@@ -38,6 +38,20 @@ python3 protocol/gen_protocol.py --c-output /tmp/payload.h
 - `DYNAMIC`、`BYTES`、`STRING` 是请求/回复尾部动态字段；动态观测数据和数据流需要 ID/订阅上下文。
 - `special_requests` 定义完整特殊字节请求，例如参数应用的 `FF`；上位机从生成 schema 读取，不能直接写字面量。
 
+## USB 设备识别
+
+安装 USB 枚举依赖（在仓库根目录执行）：
+
+```bash
+python3 -m pip install -r software/requirements.txt
+```
+
+运行环境还需提供 libusb 1.0 后端。Linux 通常由发行版的 `libusb-1.0` 软件包提供；Windows 需安装可被 PyUSB 加载的 libusb 后端，后续 Bulk 通信需为设备绑定 WinUSB。
+
+设备列表每 2.5 秒扫描一次，显示 `USB XDr-S APP`、`USB XDr-S BL`、`USB XDr-P APP` 或 `USB XDr-P BL`，附带 VID/PID 和总线地址以区分同型号设备。ID 引用由 `protocol/devices.json` 生成的 `protocol/devices.py`，不再维护旧 PID 表。缺少 PyUSB 或 USB 后端时会在日志中报告扫描失败，串口扫描仍可继续。
+
+目前 USB 仅实现识别与列表展示，尚未接入 Bulk 通信；选择 USB 并点击连接会提示通信尚未接入。
+
 ## 传输与业务
 
 串口帧：`[head][id][len][payload][crc8(id,len,payload)][tail]`。最大 payload 为 128 字节。

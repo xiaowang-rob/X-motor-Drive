@@ -3,7 +3,7 @@
 #include "cmd_list.h"
 #include "devices.h"
 
-#include "communcation.h"
+#include "app_comm.h"
 #include "parameters.h"
 #include "protection.h"
 #include "slot_con.h"
@@ -12,14 +12,12 @@
 #include "xfoc_main.h"
 
 #include "bsp_cfg.h"
-
-#define FW_VERSION                                                             \
-    VERSION_ENCODE(FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_VERSION_PATCH)
+#include "bsp_pwm.h"
 
 void app_main_init(void) {
 
     // 2、初始化参数服务 读参数
-    if (!param_init(&g_storage))
+    if (!param_init())
         return;
 
     if (!comm_init(&g_param))
@@ -31,12 +29,15 @@ void app_main_init(void) {
 
     core_init(&g_param, g_slotcon.t_high, g_slotcon.t_med, g_slotcon.t_low);
     // 将solt槽任务注册到pwm下溢中断 以 启动solt槽任务
-    // pwm_register_callback(NULL, slot_con_update);
+    pwm_register_callback(NULL, slot_con_update);
 }
 
 void app_main_start(void) {
 
     while (1) {
+        core_mainloop_tasks();
+        comm_process();
+        pro_manager_main_loop(&core);
         status_feedback_main_loop(core.state);
     }
 }

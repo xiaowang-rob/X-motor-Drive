@@ -1,14 +1,13 @@
 #include "bl_iap.h"
 
-#include <string.h>
 #include "bl_main.h"
 #include "bl_status.h"
 #include "cmd_list.h"
 #include "crc.h"
 #include "devices.h"
 #include "parameters.h"
-static const tStorageDevHandle *s_storage;
-static const tBlAppPartition *s_app;
+#include <string.h>
+
 static uint32_t s_size;
 static uint32_t s_received;
 static uint8_t s_tail[8];
@@ -18,25 +17,13 @@ static bool s_verified;
 static bool s_boot_requested;
 
 static uint32_t read_u32(const uint8_t *p) {
-    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
-           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
 }
 
 static void write_u32(uint8_t *p, uint32_t v) {
     for (unsigned i = 0; i < 4; ++i)
         p[i] = (uint8_t)(v >> (8U * i));
-}
-
-bool bl_iap_init(const tStorageDevHandle *storage, const tBlAppPartition *app) {
-    if (!storage || !storage->ops || !storage->ops->read ||
-        !storage->ops->write || !storage->ops->erase_addr || !app ||
-        !app->is_valid || !app->jump || !app->size ||
-        (app->base & 7U) || (app->size & 7U) ||
-        app->base > UINT32_MAX - app->size)
-        return false;
-    s_storage = storage;
-    s_app = app;
-    return true;
 }
 
 void bl_iap_start(void) {
@@ -70,7 +57,8 @@ bool bl_iap_erase(uint32_t size) {
         return false;
     uint32_t version, requested_size;
     param_upgrade_get(&version, &requested_size);
-    if (version == PARAM_NO_FIRMWARE || version > 0xFFFFFFU || requested_size != size)
+    if (version == PARAM_NO_FIRMWARE || version > 0xFFFFFFU ||
+        requested_size != size)
         return false;
     s_erased = false;
     s_verified = false;
@@ -182,8 +170,10 @@ bool bl_iap_command(uint8_t cmd, const uint8_t *data, uint16_t len,
         break;
     }
     response[0] = ok ? FB_EXECUTE : FB_FAILURE;
-    bl_status_set(!ok ? BL_STATUS_ERROR :
-                  (cmd == CMD_IAP_VERIFY_FLASH ? BL_STATUS_SUCCESS :
-                   (cmd == CMD_IAP_ERASE_FLASH ? BL_STATUS_WRITING : BL_STATUS_IDLE)));
+    bl_status_set(!ok ? BL_STATUS_ERROR
+                      : (cmd == CMD_IAP_VERIFY_FLASH
+                             ? BL_STATUS_SUCCESS
+                             : (cmd == CMD_IAP_ERASE_FLASH ? BL_STATUS_WRITING
+                                                           : BL_STATUS_IDLE)));
     return ok;
 }

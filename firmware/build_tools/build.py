@@ -18,7 +18,6 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 TOOLS_DIR = Path(__file__).resolve().parent
@@ -69,8 +68,8 @@ FLASH_GEOM = {
         "app_kb": 80,
         "regions": [
             ("BL", 32, 32),
-            ("USR", 16, 33),
             ("APP", 80, 34),
+            ("USR", 16, 33),
         ],
     },
 }
@@ -141,6 +140,25 @@ def _elf_name(board, fw_type):
     """板级可执行目标的 ELF 文件名（与板级 project()/目标名一致）"""
     base = ELF_BASE[board]
     return f"{base}-BL.elf" if fw_type == "bl" else f"{base}.elf"
+
+
+def _firmware_name(board, fw_type):
+    """从实际固件头文件读取硬件名称、硬件版本与目标固件版本。"""
+    def define(path, name):
+        text = path.read_text(encoding="utf-8")
+        match = re.search(r"^\s*#define\s+" + re.escape(name) + r"\s+([^\r\n]+)", text, re.MULTILINE)
+        if match is None:
+            sys.exit(f"错误: {path} 未定义 {name}")
+        return match.group(1).split("//", 1)[0].split("/*", 1)[0].strip()
+
+    hardware = _board_dir(board, fw_type) / "bsp" / "bsp_cfg.h"
+    firmware = PROJECT_ROOT / ("bootload/bl_main.h" if fw_type == "bl" else "app/app_main.h")
+    prefix = "BL" if fw_type == "bl" else "FW"
+    name = define(hardware, "HW_BOARD_NAME").strip('"')
+    hw_version = ".".join(define(hardware, f"HW_VERSION_{part}") for part in ("MAJOR", "MINOR", "PATCH"))
+    fw_version = ".".join(define(firmware, f"{prefix}_VERSION_{part}") for part in ("MAJOR", "MINOR", "PATCH"))
+    suffix = "_BL" if fw_type == "bl" else ""
+    return f"{name}_H{hw_version}_F{fw_version}{suffix}"
 
 
 def _stream(proc):
@@ -265,8 +283,9 @@ def cmd_build(board, fw_type):
             total_kb = geom["total_kb"]
             regions = geom["regions"]
             print(f"\n  \033[1;36m╭─ Flash 分配 ─────────────────────────────────────╮\033[0m")
+            region_order = " → ".join(name for name, _, _ in regions)
             print(f"  \033[1;36m│\033[0m {desc:<8} 总容量: \033[1m{total_kb:>4} KB\033[0m"
-                  f"  ·  顺序: BL → USR → APP")
+                  f"  ·  顺序: {region_order}")
             print(f"  \033[1;36m├───────────────────────────────────────────────────┤\033[0m")
             max_bar = 42
             bar_chars = []
@@ -295,10 +314,7 @@ def cmd_build(board, fw_type):
                 print(f"    \033[1m{region_name}\033[0m {bar}  {used:.1f}KB / {region_total}KB (\033[{used_color}m{pct}%\033[0m)")
 
         # 输出到 releases/
-        date_str = datetime.now().strftime("%y%m%d")
-        # 固件输出命名：XDr-P_BL260627 或 XDr-P_260627
-        fw_tag = f"{fw_type.upper()}" if fw_type == "bl" else ""
-        dist = f"{desc.replace(' ', '_')}_{fw_tag}{date_str}"
+        dist = _firmware_name(board, fw_type)
         FIRMWARE_OUT.mkdir(parents=True, exist_ok=True)
         print(f"\n  \033[1m固件输出:\033[0m")
         for ext, fmt in [("bin", "binary"), ("hex", "ihex")]:
@@ -372,6 +388,7 @@ def main():
         print("  --type=<app|bl>      固件类型")
         print("  --debugger=<type>    调试器类型: stlink/jlink/daplink")
         print("默认值取自 project.json，未配置时: board=xdr_s, type=app, debugger=stlink")
+        print("project.json: enable_bl=false 禁止 BL 编译/烧录；省略或 true 时允许选择 BL")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -384,6 +401,14 @@ def main():
     if fw_type not in FW_TYPES:
         print(f"未知固件类型: {fw_type}（可用: {', '.join(FW_TYPES)}）")
         sys.exit(1)
+
+    if cmd in ("build", "flash", "bf"):
+        enable_bl = _project_cfg.get("enable_bl", True)
+        if not isinstance(enable_bl, bool):
+            sys.exit("错误: project.json 中 enable_bl 必须为 true 或 false")
+        if fw_type == "bl" and not enable_bl:
+            sys.exit("错误: project.json 中 enable_bl=false，已禁用 BL 编译和烧录；"
+                     "请将 fw_type 设为 app 或使用 --type=app")
 
     if cmd == "build":
         cmd_build(board, fw_type)
