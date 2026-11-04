@@ -1,8 +1,4 @@
-"""设备业务层：把新 UI 的信号接到串口、配置和命令 ID。
-
-说明：协议 payload 的具体字段/字节序尚未确认，所有需要 payload 的命令
-统一走 `_send_todo()`，只记录命令 ID 和操作，后续在协议确定后补编解码。
-"""
+"""设备业务层：把 UI 信号接到串口、配置和命令 ID。"""
 
 from pathlib import Path
 import struct
@@ -12,7 +8,14 @@ from PyQt5.QtCore import QObject
 from qfluentwidgets import FluentIcon as FIF, MessageBox
 
 from protocol import (
-    CmdId, FbId, PARAMETERS, PARAM_BY_NAME, Pidx, Didx, OBSDATA, eCoreState,
+    CmdId,
+    FbId,
+    PARAMETERS,
+    PARAM_BY_NAME,
+    Pidx,
+    Didx,
+    OBSDATA,
+    eMotorState,
 )
 from app.dialogs import TextInputDialog
 from app.services.config_store import ConfigStore
@@ -20,18 +23,19 @@ from app.services.serial_service import SerialService
 from app.services.iap_worker import IapWorker
 from app.services import payload_codec as codec
 
-
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
 STATUS_CHANNELS = (
-    Didx.DATA_STATE,
+    Didx.DATA_MOTOR_STATE,
     Didx.DATA_FAULT,
-    Didx.DATA_WARNING,
     Didx.DATA_VBUS,
     Didx.DATA_DRIVER_TEMP,
     Didx.DATA_MOTOR_TEMP,
 )
-STREAM_MAX_CHANNELS = 5
-struct_error = struct.error
+
+
+# 周期性回包不进终端：数据流 1kHz、心跳 200ms，写进日志会拖垮界面。
+# 终端只保留重要 info 与下位机主动上报的日志。
+QUIET_COMMANDS = frozenset((CmdId.CMD_DATA_STREAM, CmdId.CMD_HEARTBEAT))
 
 
 class DeviceService(QObject):
@@ -52,17 +56,21 @@ class DeviceService(QObject):
         self._cmd_names = self._build_cmd_names()
         self._wave_map = {}
         self._stream_channels = []
+        self._rows_by_channel = {}
         self._iap_worker = None
         self._iap_route = None
 
         self._wire()
         self._refresh_configs(initial=True)
-        # UI 操作始终可用；未连接时业务层记录并忽略，避免按钮全灰。
+        self._enable_controls()
+        self._host("上位机就绪：连接后就可以开始苦比的调试了")
+
+    def _enable_controls(self):
+        """UI 操作始终可用；未连接时业务层记录并忽略，避免按钮全灰。"""
         for page in self.pages:
             page.set_device_enabled(True)
         self.status.system_reset_button.setEnabled(True)
         self.status.reset_button.setEnabled(True)
-        self._host("上位机就绪；payload 使用小端二进制，示波订阅最多 5 路。")
 
     @staticmethod
     def _build_cmd_names():
@@ -95,7 +103,8 @@ class DeviceService(QObject):
             page.parameter_changed.connect(self._parameter_changed)
             page.validation_failed.connect(self._validation_failed)
             page.action_requested.connect(
-                lambda action, payload, p=page: self._handle_action(p, action, payload))
+                lambda action, payload, p=page: self._handle_action(p, action, payload)
+            )
 
     # ---------- 连接 ----------
     def _on_ports_changed(self, entries):
@@ -131,7 +140,7 @@ class DeviceService(QObject):
             return
         entry = self.status.com_port.currentData()
         if not isinstance(entry, dict):
-            self._host("请选择可用串口")
+            self._host("请选择可用设备")
             return
         if not self.serial.connect_to(entry):
             if entry.get("transport") != "usb":
@@ -144,10 +153,7 @@ class DeviceService(QObject):
         self.status.connect_but.setAccessibleName("断开设备")
         self.status.com_port.setEnabled(False)
         self.status.connect_but.setEnabled(True)
-        self.status.system_reset_button.setEnabled(True)
-        self.status.reset_button.setEnabled(True)
-        for page in self.pages:
-            page.set_device_enabled(True)
+        self._enable_controls()
         self._set_subscription()
         self._host(f"已连接：{entry.get('display', entry.get('device'))}")
         self.iap_page.append_driver_log(f"已连接：{entry.get('display', '')}")
@@ -156,16 +162,14 @@ class DeviceService(QObject):
         self._connected = False
         self._wave_map = {}
         self._stream_channels = []
+        self._rows_by_channel = {}
         if self._iap_worker is not None:
             self._iap_worker.stop()
         self.status.connect_but.setIcon(FIF.LINK)
         self.status.connect_but.setToolTip("连接设备")
         self.status.connect_but.setAccessibleName("连接设备")
         self.status.com_port.setEnabled(True)
-        self.status.system_reset_button.setEnabled(True)
-        self.status.reset_button.setEnabled(True)
-        for page in self.pages:
-            page.set_device_enabled(True)
+        self._enable_controls()
         self._sync_connect_button()
         self._host(f"已断开：{reason}")
         self.iap_page.append_driver_log(f"已断开：{reason}")
@@ -173,7 +177,10 @@ class DeviceService(QObject):
     # ---------- 接收 ----------
     def _on_frame(self, cmd_id, payload):
         name = self._cmd_names.get(cmd_id, f"0x{cmd_id:02X}")
-        self._terminal(f"RX {name} ({cmd_id:#04x}) len={len(payload)} {payload.hex(' ')}")
+        if cmd_id not in QUIET_COMMANDS:
+            self._terminal(
+                f"RX {name} ({cmd_id:#04x}) len={len(payload)} {payload.hex(' ')}"
+            )
         if self._iap_worker is not None:
             self._iap_worker.push_frame(cmd_id, payload)
         try:
@@ -194,32 +201,40 @@ class DeviceService(QObject):
 
             if cmd_id in (
                 CmdId.CMD_PARAM_WRITE,
-                CmdId.CMD_PARAM_SAVE, CmdId.CMD_PARAM_RELOAD,
+                CmdId.CMD_PARAM_SAVE,
+                CmdId.CMD_PARAM_RELOAD,
                 CmdId.CMD_DATA_STREAM_SET,
             ):
                 if payload:
                     self._host(
-                        f"{name}：{'成功' if payload[0] == FbId.FB_EXECUTE else '失败'}")
+                        f"{name}：{'成功' if payload[0] == FbId.FB_EXECUTE else '失败'}"
+                    )
                 return
 
             if cmd_id == CmdId.CMD_IAP_WRITE_FLASH:
                 offset, status = codec.unpack_iap_write_ack(payload)
                 self._host(
                     f"IAP 写入 offset={offset}："
-                    f"{'成功' if status == FbId.FB_EXECUTE else '失败'}")
+                    f"{'成功' if status == FbId.FB_EXECUTE else '失败'}"
+                )
                 return
 
             if cmd_id in (
-                CmdId.CMD_IAP_ERASE_FLASH, CmdId.CMD_IAP_VERIFY_FLASH,
+                CmdId.CMD_IAP_ERASE_FLASH,
+                CmdId.CMD_IAP_VERIFY_FLASH,
                 CmdId.CMD_IAP_EXIT,
             ):
                 if payload:
                     self._host(
-                        f"{name}：{'成功' if payload[0] == FbId.FB_EXECUTE else '失败'}")
+                        f"{name}：{'成功' if payload[0] == FbId.FB_EXECUTE else '失败'}"
+                    )
                 return
 
-            if cmd_id in (CmdId.CMD_ASK_APP_VERSION, CmdId.CMD_ASK_BL_VERSION,
-                          CmdId.CMD_ASK_DEVICE_MESSAGE):
+            if cmd_id in (
+                CmdId.CMD_ASK_APP_VERSION,
+                CmdId.CMD_ASK_BL_VERSION,
+                CmdId.CMD_ASK_DEVICE_MESSAGE,
+            ):
                 text = self._decode_text(payload)
                 if text:
                     self.iap_page.append_driver_log(f"{name}: {text}")
@@ -240,7 +255,7 @@ class DeviceService(QObject):
                 return
 
             self._terminal(f"未处理回包：{name}")
-        except (TypeError, ValueError, struct_error) as error:
+        except (TypeError, ValueError, struct.error) as error:
             self._host(f"解析 {name} 失败：{error}")
 
     @staticmethod
@@ -255,23 +270,22 @@ class DeviceService(QObject):
 
     def _handle_data_stream(self, payload):
         """示波数据流独立于心跳，按订阅顺序喂给波形。"""
+        if not self._stream_channels:
+            # 停止采样后固件可能还有一帧在路上，此时没有解码上下文。
+            return
         values = codec.unpack_data_stream(payload, self._stream_channels)
-        for row, channel_id in self._wave_map.items():
-            if channel_id not in self._stream_channels:
-                continue
-            index = self._stream_channels.index(channel_id)
-            if index < len(values):
-                self.control_page.add_wave_data(row, values[index])
+        for index, channel_id in enumerate(self._stream_channels):
+            if index >= len(values):
+                break
+            rows = self._rows_by_channel.get(channel_id)
+            if rows:
+                self.control_page.add_wave_data(rows, values[index])
 
     def _update_observed(self, channel_id, value):
-        if channel_id == Didx.DATA_STATE:
+        if channel_id == Didx.DATA_MOTOR_STATE:
             self.status.update_status({"state": self._option_text(channel_id, value)})
         elif channel_id == Didx.DATA_FAULT:
-            self.status.update_status({
-                "error": "—" if value == 0 else self._option_text(channel_id, value)})
-        elif channel_id == Didx.DATA_WARNING:
-            if value != 0:
-                self.status.update_status({"error": self._option_text(channel_id, value)})
+            self.status.update_status({"error": self._option_text(channel_id, value)})
         elif channel_id == Didx.DATA_VBUS:
             self.status.update_status({"voltage": f"{float(value):.2f} V"})
         elif channel_id == Didx.DATA_DRIVER_TEMP:
@@ -294,16 +308,18 @@ class DeviceService(QObject):
         if not meta:
             return
         self._send_payload(
-            CmdId.CMD_PARAM_READ, codec.pack_param_read(meta), f"读取参数 {meta.name}")
+            CmdId.CMD_PARAM_READ, codec.pack_param_read(meta), f"读取参数 {meta.name}"
+        )
 
     def _send_parameter_write(self, meta, value):
         try:
             payload = codec.pack_param(meta, value)
-        except (TypeError, ValueError, struct_error) as error:
+        except (TypeError, ValueError, struct.error) as error:
             self._host(f"{meta.name} 编码失败：{error}")
             return False
         return self._send_payload(
-            CmdId.CMD_PARAM_WRITE, payload, f"写入参数 {meta.name} = {value}")
+            CmdId.CMD_PARAM_WRITE, payload, f"写入参数 {meta.name} = {value}"
+        )
 
     def _write_parameter(self, protocol_id, value):
         meta = PARAMETERS.get(protocol_id)
@@ -319,7 +335,6 @@ class DeviceService(QObject):
             "应用参数",
         )
 
-
     def _read_all_parameters(self):
         if not self._connected:
             self._host("未连接，忽略：轮询读取全部参数")
@@ -328,7 +343,10 @@ class DeviceService(QObject):
         self._host(f"开始轮询读取 {len(params)} 个参数")
         for meta in params:
             self._send_payload(
-                CmdId.CMD_PARAM_READ, codec.pack_param_read(meta), f"读取参数 {meta.name}")
+                CmdId.CMD_PARAM_READ,
+                codec.pack_param_read(meta),
+                f"读取参数 {meta.name}",
+            )
 
     def _default_parameter(self, protocol_id):
         meta = PARAMETERS.get(protocol_id)
@@ -372,27 +390,22 @@ class DeviceService(QObject):
             self._load_config("default", announce=True)
 
     def _handle_control_action(self, action, payload):
-        if action == "set_mode":
-            self._host(
-                f"控制模式 -> {payload.get('label')} ({payload.get('mode')})")
-        elif action == "send_target":
+        if action == "send_target":
             channel = payload.get("channel")
-            command, data = self._build_target_payload(channel, payload.get("value", 0.0))
+            command, data = self._build_target_payload(
+                channel, payload.get("value", 0.0)
+            )
             if command is None:
                 self._host(f"未知目标通道：{channel}")
             else:
                 self._send_payload(
-                    command, data, f"发送目标 {channel} = {payload.get('value')}")
+                    command, data, f"发送目标 {channel} = {payload.get('value')}"
+                )
         elif action == "send_mit_config":
-            self._send_todo(
-                CmdId.CMD_MIT_CONFIG,
-                f"MIT CSV 轨迹播放 csv={payload.get('csv')} period={payload.get('period_ms')}ms",
-            )
+            self._send_mit_config(payload)
         elif action == "wave_start":
             channels = payload.get("channels", [])
-            self._wave_map = {
-                int(row): int(channel_id) for row, channel_id in channels
-            }
+            self._wave_map = {int(row): int(channel_id) for row, channel_id in channels}
             self._set_subscription()
         elif action == "wave_stop":
             self._wave_map = {}
@@ -421,75 +434,65 @@ class DeviceService(QObject):
         mode = self.control_page.get_mode()
         value = float(value)
         if channel == "位置":
-            if mode == eCoreState.CORE_MIT_MODE:
+            if mode == eMotorState.MOTOR_MIT_MODE:
                 return CmdId.CMD_MIT_CTRL, codec.pack_mit_ctrl(value)
             return CmdId.CMD_PID_POS_CTRL, codec.pack_single(value)
         if channel == "速度":
             return CmdId.CMD_PID_VEL_CTRL, codec.pack_single(value)
         if channel in ("电流", "力矩"):
-            is_torque = (
-                channel == "力矩"
-                or self.control_page.current_torque_kind.currentData() == 1
-            )
-            return CmdId.CMD_CUR_TAU_CTRL, codec.pack_current_torque(is_torque, value)
+            return CmdId.CMD_CUR_TAU_CTRL, codec.pack_current_torque(value)
         if channel in ("开环角度", "开环速度", "占空比"):
             if channel == "占空比":
                 duty = value
-                is_velocity = self.control_page.openloop_kind.currentData() == 1
                 angle_or_velocity = self.control_page.openloop_control.value()
             else:
                 duty = self.control_page.openloop_duty.value()
-                is_velocity = channel == "开环速度"
                 angle_or_velocity = value
             return CmdId.CMD_OPENLOOP_CTRL, codec.pack_openloop_ctrl(
-                is_velocity, duty, angle_or_velocity)
+                duty, angle_or_velocity
+            )
         return None, b""
 
-    def _send_enable_control(self):
-        """使能按钮直接发送当前模式的控制命令。"""
-        mode = self.control_page.get_mode()
-        if mode == eCoreState.CORE_OPENLOOP:
-            is_velocity = self.control_page.openloop_kind.currentData() == 1
-            payload = codec.pack_openloop_ctrl(
-                is_velocity,
-                self.control_page.openloop_duty.value(),
-                self.control_page.openloop_control.value(),
+    def _ctrl_config_payload(self, mode):
+        """CMD_CTRL_CONFIG 的 2 字节分支：模式 + 该模式的子控制字节。"""
+        if mode == eMotorState.MOTOR_OPENLOOP:
+            return codec.pack_ctrl_config(
+                mode, self.control_page.openloop_kind.currentData()
             )
-            self._send_payload(CmdId.CMD_OPENLOOP_CTRL, payload, "使能/开环控制")
-        elif mode == eCoreState.CORE_CURRENT_MODE:
-            is_torque = self.control_page.current_torque_kind.currentData() == 1
-            payload = codec.pack_current_torque(
-                is_torque, self.control_page.current_torque_control.value())
-            self._send_payload(CmdId.CMD_CUR_TAU_CTRL, payload, "使能/电流力矩控制")
-        elif mode == eCoreState.CORE_PID_SPEED:
-            self._send_payload(
-                CmdId.CMD_PID_VEL_CTRL,
-                codec.pack_single(self.control_page.speed_control.value()),
-                "使能/PID速度控制",
+        if mode == eMotorState.MOTOR_CURRENT_MODE:
+            return codec.pack_ctrl_config(
+                mode, self.control_page.current_torque_kind.currentData()
             )
-        elif mode == eCoreState.CORE_PID_POSITION:
-            self._send_payload(
-                CmdId.CMD_PID_POS_CTRL,
-                codec.pack_single(self.control_page.position_control.value()),
-                "使能/PID位置控制",
-            )
-        elif mode == eCoreState.CORE_MIT_MODE:
-            self._send_payload(
-                CmdId.CMD_MIT_CTRL,
-                codec.pack_mit_ctrl(self.control_page.mit_position.value()),
-                "使能/MIT控制",
-            )
-        else:
-            self._host("当前页面没有可发送的控制命令")
+        if mode in (eMotorState.MOTOR_PID_SPEED, eMotorState.MOTOR_PID_POSITION):
+            return codec.pack_ctrl_config(mode, 0)
+        return None
 
-    def _parameter_value(self, protocol_id, fallback=0.0):
+    def _send_mit_config(self, payload):
+        """MIT 配置分支携带 kp/kd，随后由目标命令继续下发位置。"""
+        kp = self._parameter_value(Pidx.PARAM_MIT_KP)
+        kd = self._parameter_value(Pidx.PARAM_MIT_KD)
+        self._send_payload(
+            CmdId.CMD_CTRL_CONFIG,
+            codec.pack_ctrl_config_mit(kp, kd),
+            f"MIT 配置 kp={kp:.3f} kd={kd:.3f}",
+        )
+        if payload.get("csv"):
+            self._host(f"CSV 轨迹需由固件侧实现：{payload.get('csv')}")
+
+    def _send_enable_control(self):
+        """使能：只发一次 CMD_CTRL_CONFIG 配置模式，不再补发目标值。"""
+        mode = self.control_page.get_mode()
+        payload = self._ctrl_config_payload(mode)
+        if payload is None:
+            self._host("当前模式不支持使能，请选择控制模式")
+            return
+        self._send_payload(CmdId.CMD_CTRL_CONFIG, payload, "使能/配置控制模式")
+
+    def _parameter_value(self, protocol_id):
         try:
             return float(self.config_page.get_parameter(protocol_id))
         except (KeyError, TypeError, ValueError):
-            return fallback
-
-    def _target_command(self, channel):
-        return self._build_target_payload(channel, 0.0)[0]
+            return 0.0
 
     def _write_all_parameters(self):
         if not self._connected:
@@ -520,8 +523,16 @@ class DeviceService(QObject):
         for channel_id in self._wave_map.values():
             if channel_id not in channels:
                 channels.append(channel_id)
-        channels = channels[:STREAM_MAX_CHANNELS]
+        channels = channels[: codec.MAX_STREAM_CHANNELS]
         self._stream_channels = channels
+        self._rows_by_channel = {}
+        for row, channel_id in self._wave_map.items():
+            self._rows_by_channel.setdefault(channel_id, []).append(row)
+        self._rows_by_channel = {
+            channel_id: rows
+            for channel_id, rows in self._rows_by_channel.items()
+            if channel_id in channels
+        }
         if self._connected:
             self._send_payload(
                 CmdId.CMD_DATA_STREAM_SET,
@@ -531,10 +542,10 @@ class DeviceService(QObject):
 
     def _handle_iap_action(self, action, payload):
         if action.startswith("firmware_") and action.endswith("_select"):
-            route = action[len("firmware_"):-len("_select")]
+            route = action[len("firmware_") : -len("_select")]
             self._select_firmware(route)
         elif action.startswith("firmware_") and action.endswith("_烧录"):
-            route = action[len("firmware_"):-len("_烧录")]
+            route = action[len("firmware_") : -len("_烧录")]
             self._burn_firmware(route)
         elif action.startswith("firmware_") and action.endswith("_取消"):
             if self._iap_worker is not None:
@@ -543,7 +554,8 @@ class DeviceService(QObject):
 
     def _select_firmware(self, route):
         path, _ = QFileDialog.getOpenFileName(
-            self.window, "选择固件文件", "", "Binary Files (*.bin);;All Files (*)")
+            self.window, "选择固件文件", "", "Binary Files (*.bin);;All Files (*)"
+        )
         if not path:
             return
         self._firmware_files[route] = path
@@ -562,11 +574,11 @@ class DeviceService(QObject):
         self.iap_page.set_progress(route, 0)
         worker = IapWorker(self.serial, path, self)
         worker.progress.connect(
-            lambda value, _text, r=route: self.iap_page.set_progress(r, value))
+            lambda value, _text, r=route: self.iap_page.set_progress(r, value)
+        )
         worker.log.connect(self._host)
         worker.result.connect(self._on_iap_finished)
-        worker.finished.connect(
-            lambda w=worker: self._on_iap_thread_finished(w))
+        worker.finished.connect(lambda w=worker: self._on_iap_thread_finished(w))
         self._iap_worker = worker
         worker.start()
         self._host(f"开始烧录 {route}：{path}")
@@ -663,15 +675,20 @@ class DeviceService(QObject):
     def _handle_status_action(self, action):
         if action == "system_reset":
             self._send_empty(CmdId.CMD_SYSTEM_RESET, "系统复位")
-        elif action == "status_reset":
-            self.status.update_status({
+        elif action == "core_reset":
+            self._send_empty(CmdId.CMD_CORE_NRST, "核心复位")
+            self._clear_status()
+
+    def _clear_status(self):
+        self.status.update_status(
+            {
                 "voltage": "—",
                 "temperature": "—",
                 "motor_temperature": "—",
                 "state": "—",
                 "error": "—",
-            })
-            self._host("状态显示已复位")
+            }
+        )
 
     # ---------- 发送辅助 ----------
     def _send_empty(self, cmd_id, description):
@@ -683,16 +700,12 @@ class DeviceService(QObject):
             self._host(f"未连接，忽略：{description} ({name})")
             return False
         sent = self.serial.send(cmd_id, payload)
-        self._host(f"TX {name}：{description} ({len(payload)}B)"
-                   if sent else f"发送失败：{description}")
+        self._host(
+            f"TX {name}：{description} ({len(payload)}B)"
+            if sent
+            else f"发送失败：{description}"
+        )
         return sent
-
-    def _send_todo(self, cmd_id, description):
-        name = self._cmd_names.get(cmd_id, f"0x{cmd_id:02X}" if isinstance(cmd_id, int) else str(cmd_id))
-        message = f"TODO(payload)：{description} -> {name}"
-        self._host(message)
-        self._terminal(message)
-        return False
 
     # ---------- 输出 ----------
     def _host(self, text):

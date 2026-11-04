@@ -25,10 +25,7 @@ bool param_init(void);  // 初始化存储单元、读取 、校验
 bool param_save(void);  // 保存进存储单元
 bool param_reset(void); // 恢复默认值
 
-#define PARAM_NO_FIRMWARE UINT32_MAX
 /* 升级元数据保存在参数记录头中；设置/清除只有持久化成功才生效。 */
-void param_upgrade_get(uint32_t *version, uint32_t *size);
-bool param_upgrade_set(uint32_t version, uint32_t size);
-bool param_upgrade_clear(void);
+bool upgrade_save(uint32_t version, uint32_t size);
 
 #endif // __PARAMETERS_H

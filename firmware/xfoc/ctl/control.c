@@ -46,12 +46,9 @@ void ctrl_mit_init(tCtrl *con, tParameter *param) {
              param->mit_tmax);
 }
 
-void ctrl_foc_reset(tCtrl *con) {
+void ctrl_reset(tCtrl *con) {
     pi_reset(&con->PI_iq);
     pi_reset(&con->PI_id);
-}
-
-void ctrl_pid_reset(tCtrl *con) {
     pi_reset(&con->PI_vel);
     pi_reset(&con->PI_fw);
     pid_reset(&con->PID_pos);

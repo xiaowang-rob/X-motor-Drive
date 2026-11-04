@@ -20,8 +20,7 @@ typedef struct {
 void ctrl_foc_init(tCtrl *con, tParameter *param, float t_cl, float vmax);
 void ctrl_pid_init(tCtrl *con, tParameter *param, float t_ml, float t_ll);
 void ctrl_mit_init(tCtrl *con, tParameter *param);
-void ctrl_foc_reset(tCtrl *con);
-void ctrl_pid_reset(tCtrl *con);
+void ctrl_reset(tCtrl *con);
 
 // Clark 变换 (abc → αβ)(等幅值)
 // ia, ib, ic: 三相电流或电压; alpha, beta: 输出的 αβ 轴分量

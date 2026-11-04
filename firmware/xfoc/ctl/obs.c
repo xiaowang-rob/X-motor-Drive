@@ -69,7 +69,7 @@ bool obs_init(tObs *obs, tParameter *param) {
     return true;
 }
 
-bool obs_loop_task(tObs *obs) {
+void obs_loop_task(tObs *obs) {
     switch (obs->rotor_obs) {
     case OBS_NONE:
         break;
@@ -84,7 +84,7 @@ bool obs_loop_task(tObs *obs) {
         // TODO:这里暂时只是外部编码器 后续可以改
         encoder_task(&g_enc);
         obs->theta_r = g_enc.sample.angle_rad;
-        return g_enc.dstate == DEV_RUNNING;
+        break;
 
     case OBS_ENC_ABI:
         break;
@@ -94,7 +94,7 @@ bool obs_loop_task(tObs *obs) {
     default:
         break;
     }
-    return true;
+    return;
 }
 
 void obs_tim_task(tObs *obs, float ts, float *theta_r, float *theta_e,

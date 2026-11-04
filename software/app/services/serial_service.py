@@ -1,9 +1,8 @@
-"""设备扫描与串口传输层：USB/串口枚举、串口连接、协议组帧/拆帧。
+"""USB/串口/蓝牙传输层，共用命令发送队列与 frame_received 信号。
 
-帧格式与固件 uart_com 一致：
-  [head][id][len][payload...][crc8(id,len,payload)][tail]
-
-当前只负责传输与命令 ID；具体 payload 编解码在 DeviceService 中标记 TODO。
+串口：[head][id][len:u8][payload][crc8(id,len,payload)][tail]
+USB：A5 5A | id:u8 | len:u16 LE | payload | CRC16/CCITT-FALSE LE
+业务 payload 编解码仍由 DeviceService 负责。
 """
 
 import threading
@@ -22,13 +21,18 @@ from protocol import CmdId, UartFrame
 
 
 from app.services.usb_discovery import USB_DEVICES, scan_usb_devices
-
+from app.services.usb_transport import (
+    UsbTransport,
+    UsbFrameParser,
+    USB_MAX_PAYLOAD,
+    build_usb_packet,
+)
 
 KNOWN_DEVICE_NAMES = set(USB_DEVICES.values())
 MAX_PAYLOAD = 128
 AUTO_CONNECT = False  # 需要自动连接时改为 True
 HEARTBEAT_INTERVAL_MS = 200
-HEARTBEAT_TIMEOUT_S = 1.0
+HEARTBEAT_TIMEOUT_S = 2.0
 
 
 class SerialService(QObject):
@@ -38,10 +42,13 @@ class SerialService(QObject):
     frame_received = pyqtSignal(int, bytes)
     log = pyqtSignal(str)
     error = pyqtSignal(str)
+    _transport_failed = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.serial_port = None
+        self._usb = None
+        self._usb_parser = UsbFrameParser()
         self.is_connected = False
         self.port_entries = []
         self._attempted = set()
@@ -56,6 +63,7 @@ class SerialService(QObject):
         self.head = UartFrame.UART_PACKET_HEAD
         self.tail = UartFrame.UART_PACKET_TAIL
 
+        self._transport_failed.connect(self._lost)
         self.scan_timer = QTimer(self)
         self.scan_timer.timeout.connect(self.scan_ports)
         self.scan_timer.start(2500)
@@ -80,11 +88,13 @@ class SerialService(QObject):
             self._usb_scan_error = None
         except Exception as error:
             message = f"扫描 USB 失败：{error}"
-            if message != getattr(self, '_usb_scan_error', None):
+            if message != getattr(self, "_usb_scan_error", None):
                 self.error.emit(message)
                 self._usb_scan_error = message
         try:
-            ports = list(serial.tools.list_ports.comports()) if serial is not None else []
+            ports = (
+                list(serial.tools.list_ports.comports()) if serial is not None else []
+            )
         except Exception as error:
             self.error.emit(f"扫描串口失败：{error}")
             ports = []
@@ -92,11 +102,13 @@ class SerialService(QObject):
             kind = self._identify_device(port)
             if kind == "unknown":
                 continue
-            entries.append({
-                "device": port.device,
-                "type": kind,
-                "display": f"{port.device} ({kind})",
-            })
+            entries.append(
+                {
+                    "device": port.device,
+                    "type": kind,
+                    "display": f"{port.device} ({kind})",
+                }
+            )
         self.port_entries = entries
         self.ports_changed.emit(entries)
 
@@ -124,72 +136,94 @@ class SerialService(QObject):
             )
             if any(pattern in hwid for pattern in patterns):
                 return name
-        if any(key in hwid or key in desc for key in ("BTH", "BLUETOOTH", "蓝牙", "RFCOMM")):
+        if any(
+            key in hwid or key in desc for key in ("BTH", "BLUETOOTH", "蓝牙", "RFCOMM")
+        ):
             return "bluetooth"
         return "unknown"
 
     # ---------- 连接 / 断开 ----------
     def connect_to(self, entry):
-        if entry and entry.get("transport") == "usb":
-            self.error.emit("已识别 USB 设备，USB 通信尚未接入")
+        if not entry or self.is_connected:
             return False
-        if serial is None or not entry or self.is_connected:
+        if entry.get("transport") != "usb" and serial is None:
+            self.error.emit("未安装 pyserial，串口功能不可用")
             return False
         try:
-            self.serial_port = serial.Serial(
-                port=entry["device"],
-                baudrate=115200,
-                bytesize=serial.EIGHTBITS,
-                parity=serial.PARITY_NONE,
-                stopbits=serial.STOPBITS_ONE,
-                timeout=0.1,
-                write_timeout=0.5,
-                xonxoff=False,
-                rtscts=False,
-                dsrdtr=False,
-            )
+            if entry.get("transport") == "usb":
+                self._usb = UsbTransport()
+                self._usb.open(entry)
+                self._usb_parser = UsbFrameParser()
+            else:
+                self.serial_port = serial.Serial(
+                    port=entry["device"],
+                    baudrate=115200,
+                    bytesize=serial.EIGHTBITS,
+                    parity=serial.PARITY_NONE,
+                    stopbits=serial.STOPBITS_ONE,
+                    timeout=0.1,
+                    write_timeout=0.5,
+                    xonxoff=False,
+                    rtscts=False,
+                    dsrdtr=False,
+                )
+            self._send_queue = Queue(maxsize=100)
             self.is_connected = True
             self._stop.clear()
             self._buffer.clear()
             self._reader_thread = threading.Thread(
-                target=self._reader_loop, daemon=True, name="SerialReader")
+                target=self._reader_loop, daemon=True, name="SerialReader"
+            )
             self._writer_thread = threading.Thread(
-                target=self._writer_loop, daemon=True, name="SerialWriter")
+                target=self._writer_loop, daemon=True, name="SerialWriter"
+            )
+            self._last_rx = time.monotonic()
             self._reader_thread.start()
             self._writer_thread.start()
             self._auto_connect = False
             self.heartbeat_timer.start()
-            self._last_rx = time.monotonic()
-            self.log.emit(f"串口已打开：{entry['display']}")
+            kind = "USB" if self._usb is not None else "串口"
+            self.log.emit(f"{kind}已打开：{entry['display']}")
             self.send(CmdId.CMD_CONNECT, b"\x01")
             self.connected.emit(entry)
             return True
         except Exception as error:
-            self.is_connected = False
-            self.serial_port = None
-            self.error.emit(f"连接失败：{error}")
+            self._close_transport()
+            self.error.emit(
+                f"连接失败：{error}；USB 请检查 libusb、设备权限或 WinUSB 驱动"
+            )
             return False
 
     def disconnect(self, reason="手动断开"):
-        if not self.is_connected and self.serial_port is None:
+        if not self.is_connected and self.serial_port is None and self._usb is None:
             return
+        self._stop.set()
         if self.is_connected:
             self._write_packet(CmdId.CMD_CONNECT, b"\x00")
+        self._close_transport()
+        self.disconnected.emit(reason)
+
+    def _close_transport(self):
         self.is_connected = False
         self.heartbeat_timer.stop()
         self._stop.set()
-        port = self.serial_port
-        self.serial_port = None
-        if port is not None:
-            try:
-                port.close()
-            except Exception:
-                pass
+        # USB 读超时 100ms、写超时 500ms；线程退出后再释放接口，避免并发 dispose。
         current = threading.current_thread()
         for thread in (self._reader_thread, self._writer_thread):
             if thread and thread is not current and thread.is_alive():
-                thread.join(timeout=0.5)
-        self.disconnected.emit(reason)
+                thread.join()
+        port, self.serial_port = self.serial_port, None
+        usb, self._usb = self._usb, None
+        for transport in (port, usb):
+            if transport is not None:
+                try:
+                    transport.close()
+                except Exception as error:
+                    self.error.emit(f"关闭设备失败：{error}")
+        self._reader_thread = self._writer_thread = None
+        self._buffer.clear()
+        self._usb_parser = UsbFrameParser()
+        self._send_queue = Queue(maxsize=100)
 
     # ---------- 发送 ----------
     def send(self, cmd_id, payload=b""):
@@ -197,8 +231,12 @@ class SerialService(QObject):
             self.error.emit("尚未连接设备")
             return False
         payload = bytes(payload or b"")
-        if len(payload) > MAX_PAYLOAD:
-            self.error.emit("发送载荷超过 128 字节")
+        limit = USB_MAX_PAYLOAD if self._usb is not None else MAX_PAYLOAD
+        if not 0 <= int(cmd_id) <= 255:
+            self.error.emit("命令 ID 必须为 0..255")
+            return False
+        if len(payload) > limit:
+            self.error.emit(f"发送载荷超过 {limit} 字节")
             return False
         try:
             self._send_queue.put_nowait((int(cmd_id), payload))
@@ -208,15 +246,18 @@ class SerialService(QObject):
             return False
 
     def _write_packet(self, cmd_id, payload):
-        if not self.serial_port or not self.serial_port.is_open:
-            return False
-        packet = self._build_packet(cmd_id, payload)
         with self._lock:
             try:
-                self.serial_port.write(packet)
-                self.serial_port.flush()
+                if self._usb is not None:
+                    self._usb.write(build_usb_packet(cmd_id, payload))
+                elif self.serial_port and self.serial_port.is_open:
+                    self.serial_port.write(self._build_packet(cmd_id, payload))
+                    self.serial_port.flush()
+                else:
+                    return False
                 return True
-            except Exception:
+            except Exception as error:
+                self.error.emit(f"发送失败：{error}")
                 return False
 
     def _writer_loop(self):
@@ -225,8 +266,11 @@ class SerialService(QObject):
                 cmd_id, payload = self._send_queue.get(timeout=0.1)
             except Exception:
                 continue
+            if self._stop.is_set():
+                break
             if not self._write_packet(cmd_id, payload):
-                self._lost("发送失败")
+                self._transport_failed.emit("发送失败")
+                break
 
     def _send_heartbeat(self):
         if self.is_connected:
@@ -245,13 +289,19 @@ class SerialService(QObject):
     def _reader_loop(self):
         while not self._stop.is_set() and self.is_connected:
             try:
-                data = self.serial_port.read(1)
-                if not data:
-                    continue
-                self._buffer.extend(data)
-                self._parse_buffer()
-            except Exception:
-                self._lost("接收失败")
+                if self._usb is not None:
+                    data = self._usb.read()
+                    for cmd_id, payload in self._usb_parser.feed(data):
+                        self._last_rx = time.monotonic()
+                        self.frame_received.emit(cmd_id, payload)
+                else:
+                    data = self.serial_port.read(1)
+                    if not data:
+                        continue
+                    self._buffer.extend(data)
+                    self._parse_buffer()
+            except Exception as error:
+                self._transport_failed.emit(f"接收失败：{error}")
                 break
 
     def _parse_buffer(self):
@@ -271,7 +321,7 @@ class SerialService(QObject):
             if self._buffer[total - 1] != self.tail:
                 del self._buffer[0]
                 continue
-            payload = bytes(self._buffer[3:3 + length])
+            payload = bytes(self._buffer[3 : 3 + length])
             check = self._buffer[3 + length]
             if check == self._crc8(bytes([self._buffer[1], length]) + payload):
                 self._last_rx = time.monotonic()
@@ -281,15 +331,7 @@ class SerialService(QObject):
     def _lost(self, reason):
         if not self.is_connected:
             return
-        self.is_connected = False
-        self.heartbeat_timer.stop()
-        self._stop.set()
-        if self.serial_port:
-            try:
-                self.serial_port.close()
-            except Exception:
-                pass
-        self.serial_port = None
+        self._close_transport()
         self._auto_connect = AUTO_CONNECT
         self._attempted.clear()
         self.disconnected.emit(reason)

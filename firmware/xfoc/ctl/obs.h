@@ -33,7 +33,7 @@ typedef struct {
 } tObs;
 
 bool obs_init(tObs *obs, tParameter *param);
-bool obs_loop_task(tObs *obs);
+void obs_loop_task(tObs *obs);
 void obs_tim_task(tObs *obs, float ts, float *theta_r, float *theta_e,
                   float *vel, float *pos);
 void obs_set_zero(tObs *obs);

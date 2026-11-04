@@ -3,6 +3,6 @@
 
 #include "data_list.h"
 
-void status_feedback_main_loop(eCoreState cstate);
+void status_feedback_main_loop(eMotorState cstate);
 
 #endif //__STATUS_FEEDBACK_H

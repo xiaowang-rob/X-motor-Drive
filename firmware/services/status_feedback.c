@@ -2,21 +2,23 @@
 
 #include "led.h"
 
-void status_feedback_main_loop(eCoreState cstate) {
+void status_feedback_main_loop(eMotorState cstate) {
     eIndicator_state state = INDICATOR_STATE_IDLE;
     switch (cstate) {
-    case CORE_TUNING:
-    case CORE_WARNING:
+    case MOTOR_IDLE:
+        state = INDICATOR_STATE_IDLE;
+        break;
+    case MOTOR_TUNING:
         state = INDICATOR_STATE_RUNNING1;
         break;
-    case CORE_OPENLOOP:
-    case CORE_CURRENT_MODE:
-    case CORE_PID_SPEED:
-    case CORE_PID_POSITION:
-    case CORE_MIT_MODE:
+    case MOTOR_OPENLOOP:
+    case MOTOR_CURRENT_MODE:
+    case MOTOR_PID_SPEED:
+    case MOTOR_PID_POSITION:
+    case MOTOR_MIT_MODE:
         state = INDICATOR_STATE_RUNNING0;
         break;
-    case CORE_FAULT:
+    case MOTOR_FAULT:
         state = INDICATOR_STATE_FAULT;
         break;
     default:

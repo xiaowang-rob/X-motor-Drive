@@ -1,10 +1,10 @@
-"""固件维护 UI：设备信息、驱动信息终端、两类固件烧录入口。"""
-from PyQt5.QtWidgets import QHBoxLayout
+"""固件维护 UI：设备信息、驱动信息终端、Application 固件烧录入口。"""
+from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import (
     FluentIcon as FIF, LineEdit, PlainTextEdit, ProgressBar, PushButton,
 )
 from app.ui_components import (
-    ContentPage, PlainCard, button_row, icon_action, style_console,
+    ContentPage, PlainCard, icon_action, preview_button, style_console,
 )
 
 
@@ -14,34 +14,25 @@ class IAPPage(ContentPage):
         self.scroll, content = self.add_scroll("firmware_content")
         self.main_layout.addWidget(self.scroll)
 
-        info_row = QHBoxLayout()
-        info_row.setSpacing(12)
+        # 左列：设备版本信息 + 固件选择/烧录，纵向排列成一条窄栏。
+        left = QVBoxLayout()
+        left.setContentsMargins(0, 0, 0, 0)
+        left.setSpacing(12)
+
         self.device_card = PlainCard("设备版本信息")
         self.device_card.add_fields([
             ("设备型号", ""),
             ("Bootloader 版本", ""),
             ("Application 版本", ""),
         ], read_only=True, data_type="str", show_actions=False)
-        info_row.addWidget(self.device_card, 1)
+        left.addWidget(self.device_card)
 
-        self.driver_card = PlainCard("驱动器信息")
-        self.driver_output = PlainTextEdit()
-        self.driver_output.setReadOnly(True)
-        style_console(self.driver_output)
-        self.driver_output.setAccessibleName("驱动器信息输出")
-        self.driver_output.setToolTip("驱动器信息输出")
-        self.driver_output.document().setMaximumBlockCount(500)
-        self.driver_output.setMinimumHeight(180)
-        self.driver_card.content.addWidget(self.driver_output, 1)
-        info_row.addWidget(self.driver_card, 1)
-        content.addLayout(info_row)
-
-        row = QHBoxLayout()
-        row.setSpacing(12)
         self.firmware_panels = {}
         self.firmware_select_buttons = {}
         self.firmware_paths = {}
-        for route, title in [("bootloader", "Bootloader 固件"), ("application", "Application 固件")]:
+        # 暂只支持烧录应用固件；Bootloader 烧录入口先不提供，
+        # 需要时在此追加 ("bootloader", "Bootloader 固件") 即可恢复。
+        for route, title in [("application", "Application 固件")]:
             card = PlainCard(title)
             path = LineEdit()
             path.setReadOnly(True)
@@ -55,18 +46,45 @@ class IAPPage(ContentPage):
             path_row.addWidget(path, 1)
             path_row.addWidget(select_button)
             card.content.addLayout(path_row)
-            card.content.addLayout(button_row("烧录", "取消"))
+            # 烧录/取消左右等宽，占满整行。
+            action_row = QHBoxLayout()
+            action_row.setContentsMargins(0, 0, 0, 0)
+            action_row.setSpacing(6)
+            for text in ("烧录", "取消"):
+                action_row.addWidget(preview_button(text, primary=text == "烧录"), 1)
+            card.content.addLayout(action_row)
             progress = ProgressBar()
             progress.setRange(0, 100)
             progress.setValue(0)
             progress.setFixedHeight(4)
             progress.setAccessibleName(title + "烧录进度")
             card.content.addWidget(progress)
-            row.addWidget(card, 1)
+            left.addWidget(card)
             self.firmware_panels[route] = card
             self.firmware_select_buttons[route] = select_button
             self.firmware_paths[route] = path
-        content.addLayout(row)
+
+        left.addStretch(1)
+        left_column = QWidget()
+        left_column.setLayout(left)
+
+        # 右列：驱动器信息终端，占满剩余宽度与高度。
+        self.driver_card = PlainCard("驱动器信息")
+        self.driver_output = PlainTextEdit()
+        self.driver_output.setReadOnly(True)
+        style_console(self.driver_output)
+        self.driver_output.setAccessibleName("驱动器信息输出")
+        self.driver_output.setToolTip("驱动器信息输出")
+        self.driver_output.document().setMaximumBlockCount(500)
+        self.driver_output.setMinimumHeight(240)
+        self.driver_card.content.addWidget(self.driver_output, 1)
+
+        body = QHBoxLayout()
+        body.setSpacing(12)
+        # 左右两列等宽。
+        body.addWidget(left_column, 1)
+        body.addWidget(self.driver_card, 1)
+        content.addLayout(body, 1)
 
         self.bind_parameters()
         for route, card in self.firmware_panels.items():

@@ -81,6 +81,7 @@ static bool can_config_filter(tCanBus *inst, uint32_t std_id) {
         return false;
 
     // 未匹配报文与远程帧一律不接收
+
     return HAL_FDCAN_ConfigGlobalFilter(inst->hcan,
                                         FDCAN_REJECT,
                                         FDCAN_REJECT,
@@ -94,7 +95,7 @@ static bool can_bus_open(void *handle, uint32_t std_id) {
     tCanBus *inst = (tCanBus *)handle;
     if (!inst || !inst->hcan)
         return false;
-
+    MX_FDCAN1_Init();
     if (!can_config_filter(inst, std_id))
         return false;
     if (HAL_FDCAN_Start(inst->hcan) != HAL_OK)

@@ -31,50 +31,26 @@ typedef struct {
     uint32_t crc;
 } tParamHdr;
 
-static uint32_t s_new_firmware = PARAM_NO_FIRMWARE;
-static uint32_t s_firmware_size;
+static uint32_t s_new_firmware = 0;
+static uint32_t s_firmware_size = 0;
 
-void param_upgrade_get(uint32_t *version, uint32_t *size) {
-    if (version)
-        *version = s_new_firmware;
-    if (size)
-        *size = s_firmware_size;
-}
+bool upgrade_save(uint32_t version, uint32_t size) {
 
-static bool upgrade_save(uint32_t version, uint32_t size) {
-    uint32_t old_version = s_new_firmware;
-    uint32_t old_size = s_firmware_size;
     s_new_firmware = version;
     s_firmware_size = size;
     if (param_save())
         return true;
-    s_new_firmware = old_version;
-    s_firmware_size = old_size;
+
     return false;
 }
 
-bool param_upgrade_set(uint32_t version, uint32_t size) {
-    if (version == PARAM_NO_FIRMWARE || version > 0xFFFFFFU || size < 8U)
-        return false;
-    return upgrade_save(version, size);
-}
-
-bool param_upgrade_clear(void) { return upgrade_save(PARAM_NO_FIRMWARE, 0U); }
-
 #define PARAM_BLOB_SIZE (sizeof(tParamHdr) + sizeof(tParameter))
-
-static const uint8_t TYPE_SIZE[] = {
-    [FLD_U8] = sizeof(uint8_t),
-    [FLD_U32] = sizeof(uint32_t),
-    [FLD_F32] = sizeof(float),
-    [FLD_BOOL] = sizeof(bool),
-};
 
 uint8_t field_read_raw(const tField *f, uint8_t *dst) {
     if (!f || !f->ptr || !dst)
         return 0U;
 
-    uint8_t n = TYPE_SIZE[f->type];
+    uint8_t n = field_value_type_size(f->type);
     memcpy(dst, f->ptr, n);
     return n;
 }
@@ -83,15 +59,13 @@ bool field_write_raw(const tField *f, const uint8_t *src) {
     if (!f || !f->ptr || !src)
         return false;
 
-    memcpy(f->ptr, src, TYPE_SIZE[f->type]);
+    memcpy(f->ptr, src, field_value_type_size(f->type));
     return true;
 }
 
 // 参数服务初始化 注册存储单元 读出上次数值
 bool param_init(void) {
     g_param = param_default; // 唯一默认值来源
-    s_new_firmware = PARAM_NO_FIRMWARE;
-    s_firmware_size = 0U;
 
     uint8_t blob[PARAM_BLOB_SIZE];
     if (storage_read(&g_param_storage, blob, PARAM_BLOB_SIZE)) {
@@ -103,11 +77,6 @@ bool param_init(void) {
             if (crc == hdr.crc) // CRC 校验（掉电半写可检测）
             {
                 memcpy(&g_param, blob + sizeof(hdr), sizeof(tParameter));
-                s_new_firmware = hdr.new_firmware;
-                s_firmware_size = hdr.firmware_size;
-                /* 兼容旧 param_save 写出的全零元数据（无升级请求）。 */
-                if (s_new_firmware == 0U && s_firmware_size == 0U)
-                    s_new_firmware = PARAM_NO_FIRMWARE;
             }
         }
     }

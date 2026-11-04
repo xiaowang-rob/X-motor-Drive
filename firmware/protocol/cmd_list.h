@@ -14,18 +14,18 @@ typedef enum
     CMD_OBS_TUNNING = 0xE4, /* 观测器校准 */
     CMD_PID_TUNNING = 0xE5, /* PID参数校准 */
     CMD_MIT_TUNNING = 0xE6, /* MIT参数校准 */
-    CMD_PARAM_RELOAD = 0xC4, /* 参数重置；0xFF 表示全部重置 */
-    CMD_PARAM_WRITE = 0xC5, /* 参数写入；0xFF 表示应用已写入参数 */
+    CMD_PARAM_RELOAD = 0xC4, /* 参数重置；特殊 ID 见 parameter.yaml */
+    CMD_PARAM_WRITE = 0xC5, /* 参数写入；特殊 ID 见 parameter.yaml，特殊 ID 不携带 value */
     CMD_PARAM_READ = 0xC6, /* 参数读取 */
     CMD_PARAM_SAVE = 0xC7, /* 参数保存 */
     CMD_DATA_ASK = 0xC8, /* 观测数据查询；回复解码需要请求的 id 上下文 */
     CMD_DATA_STREAM_SET = 0xC9, /* 示波数据流订阅，最多 5 路 */
-    CMD_OPENLOOP_CTRL = 0xB1, /* 开环控制 */
-    CMD_CUR_TAU_CTRL = 0xB3, /* 电流/力矩控制 */
+    CMD_CTRL_CONFIG = 0xB0, /* 控制模式配置；首字节取自 obsdata 的 eMotorState，普通分支共 2 字节，MIT 分支共 8 字节 */
+    CMD_OPENLOOP_CTRL = 0xB1, /* 开环控制；角度/速度模式由 CMD_CTRL_CONFIG 配置 */
+    CMD_CUR_TAU_CTRL = 0xB3, /* 电流/力矩控制；电流/力矩模式由 CMD_CTRL_CONFIG 配置 */
     CMD_PID_VEL_CTRL = 0xB4, /* 速度PID控制 */
     CMD_PID_POS_CTRL = 0xB5, /* 位置PID控制 */
     CMD_MIT_CTRL = 0xB6, /* MIT控制；配置正指数 6/8，线上为 -6/-8 */
-    CMD_MIT_CONFIG = 0xB7, /* MIT Kp/Kd配置 */
     CMD_DISABLE = 0xBB, /* 释放电机 */
     CMD_SET_ZERO_POS = 0xBD, /* 设置零点 */
     CMD_SET_LIMIT_POS = 0xBE, /* 以当前位置设置极限位置 */
@@ -56,6 +56,9 @@ typedef enum
 #include <stdbool.h>
 #include <string.h>
 
+#include "descriptor.h"
+#include "payload_codec.h"
+
 #define ENPACK_FEEDBACK(_out_length, _packet, _success) \
     do { \
         ((uint8_t *)(_packet))[0] = (_success) ? FB_EXECUTE : FB_FAILURE; \
@@ -64,170 +67,158 @@ typedef enum
 
 #define DEPACK_CONNECT_REQUEST(_out_length, _packet, state) \
     do { \
-        const uint8_t *_proto_packet = (_packet); \
-        uint8_t _proto_state; \
-        memcpy(&_proto_state, _proto_packet + 0, 1); \
-        (state) = _proto_state; \
-        (_out_length) = 1; \
+        double _proto_values[1]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_CONNECT_REQUEST, (_packet), _proto_values); \
+        (state) = _proto_values[0]; \
     } while (0)
 
-#define ENPACK_HEARTBEAT_RESPONSE(_out_length, _packet, state, fault, warning, vbus, driver_temp, motor_temp) \
+#define ENPACK_HEARTBEAT_RESPONSE(_out_length, _packet, state, fault, vbus, driver_temp, motor_temp) \
     do { \
-        uint8_t *_proto_packet = (_packet); \
-        uint8_t _proto_state = (uint8_t)(state); \
-        memcpy(_proto_packet + 0, &_proto_state, 1); \
-        uint8_t _proto_fault = (uint8_t)(fault); \
-        memcpy(_proto_packet + 1, &_proto_fault, 1); \
-        uint8_t _proto_warning = (uint8_t)(warning); \
-        memcpy(_proto_packet + 2, &_proto_warning, 1); \
-        double _proto_scaled_vbus = (double)(vbus) * 256; \
-        uint16_t _proto_vbus = (uint16_t)(_proto_scaled_vbus >= 0 ? _proto_scaled_vbus + 0.5 : _proto_scaled_vbus - 0.5); \
-        memcpy(_proto_packet + 3, &_proto_vbus, 2); \
-        uint8_t _proto_driver_temp = (uint8_t)(driver_temp); \
-        memcpy(_proto_packet + 5, &_proto_driver_temp, 1); \
-        uint8_t _proto_motor_temp = (uint8_t)(motor_temp); \
-        memcpy(_proto_packet + 6, &_proto_motor_temp, 1); \
-        (_out_length) = 7; \
+        double _proto_values[5]; \
+        _proto_values[0] = (double)(state); \
+        _proto_values[1] = (double)(fault); \
+        _proto_values[2] = (double)(vbus); \
+        _proto_values[3] = (double)(driver_temp); \
+        _proto_values[4] = (double)(motor_temp); \
+        (_out_length) = proto_encode(PROTO_LAYOUT_CMD_HEARTBEAT_RESPONSE, (_packet), _proto_values); \
+    } while (0)
+
+#define DEPACK_PARAM_RELOAD_REQUEST(_out_length, _packet, id) \
+    do { \
+        double _proto_values[1]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_PARAM_RELOAD_REQUEST, (_packet), _proto_values); \
+        (id) = _proto_values[0]; \
     } while (0)
 
 #define DEPACK_PARAM_READ_REQUEST(_out_length, _packet, id) \
     do { \
-        const uint8_t *_proto_packet = (_packet); \
-        uint8_t _proto_id; \
-        memcpy(&_proto_id, _proto_packet + 0, 1); \
-        (id) = _proto_id; \
-        (_out_length) = 1; \
+        double _proto_values[1]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_PARAM_READ_REQUEST, (_packet), _proto_values); \
+        (id) = _proto_values[0]; \
     } while (0)
 
 #define DEPACK_DATA_ASK_REQUEST(_out_length, _packet, id) \
     do { \
-        const uint8_t *_proto_packet = (_packet); \
-        uint8_t _proto_id; \
-        memcpy(&_proto_id, _proto_packet + 0, 1); \
-        (id) = _proto_id; \
-        (_out_length) = 1; \
+        double _proto_values[1]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_DATA_ASK_REQUEST, (_packet), _proto_values); \
+        (id) = _proto_values[0]; \
     } while (0)
 
-#define DEPACK_OPENLOOP_CTRL_REQUEST(_out_length, _packet, mode, duty, value) \
+#define DEPACK_CTRL_CONFIG_REQUEST(_out_length, _packet, mode) \
     do { \
-        const uint8_t *_proto_packet = (_packet); \
-        uint8_t _proto_mode; \
-        memcpy(&_proto_mode, _proto_packet + 0, 1); \
-        uint16_t _proto_duty; \
-        memcpy(&_proto_duty, _proto_packet + 1, 2); \
-        float _proto_value; \
-        memcpy(&_proto_value, _proto_packet + 3, 4); \
-        (mode) = _proto_mode; \
-        (duty) = (float)_proto_duty / 256; \
-        (value) = _proto_value; \
-        (_out_length) = 7; \
+        double _proto_values[4]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_CTRL_CONFIG_REQUEST, (_packet), _proto_values); \
+        (mode) = _proto_values[0]; \
     } while (0)
 
-#define DEPACK_CUR_TAU_CTRL_REQUEST(_out_length, _packet, mode, value) \
+#define DEPACK_CTRL_CONFIG_OPENLOOP_REQUEST(_packet, control) \
     do { \
-        const uint8_t *_proto_packet = (_packet); \
-        uint8_t _proto_mode; \
-        memcpy(&_proto_mode, _proto_packet + 0, 1); \
-        float _proto_value; \
-        memcpy(&_proto_value, _proto_packet + 1, 4); \
-        (mode) = _proto_mode; \
-        (value) = _proto_value; \
-        (_out_length) = 5; \
+        double _proto_values[2]; \
+        if (proto_decode(PROTO_LAYOUT_CMD_CTRL_CONFIG_REQUEST_OPENLOOP, (_packet), _proto_values) == 0U) \
+            memset(_proto_values, 0, sizeof(_proto_values)); \
+        (control) = _proto_values[1]; \
+    } while (0)
+
+#define DEPACK_CTRL_CONFIG_CURRENT_REQUEST(_packet, control) \
+    do { \
+        double _proto_values[2]; \
+        if (proto_decode(PROTO_LAYOUT_CMD_CTRL_CONFIG_REQUEST_CURRENT, (_packet), _proto_values) == 0U) \
+            memset(_proto_values, 0, sizeof(_proto_values)); \
+        (control) = _proto_values[1]; \
+    } while (0)
+
+#define DEPACK_CTRL_CONFIG_PID_SPEED_REQUEST(_packet, control) \
+    do { \
+        double _proto_values[2]; \
+        if (proto_decode(PROTO_LAYOUT_CMD_CTRL_CONFIG_REQUEST_PID_SPEED, (_packet), _proto_values) == 0U) \
+            memset(_proto_values, 0, sizeof(_proto_values)); \
+        (control) = _proto_values[1]; \
+    } while (0)
+
+#define DEPACK_CTRL_CONFIG_PID_POSITION_REQUEST(_packet, control) \
+    do { \
+        double _proto_values[2]; \
+        if (proto_decode(PROTO_LAYOUT_CMD_CTRL_CONFIG_REQUEST_PID_POSITION, (_packet), _proto_values) == 0U) \
+            memset(_proto_values, 0, sizeof(_proto_values)); \
+        (control) = _proto_values[1]; \
+    } while (0)
+
+#define DEPACK_CTRL_CONFIG_MIT_REQUEST(_packet, kp, kd) \
+    do { \
+        double _proto_values[4]; \
+        if (proto_decode(PROTO_LAYOUT_CMD_CTRL_CONFIG_REQUEST_MIT, (_packet), _proto_values) == 0U) \
+            memset(_proto_values, 0, sizeof(_proto_values)); \
+        (kp) = _proto_values[2]; \
+        (kd) = _proto_values[3]; \
+    } while (0)
+
+#define DEPACK_OPENLOOP_CTRL_REQUEST(_out_length, _packet, duty, value) \
+    do { \
+        double _proto_values[2]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_OPENLOOP_CTRL_REQUEST, (_packet), _proto_values); \
+        (duty) = _proto_values[0]; \
+        (value) = _proto_values[1]; \
+    } while (0)
+
+#define DEPACK_CUR_TAU_CTRL_REQUEST(_out_length, _packet, value) \
+    do { \
+        double _proto_values[1]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_CUR_TAU_CTRL_REQUEST, (_packet), _proto_values); \
+        (value) = _proto_values[0]; \
     } while (0)
 
 #define DEPACK_PID_VEL_CTRL_REQUEST(_out_length, _packet, velocity) \
     do { \
-        const uint8_t *_proto_packet = (_packet); \
-        float _proto_velocity; \
-        memcpy(&_proto_velocity, _proto_packet + 0, 4); \
-        (velocity) = _proto_velocity; \
-        (_out_length) = 4; \
+        double _proto_values[1]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_PID_VEL_CTRL_REQUEST, (_packet), _proto_values); \
+        (velocity) = _proto_values[0]; \
     } while (0)
 
 #define DEPACK_PID_POS_CTRL_REQUEST(_out_length, _packet, position) \
     do { \
-        const uint8_t *_proto_packet = (_packet); \
-        float _proto_position; \
-        memcpy(&_proto_position, _proto_packet + 0, 4); \
-        (position) = _proto_position; \
-        (_out_length) = 4; \
+        double _proto_values[1]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_PID_POS_CTRL_REQUEST, (_packet), _proto_values); \
+        (position) = _proto_values[0]; \
     } while (0)
 
-#define DEPACK_MIT_CTRL_REQUEST(_out_length, _packet, position, velocity_scale, torque_scale, velocity, torque) \
+#define DEPACK_MIT_CTRL_REQUEST(_out_length, _packet, position, velocity, torque) \
     do { \
-        const uint8_t *_proto_packet = (_packet); \
-        int32_t _proto_position = (int32_t)((uint32_t)_proto_packet[0] | \
-            ((uint32_t)_proto_packet[1] << 8) | ((uint32_t)_proto_packet[2] << 16)); \
-        if (_proto_position & 0x800000) _proto_position -= 0x1000000; \
-        int8_t _proto_velocity_scale = (_proto_packet[3] >> 0) & 15; \
-        if (_proto_velocity_scale & 8) _proto_velocity_scale -= 16; \
-        int8_t _proto_torque_scale = (_proto_packet[3] >> 4) & 15; \
-        if (_proto_torque_scale & 8) _proto_torque_scale -= 16; \
-        int16_t _proto_velocity; \
-        memcpy(&_proto_velocity, _proto_packet + 4, 2); \
-        int16_t _proto_torque; \
-        memcpy(&_proto_torque, _proto_packet + 6, 2); \
-        (position) = (float)_proto_position / 262144; \
-        (velocity_scale) = -_proto_velocity_scale; \
-        (torque_scale) = -_proto_torque_scale; \
-        (velocity) = (_proto_velocity_scale <= 0 ? (float)_proto_velocity / (1u << -_proto_velocity_scale) : (float)_proto_velocity * (1u << _proto_velocity_scale)); \
-        (torque) = (_proto_torque_scale <= 0 ? (float)_proto_torque / (1u << -_proto_torque_scale) : (float)_proto_torque * (1u << _proto_torque_scale)); \
-        (_out_length) = 8; \
-    } while (0)
-
-#define DEPACK_MIT_CONFIG_REQUEST(_out_length, _packet, kp, kd) \
-    do { \
-        const uint8_t *_proto_packet = (_packet); \
-        float _proto_kp; \
-        memcpy(&_proto_kp, _proto_packet + 0, 4); \
-        float _proto_kd; \
-        memcpy(&_proto_kd, _proto_packet + 4, 4); \
-        (kp) = _proto_kp; \
-        (kd) = _proto_kd; \
-        (_out_length) = 8; \
+        double _proto_values[5]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_MIT_CTRL_REQUEST, (_packet), _proto_values); \
+        (position) = _proto_values[0]; \
+        (velocity) = _proto_values[3]; \
+        (torque) = _proto_values[4]; \
     } while (0)
 
 #define DEPACK_IAP_ENTER_REQUEST(_out_length, _packet, version, size) \
     do { \
-        const uint8_t *_proto_packet = (_packet); \
-        uint32_t _proto_version; \
-        memcpy(&_proto_version, _proto_packet + 0, 4); \
-        uint32_t _proto_size; \
-        memcpy(&_proto_size, _proto_packet + 4, 4); \
-        (version) = _proto_version; \
-        (size) = _proto_size; \
-        (_out_length) = 8; \
+        double _proto_values[2]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_IAP_ENTER_REQUEST, (_packet), _proto_values); \
+        (version) = _proto_values[0]; \
+        (size) = _proto_values[1]; \
     } while (0)
 
 #define DEPACK_IAP_ERASE_FLASH_REQUEST(_out_length, _packet, size) \
     do { \
-        const uint8_t *_proto_packet = (_packet); \
-        uint32_t _proto_size; \
-        memcpy(&_proto_size, _proto_packet + 0, 4); \
-        (size) = _proto_size; \
-        (_out_length) = 4; \
+        double _proto_values[1]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_IAP_ERASE_FLASH_REQUEST, (_packet), _proto_values); \
+        (size) = _proto_values[0]; \
     } while (0)
 
 #define ENPACK_IAP_WRITE_FLASH_RESPONSE(_out_length, _packet, offset, status) \
     do { \
-        uint8_t *_proto_packet = (_packet); \
-        uint32_t _proto_offset = (uint32_t)(offset); \
-        memcpy(_proto_packet + 0, &_proto_offset, 4); \
-        uint8_t _proto_status = (uint8_t)(status); \
-        memcpy(_proto_packet + 4, &_proto_status, 1); \
-        (_out_length) = 5; \
+        double _proto_values[2]; \
+        _proto_values[0] = (double)(offset); \
+        _proto_values[1] = (double)(status); \
+        (_out_length) = proto_encode(PROTO_LAYOUT_CMD_IAP_WRITE_FLASH_RESPONSE, (_packet), _proto_values); \
     } while (0)
 
 #define DEPACK_IAP_VERIFY_FLASH_REQUEST(_out_length, _packet, crc32, size) \
     do { \
-        const uint8_t *_proto_packet = (_packet); \
-        uint32_t _proto_crc32; \
-        memcpy(&_proto_crc32, _proto_packet + 0, 4); \
-        uint32_t _proto_size; \
-        memcpy(&_proto_size, _proto_packet + 4, 4); \
-        (crc32) = _proto_crc32; \
-        (size) = _proto_size; \
-        (_out_length) = 8; \
+        double _proto_values[2]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_IAP_VERIFY_FLASH_REQUEST, (_packet), _proto_values); \
+        (crc32) = _proto_values[0]; \
+        (size) = _proto_values[1]; \
     } while (0)
 
 #endif

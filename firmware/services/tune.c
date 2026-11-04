@@ -1,47 +1,121 @@
 #include "tune.h"
-#include "bsp_cfg.h"
 
-// 只适配外部开环命令；core 中 duty -> ud 的执行链仍需单独接入。
+#include "bsp_cfg.h"
+#include "protection.h"
+
+tTune g_tune;
+
+static void tune_open_cmd_cfg(bool ol_vel_ctrl) {
+    tCmdCfg cfg;
+    cfg.mode = MOTOR_OPENLOOP;
+    cfg.ol_vel_ctrl = ol_vel_ctrl;
+    motor_cmd_cfg(&cfg);
+}
 static void tune_open_cmd_apply(float duty, float theta_e) {
     tCmdValue cmd = {0};
-    cmd.mode = CORE_OPENLOOP;
-    cmd.openloop.vel_ctrl = false;
+    cmd.mode = MOTOR_OPENLOOP;
     cmd.openloop.value = theta_e;
     cmd.openloop.duty = duty;
-    core_cmd_set(&cmd);
+    motor_cmd_set(&cmd);
 }
 
-void tune_start(tTune *tune, eTuneType type, float cur_limit) {
-    tune->state = TUNE_RUNNING;
-    tune->type = type;
-    tune->TO_init = false;
-    tune->cur_limit = cur_limit;
+static void tune_current_cmd_cfg(void) {
+    tCmdCfg cfg;
+    cfg.mode = MOTOR_CURRENT_MODE;
+    cfg.tau_ctrl = false;
+    motor_cmd_cfg(&cfg);
+}
+
+static void tune_current_cmd_apply(float cur) {
+    tCmdValue cmd = {0};
+    cmd.mode = MOTOR_CURRENT_MODE;
+    cmd.current_ctrl.value = cur;
+    motor_cmd_set(&cmd);
+}
+
+static void tune_pid_vel_cmd_cfg(void) {
+    tCmdCfg cfg;
+    cfg.mode = MOTOR_PID_SPEED;
+    cfg.fw_ctrl = false;
+    motor_cmd_cfg(&cfg);
+}
+
+static void tune_pid_vel_cmd_apply(float vel) {
+    tCmdValue cmd = {0};
+    cmd.mode = MOTOR_PID_SPEED;
+    cmd.vel_pid_ctrl.vel = vel;
+    motor_cmd_set(&cmd);
+}
+
+void tune_rl_start(float cur_limit) {
+    g_tune.state = TUNE_RUNNING;
+    g_tune.type = TUNE_RL;
+    g_tune.TO_init = false;
+    g_tune.cur_limit = cur_limit;
+}
+
+void tune_psif_start(float cur_limit, float vel_limit) {
+    g_tune.state = TUNE_RUNNING;
+    g_tune.type = TUNE_Psif;
+    g_tune.TO_init = false;
+    g_tune.cur_limit = cur_limit;
+    g_tune.vel_limit = vel_limit;
+}
+
+void tune_mech_start(float cur_limit, float vel_limit) {
+    g_tune.state = TUNE_RUNNING;
+    g_tune.type = TUNE_MECH;
+    g_tune.TO_init = false;
+    g_tune.cur_limit = cur_limit;
+    g_tune.vel_limit = vel_limit;
+}
+
+void tune_obs_start(float cur_limit) {
+    g_tune.state = TUNE_RUNNING;
+    g_tune.type = TUNE_OBS;
+    g_tune.TO_init = false;
+    g_tune.cur_limit = cur_limit;
+}
+
+void tune_pid_start(float cur_limit, float vel_limit) {
+    g_tune.state = TUNE_RUNNING;
+    g_tune.type = TUNE_PID;
+    g_tune.TO_init = false;
+    g_tune.cur_limit = cur_limit;
+    g_tune.vel_limit = vel_limit;
+}
+
+void tune_mit_start(float cur_limit, float vel_limit) {
+    g_tune.state = TUNE_RUNNING;
+    g_tune.type = TUNE_MIT;
+    g_tune.TO_init = false;
+    g_tune.cur_limit = cur_limit;
+    g_tune.vel_limit = vel_limit;
 }
 
 void tune_reset(tTune *tune) {
-    tune->fault = FAULT_NONE;
-    tune->state = TUNE_IDLE;
+    g_tune.fault = FAULT_NONE;
+    g_tune.state = TUNE_IDLE;
 }
 
 // foc 内参辨识 rs ldq
-bool tune_RL_update(tTune *tune, tParameter *p, tCtrl *con, float ts, float id,
-                    float iq, float ud, float uq) {
-    if (!isfinite(ts) || ts <= 0.0f)
-        return false;
-    switch (tune->step) {
-    case 0: // 一个状态机完成 Rs/Ld/Lq，直接接收上一拍限幅后的 ud/uq。
-        if (!tune->TO_init) {
+void tune_RL_update(tParameter *p, tCtrl *con, float ts, float id, float iq,
+                    float ud, float uq) {
+
+    switch (g_tune.step) {
+    case 0:
+        if (!g_tune.TO_init) {
             float samples = 1.0f / (LS_INJECT_FREQ_HZ * ts);
             uint16_t n = (uint16_t)fminf(65535.0f, fmaxf(8.0f, samples + 0.5f));
             tTune_rl_cfg cfg = {
                 .adapt =
                     {
-                        .i_target_max = tune->cur_limit,
+                        .i_target_max = g_tune.cur_limit,
                         .duty_max = RL_DUTY_MAX,
                         .settle_ticks =
                             (uint32_t)(DUTY_SETTLE_MS / 1000.0f / ts),
                     },
-                .cur_steady_err = tune->cur_limit * RS_STEADY_ERR_THR_COEF,
+                .cur_steady_err = g_tune.cur_limit * RS_STEADY_ERR_THR_COEF,
                 .steady_ticks = (uint32_t)(RS_STEADY_MS / 1000.0f / ts),
                 .align_ticks = (uint32_t)(LS_ALIGN_MS / 1000.0f / ts),
                 .timeout_ticks = (uint32_t)(10.0f / ts),
@@ -55,30 +129,28 @@ bool tune_RL_update(tTune *tune, tParameter *p, tCtrl *con, float ts, float id,
                 .ls_min = LS_RANGE_MIN,
                 .ls_max = LS_RANGE_MAX,
             };
-            tune_rl_init(&tune->rl_ctx, cfg);
-            tune->TO_init = true;
-            tune_open_cmd_apply(tune->rl_ctx.cmd.duty,
-                                tune->rl_ctx.cmd.theta_e);
+            tune_rl_init(&g_tune.rl_ctx, cfg);
+            tune_open_cmd_cfg(false);
+            g_tune.TO_init = true;
         } else {
-            eTuneOneState sta = tune_rl_update(&tune->rl_ctx, id, iq, ud, uq);
-            tune_open_cmd_apply(tune->rl_ctx.cmd.duty,
-                                tune->rl_ctx.cmd.theta_e);
+            eTuneOneState sta = tune_rl_update(&g_tune.rl_ctx, id, iq, ud, uq);
+            tune_open_cmd_apply(g_tune.rl_ctx.cmd.duty,
+                                g_tune.rl_ctx.cmd.theta_e);
             if (sta == TO_DONE) {
-                tune->step = 1;
-                tune->TO_init = false;
+                g_tune.step = 1;
+                g_tune.TO_init = false;
             } else if (sta != TO_RUNNING) {
-                tune->fault = sta == TO_DATA_IMBALANCE
-                                  ? FAULT_RS_IMBALANCE
-                                  : (tune->rl_ctx.step < 3 ? FAULT_RS_TUNE
-                                                           : FAULT_LS_TUNE);
-                tune->state = TUNE_FAILED;
+                if (sta == TO_DATA_IMBALANCE)
+                    g_tune.fault = FAULT_RS_IMBALANCE;
+                else
+                    g_tune.fault = FAULT_RL_TUNE;
             }
         }
         break;
     case 1: // 内环pi参数写入
-        p->motor_rs = tune->rl_ctx.out.rs;
-        p->motor_ld = tune->rl_ctx.out.ldq[0];
-        p->motor_lq = tune->rl_ctx.out.ldq[1];
+        p->motor_rs = g_tune.rl_ctx.out.rs;
+        p->motor_ld = g_tune.rl_ctx.out.ldq[0];
+        p->motor_lq = g_tune.rl_ctx.out.ldq[1];
 
         // 内环参数经验公式  电流环带宽系数重新整定之后默认为0.5
         // 服务后面的校准过程
@@ -118,61 +190,61 @@ bool tune_RL_update(tTune *tune, tParameter *p, tCtrl *con, float ts, float id,
         con->PI_iq.kp = p->qclkp;
         con->PI_iq.ki = p->qclki;
 
-        return true;
+        g_tune.state = TUNE_DONE;
+        return;
     }
-    return false;
+    return;
 }
 
-bool tune_flux_update(tTune *tune, tParameter *p, float uq, float iq, float vel,
-                      float ts) {
+void tune_flux_update(tParameter *p, float uq, float iq, float vel, float ts) {
 
-    if (!tune->TO_init) {
+    if (!g_tune.TO_init) {
         tTune_psif_cfg psif_cfg = {
             .rs_known = p->motor_rs,
-            .vel_low = PSIF_VEL_LOW,
-            .vel_high = PSIF_VEL_HIGH,
+            .vel_low = g_tune.vel_limit * PSIF_VEL_LOW_COEF,
+            .vel_high = g_tune.vel_limit,
             .num_points = PSIF_NUM_POINTS,
             .steady_ticks = PSIF_STEADY_MS / 1000.0f / ts,
             .sample_ticks = PSIF_SAMPLE_MS / 1000.0f / ts,
-            .vel_band = PSIF_VEL_BAND,
+            .vel_band = g_tune.vel_limit * PSIF_VEL_BAND_COEF,
             .timeout_ticks = (uint32_t)(10.0f / ts),
             .fit_max_mse = 0.01f, // V²；台架上按实际电压噪声校验
             .pole_pairs = p->motor_polepairs,
         };
-        tune_psif_init(&tune->psif_ctx, psif_cfg);
-        tune->TO_init = true;
+        tune_psif_init(&g_tune.psif_ctx, psif_cfg);
+        tune_pid_vel_cmd_cfg();
+        g_tune.TO_init = true;
     } else {
-        eTuneOneState sta = tune_psif_update(&tune->psif_ctx, uq, iq, vel);
+        eTuneOneState sta = tune_psif_update(&g_tune.psif_ctx, uq, iq, vel);
+        tune_pid_vel_cmd_apply(g_tune.psif_ctx.cmd.vel);
         if (TO_DONE == sta) {
-            tune->step = 0;
-            tune->state = TUNE_DONE;
-            tune->TO_init = false;
-            p->motor_psif = tune->psif_ctx.out.psi_f;
-            p->motor_ke = tune->psif_ctx.out.ke;
+            g_tune.step = 0;
+            g_tune.TO_init = false;
+
+            p->motor_psif = g_tune.psif_ctx.out.psi_f;
+            p->motor_ke = g_tune.psif_ctx.out.ke;
+
             float ke_ext = 9.55f / p->motor_kv;
             if (XFABSF(ke_ext - p->motor_ke) > 0.1f) {
-                tune->fault = FAULT_PSIF_TUNE;
-                tune->state = TUNE_FAILED;
+                g_tune.fault = FAULT_PSIF_TUNE;
+                g_tune.state = TUNE_FAILED;
             } else
-                tune->state = TUNE_DONE;
-            tune->TO_init = false;
-            return true;
-        } else if (TO_RUNNING == sta) {
-
+                g_tune.state = TUNE_DONE;
+            g_tune.TO_init = false;
+            return;
         } else {
         }
     }
-    return false;
+    return;
 }
 
 // 机械参数辨识
-bool tune_mech_update(tTune *tune, tParameter *p, float ts, float iq,
-                      float vel) {
-    if (!tune->TO_init) {
+bool tune_mech_update(tParameter *p, float ts, float iq, float vel) {
+    if (!g_tune.TO_init) {
         tTune_JB_cfg jb_cfg = {
-            .psi_f = tune->psif_ctx.out.psi_f,
-            .pole_pairs = tune->enc_ctx.out.pole_pairs,
-            .iq_high = tune->cur_limit * JB_IQ_HIGH_COEF,
+            .psi_f = g_tune.psif_ctx.out.psi_f,
+            .pole_pairs = g_tune.enc_ctx.out.pole_pairs,
+            .iq_high = g_tune.cur_limit * JB_IQ_HIGH_COEF,
             .vel_max = JB_VEL_MAX,
             .vel_settle = JB_VEL_SETTLE,
             .alpha_lpf = JB_ALPHA_LPF,
@@ -180,15 +252,15 @@ bool tune_mech_update(tTune *tune, tParameter *p, float ts, float iq,
             .min_samples = JB_MIN_SAMPLES,
             .timeout_ticks = (uint32_t)(10.0f / ts),
         };
-        tune_jb_init(&tune->jb_ctx, jb_cfg);
-        tune->TO_init = true;
+        tune_jb_init(&g_tune.jb_ctx, jb_cfg);
+        g_tune.TO_init = true;
     } else {
         eTuneOneState sta =
-            tune_jb_update(&tune->jb_ctx, vel, iq, ts); // 机械参数辨识
+            tune_jb_update(&g_tune.jb_ctx, vel, iq, ts); // 机械参数辨识
 
         if (TO_DONE == sta) {
-            tune->state = TUNE_DONE;
-            tune->TO_init = false;
+            g_tune.state = TUNE_DONE;
+            g_tune.TO_init = false;
             // TODO: 处理参数
         } else {
         }
@@ -197,8 +269,7 @@ bool tune_mech_update(tTune *tune, tParameter *p, float ts, float iq,
 }
 
 // 观测器参数辨识
-bool tune_obs_update(tTune *tune, tXFocCore *core, eObsList obs, tParameter *p,
-                     float ts) {
+bool tune_obs_update(tXFocMotor *motor, eObsList obs, tParameter *p, float ts) {
     switch (obs) {
     case OBS_NONE:
 
@@ -212,11 +283,11 @@ bool tune_obs_update(tTune *tune, tXFocCore *core, eObsList obs, tParameter *p,
     case OBS_INT_ENC:
     case OBS_ENC_SPI:
     case OBS_ENC_SINCOS:
-        if (!tune->TO_init) {
+        if (!g_tune.TO_init) {
             tEncCal_cfg enc_cal_cfg = {
                 .adapt =
                     {
-                        .i_target_max = tune->cur_limit,
+                        .i_target_max = g_tune.cur_limit,
                         .duty_max = RL_DUTY_MAX,
                         .settle_ticks =
                             (uint32_t)(DUTY_SETTLE_MS / 1000.0f / ts),
@@ -230,27 +301,27 @@ bool tune_obs_update(tTune *tune, tXFocCore *core, eObsList obs, tParameter *p,
                 .fit_max_mse = EC_FIT_MAX_MSE,
 
             };
-            enc_cal_init(&tune->enc_ctx, enc_cal_cfg);
-            tune->TO_init = true;
-            tune_open_cmd_apply(tune->enc_ctx.cmd.duty,
-                                tune->enc_ctx.cmd.theta_e);
+            enc_cal_init(&g_tune.enc_ctx, enc_cal_cfg);
+            tune_open_cmd_cfg(false);
+            g_tune.TO_init = true;
+
         } else {
             eTuneOneState sta =
-                enc_cal_update(&tune->enc_ctx, core->fb.pos, core->fb.id);
-            tune_open_cmd_apply(tune->enc_ctx.cmd.duty,
-                                tune->enc_ctx.cmd.theta_e);
+                enc_cal_update(&g_tune.enc_ctx, motor->fb.pos, motor->fb.id);
+            tune_open_cmd_apply(g_tune.enc_ctx.cmd.duty,
+                                g_tune.enc_ctx.cmd.theta_e);
             if (TO_DONE == sta) {
-                tune->state = TUNE_DONE;
-                tune->TO_init = false;
+                g_tune.state = TUNE_DONE;
+                g_tune.TO_init = false;
                 // TODO: 处理参数
             } else {
                 if (TO_DATA_INVALID == sta)
-                    tune->fault = FAULT_OBS_TUNE;
+                    g_tune.fault = FAULT_OBS_TUNE;
                 else if (TO_DATA_IMBALANCE == sta)
-                    tune->fault = FAULT_POLE_PAIR_MISMATCH;
+                    g_tune.fault = FAULT_POLE_PAIR_MISMATCH;
                 else if (TO_TIMEOUT == sta)
-                    tune->fault = FAULT_MOTOR_LOCK;
-                tune->state = TUNE_FAILED;
+                    g_tune.fault = FAULT_MOTOR_LOCK;
+                g_tune.state = TUNE_FAILED;
             }
         }
         break;
@@ -264,14 +335,22 @@ bool tune_pid_update() { return false; }
 // mit参数自适应
 bool tune_mit_update() { return false; }
 
-eTuneState tune_update(tTune *tune, tParameter *p, float ts, tXFocCore *core) {
-    switch (tune->state) {
+eTuneState tune_mian_tim_task(tParameter *p, tXFocMotor *motor, float ts) {
+    switch (g_tune.state) {
     case TUNE_IDLE:
         break;
     case TUNE_RUNNING:
-        switch (tune->type) {
-        case TUNE_FOC:
-
+        switch (g_tune.type) {
+        case TUNE_RL:
+            tune_RL_update(p,
+                           &motor->ctrl,
+                           ts,
+                           motor->fb.id,
+                           motor->fb.iq,
+                           motor->fb.ud,
+                           motor->fb.uq);
+            break;
+        case TUNE_Psif:
             break;
         case TUNE_OBS:
             break;
@@ -288,8 +367,8 @@ eTuneState tune_update(tTune *tune, tParameter *p, float ts, tXFocCore *core) {
         break;
 
     case TUNE_FAILED:
-        core_enter_fault(tune->fault);
+        pm_handle_fault(g_tune.fault);
         break;
     }
-    return tune->state;
+    return g_tune.state;
 }

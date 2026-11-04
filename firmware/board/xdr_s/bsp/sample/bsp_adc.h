@@ -14,14 +14,14 @@
 #define CUR_ADC_TIM TIM1
 #define CUR_ADC_TIM_ARR (CUR_ADC_TIM->ARR) // PWM 周期计数值
 // 设置默认采样点
-#define CUR_SET_DEF_SP()                          \
-    {                                             \
-        CUR_ADC_TIM->CCR4 = CUR_ADC_TIM->ARR - 1; \
+#define CUR_SET_DEF_SP()                                                       \
+    {                                                                          \
+        CUR_ADC_TIM->CCR4 = CUR_ADC_TIM->ARR - 1;                              \
     }
 // 设置采样点
-#define CUR_SET_SP(tic)          \
-    {                            \
-        CUR_ADC_TIM->CCR4 = tic; \
+#define CUR_SET_SP(tic)                                                        \
+    {                                                                          \
+        CUR_ADC_TIM->CCR4 = tic;                                               \
     }
 
 #define SENSE_CUR_GAIN 100.0f          // 电流采样放大倍数
@@ -37,8 +37,8 @@
 #define VT_ADC_TIM TIM2
 #define SENSE_VBUS_GAIN 16.0f // 母线分压比
 
-#define VBUS_CH 0 // 母线电压通道
-#define TEMP_CH 1 // 温度通道
+#define VBUS_CH 1 // 母线电压通道
+#define TEMP_CH 0 // 温度通道
 
 // 获取驱动句柄
 const tSampleDevHandle *Get_MCU_ADCHandle(void);

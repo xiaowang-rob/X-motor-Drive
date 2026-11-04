@@ -1,9 +1,15 @@
 
 #include "slot_con.h"
 
+#include "bsp_mcu.h"
+
 tSlotCon g_slotcon;
 
+CREATE_TIME_SAMPLE(high_s);
+
 void slot_con_init(float f_con) {
+    TIME_INIT();
+
     g_slotcon.base_tic = 0;
     g_slotcon.high_tic = 0;
     g_slotcon.medium_tic = 0;
@@ -19,6 +25,8 @@ void slot_con_init(float f_con) {
 
 // 在定时中断中调用
 void slot_con_update(void) {
+    TIME_SAMPLE_STOP(high_s);
+    TIME_SAMPLE_START(high_s);
     for (uint8_t i = 0; i < FREQ_HIGH_LOOP; i++) {
         if (g_slotcon.base_tic == high_schedule[i].slot)
             high_schedule[i].task(g_slotcon.t_high);

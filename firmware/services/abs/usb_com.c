@@ -1,7 +1,8 @@
 #include "usb_com.h"
 
 /* ISR 中的 atomic 操作不能依赖锁或 libatomic。 */
-_Static_assert(ATOMIC_INT_LOCK_FREE == 2, "USB RX requires lock-free unsigned atomics");
+_Static_assert(ATOMIC_INT_LOCK_FREE == 2,
+               "USB RX requires lock-free unsigned atomics");
 
 static void usb_on_rx(void *ctx, const uint8_t *data, uint16_t len) {
     tUsbDriver *usb = (tUsbDriver *)ctx;
@@ -16,7 +17,8 @@ static void usb_on_rx(void *ctx, const uint8_t *data, uint16_t len) {
         return;
     }
     size_t stride = (size_t)usb->rx_payload_size + 2U;
-    uint8_t *slot = usb->rx_storage + (write & (usb->rx_slot_count - 1U)) * stride;
+    uint8_t *slot =
+        usb->rx_storage + (write & (usb->rx_slot_count - 1U)) * stride;
     slot[0] = (uint8_t)len;
     slot[1] = (uint8_t)(len >> 8);
     memcpy(slot + 2U, data, len);
@@ -25,15 +27,17 @@ static void usb_on_rx(void *ctx, const uint8_t *data, uint16_t len) {
     atomic_store_explicit(&usb->rx_write, write + 1U, memory_order_release);
 }
 
-bool usb_init(tUsbDriver *usb, const tUsbDevHandle *handle, const tUsbBuffer *buf) {
+bool usb_init(tUsbDriver *usb, const tUsbDevHandle *handle,
+              const tUsbBuffer *buf) {
     if (!usb || !handle || !handle->ops || !handle->dev)
         return false;
     usb->handle = handle;
 
-    if (usb == NULL || buf == NULL || usb->handle == NULL || usb->handle->ops == NULL ||
-        usb->handle->ops->open == NULL || usb->handle->ops->send == NULL ||
-        usb->handle->ops->set_rx_cb == NULL || usb->handle->ops->is_ready == NULL ||
-        buf->rx_storage == NULL || buf->rx_slot_count < 2U ||
+    if (usb == NULL || buf == NULL || usb->handle == NULL ||
+        usb->handle->ops == NULL || usb->handle->ops->open == NULL ||
+        usb->handle->ops->send == NULL || usb->handle->ops->set_rx_cb == NULL ||
+        usb->handle->ops->is_ready == NULL || buf->rx_storage == NULL ||
+        buf->rx_slot_count < 2U ||
         (buf->rx_slot_count & (buf->rx_slot_count - 1U)) != 0U ||
         buf->rx_payload_size == 0U || buf->rx_payload_size > USB_MAX_PKT_SIZE)
         return false;
@@ -71,15 +75,15 @@ bool usb_is_ready(const tUsbDriver *usb) {
            usb->handle->ops->is_ready(usb->handle->dev);
 }
 
-bool usb_send(tUsbDriver *usb, const uint8_t *data, uint16_t len) {
+bool usb_send(tUsbDriver *usb, uint8_t id, const uint8_t *data, uint16_t len) {
     if (usb == NULL || !usb->initialized || !usb->started || data == NULL ||
-        len == 0U || len > USB_MAX_PKT_SIZE)
+        len > USB_MAX_PKT_SIZE)
         return false;
     if (!usb_is_ready(usb)) {
         usb->tstate = DEV_OFFLINE;
         return false;
     }
-    if (!usb->handle->ops->send(usb->handle->dev, data, len)) {
+    if (!usb->handle->ops->send(usb->handle->dev, id, data, len)) {
         usb->tstate = DEV_BUSY;
         return false;
     }
@@ -98,15 +102,24 @@ bool usb_process_frame(tUsbDriver *usb, tUsb_Frame *frame) {
     if (read == write)
         return false;
     size_t stride = (size_t)usb->rx_payload_size + 2U;
-    const uint8_t *slot = usb->rx_storage + (read & (usb->rx_slot_count - 1U)) * stride;
+    const uint8_t *slot =
+        usb->rx_storage + (read & (usb->rx_slot_count - 1U)) * stride;
     uint16_t len = (uint16_t)slot[0] | ((uint16_t)slot[1] << 8);
     frame->id = slot[2];
     frame->data_len = (uint16_t)(len - 1U);
+
+    /* 缓冲不足时不释放槽，允许调用方使用更大缓冲重试。 */
     if (frame->data_len != 0U &&
-        (frame->data == NULL || frame->capacity < frame->data_len))
-        return false; /* 不消费，调用方可以提供更大的输出缓冲重试。 */
-    if (frame->data_len != 0U)
+        (frame->data == NULL || frame->capacity < frame->data_len)) {
+        return false;
+    }
+
+    /* 复制期间尚未推进 rx_read，中断不能重用这个槽。 */
+    if (frame->data_len != 0U) {
         memcpy(frame->data, slot + 3U, frame->data_len);
+    }
+
+    /* 数据已经复制到调用方缓冲，此时才能释放槽。 */
     atomic_store_explicit(&usb->rx_read, read + 1U, memory_order_release);
     return true;
 }

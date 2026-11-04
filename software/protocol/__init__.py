@@ -9,6 +9,7 @@ class eFieldValueType:
     FLD_I4 = 5  # int8_t
     FLD_I16 = 6  # int16_t
     FLD_I24 = 7  # int32_t
+    FLD_U24 = 8  # uint32_t
 
 FieldValueType = eFieldValueType
 
@@ -87,6 +88,7 @@ class Pidx:
     PARAM_CAN_RATE = 72  # CAN速率
     PARAM_CAN_ID = 73  # CAN ID
     PARAM_CAN_MODE = 74  # CAN模式
+    PARAM_ALL = 255  # 全部参数；写入时仅发送此 ID 表示应用全部已写入参数，重置时表示全部重置，不携带 value
     NUM_OF_PARAM = 75  # PARAM总数
 PARAM_NUM = 75
 
@@ -108,14 +110,13 @@ class Didx:
     DATA_THETA_MECH = 15  # 机械角度
     DATA_POSITION = 16  # 位置
     DATA_POSITION_REF = 17  # 位置参考
-    DATA_STATE = 18  # 状态
+    DATA_MOTOR_STATE = 18  # 电机状态
     DATA_FAULT = 19  # 故障
-    DATA_WARNING = 20  # 警告
-    DATA_VBUS = 21  # 母线电压
-    DATA_DRIVER_TEMP = 22  # 驱动温度
-    DATA_MOTOR_TEMP = 23  # 电机温度
-    NUM_OF_DATA = 24  # DATA总数
-DATA_NUM = 24
+    DATA_VBUS = 20  # 母线电压
+    DATA_DRIVER_TEMP = 21  # 驱动温度
+    DATA_MOTOR_TEMP = 22  # 电机温度
+    NUM_OF_DATA = 23  # DATA总数
+DATA_NUM = 23
 
 class CmdId:
     CMD_CONNECT = 240  # 连接状态
@@ -128,18 +129,18 @@ class CmdId:
     CMD_OBS_TUNNING = 228  # 观测器校准
     CMD_PID_TUNNING = 229  # PID参数校准
     CMD_MIT_TUNNING = 230  # MIT参数校准
-    CMD_PARAM_RELOAD = 196  # 参数重置；0xFF 表示全部重置
-    CMD_PARAM_WRITE = 197  # 参数写入；0xFF 表示应用已写入参数
+    CMD_PARAM_RELOAD = 196  # 参数重置；特殊 ID 见 parameter.yaml
+    CMD_PARAM_WRITE = 197  # 参数写入；特殊 ID 见 parameter.yaml，特殊 ID 不携带 value
     CMD_PARAM_READ = 198  # 参数读取
     CMD_PARAM_SAVE = 199  # 参数保存
     CMD_DATA_ASK = 200  # 观测数据查询；回复解码需要请求的 id 上下文
     CMD_DATA_STREAM_SET = 201  # 示波数据流订阅，最多 5 路
-    CMD_OPENLOOP_CTRL = 177  # 开环控制
-    CMD_CUR_TAU_CTRL = 179  # 电流/力矩控制
+    CMD_CTRL_CONFIG = 176  # 控制模式配置；首字节取自 obsdata 的 eMotorState，普通分支共 2 字节，MIT 分支共 8 字节
+    CMD_OPENLOOP_CTRL = 177  # 开环控制；角度/速度模式由 CMD_CTRL_CONFIG 配置
+    CMD_CUR_TAU_CTRL = 179  # 电流/力矩控制；电流/力矩模式由 CMD_CTRL_CONFIG 配置
     CMD_PID_VEL_CTRL = 180  # 速度PID控制
     CMD_PID_POS_CTRL = 181  # 位置PID控制
     CMD_MIT_CTRL = 182  # MIT控制；配置正指数 6/8，线上为 -6/-8
-    CMD_MIT_CONFIG = 183  # MIT Kp/Kd配置
     CMD_DISABLE = 187  # 释放电机
     CMD_SET_ZERO_POS = 189  # 设置零点
     CMD_SET_LIMIT_POS = 190  # 以当前位置设置极限位置
@@ -234,48 +235,41 @@ class eCanMode:
 
 CanMode = eCanMode
 
-class eCoreState:
-    CORE_INIT = 0  # INIT
-    CORE_IDLE = 1  # IDLE
-    CORE_TUNING = 2  # TUNING
-    CORE_FAULT = 3  # FAULT
-    CORE_WARNING = 4  # WARNING
-    CORE_OPENLOOP = 5  # 开环模式
-    CORE_CURRENT_MODE = 6  # 电流模式
-    CORE_PID_SPEED = 7  # PID速度模式
-    CORE_PID_POSITION = 8  # PID位置模式
-    CORE_MIT_MODE = 9  # MIT模式
+class eMotorState:
+    MOTOR_INIT = 0  # INIT
+    MOTOR_IDLE = 1  # IDLE
+    MOTOR_TUNING = 2  # TUNING
+    MOTOR_FAULT = 3  # FAULT
+    MOTOR_OPENLOOP = 4  # 开环模式
+    MOTOR_CURRENT_MODE = 5  # 电流模式
+    MOTOR_PID_SPEED = 6  # PID速度模式
+    MOTOR_PID_POSITION = 7  # PID位置模式
+    MOTOR_MIT_MODE = 8  # MIT模式
 
-CoreState = eCoreState
+MotorState = eMotorState
 
 class eFault:
     FAULT_NONE = 0  # NONE
     FAULT_OBS_INIT = 1  # 观测器初始化失败
     FAULT_BUSCOM_INIT = 2  # 总线通信初始化失败
-    FAULT_RS_TUNE = 3  # 电阻整定失败
-    FAULT_RS_IMBALANCE = 4  # 相电阻不平衡
-    FAULT_LS_TUNE = 5  # 电感整定失败
-    FAULT_PSIF_TUNE = 6  # 磁链整定失败
-    FAULT_OBS_TUNE = 7  # 观测器校准失败
-    FAULT_POLE_PAIR_MISMATCH = 8  # 极对数不匹配
-    FAULT_MOTOR_LOCK = 9  # 电机堵转
-    FAULT_MECH_PARAM_FAIL = 10  # 机械参数校准失败
-    FAULT_OVERVOLTAGE = 11  # 过电压
-    FAULT_UNDERVOLTAGE = 12  # 低电压
-    FAULT_OVERCURRENT = 13  # 过电流
+    FAULT_RS_IMBALANCE = 3  # 相电阻不平衡
+    FAULT_RL_TUNE = 4  # 电阻电感整定失败
+    FAULT_PSIF_TUNE = 5  # 磁链整定失败
+    FAULT_OBS_TUNE = 6  # 观测器校准失败
+    FAULT_POLE_PAIR_MISMATCH = 7  # 极对数不匹配
+    FAULT_MOTOR_LOCK = 8  # 电机堵转
+    FAULT_MECH_PARAM_FAIL = 9  # 机械参数校准失败
+    FAULT_OVERVOLTAGE = 10  # 过电压
+    FAULT_UNDERVOLTAGE = 11  # 低电压
+    FAULT_OVERCURRENT = 12  # 过电流
+    FAULT_OVERTEMP = 13  # 过温
+    FAULT_OVERSPEED = 14  # 超速
+    FAULT_POSITION_LIMIT = 15  # 位置超限
+    FAULT_BUSCOM_RUN = 16  # 总线通讯异常
+    FAULT_OBS_RUN = 17  # 观测器运行异常
+    FAULT_INVALID_INPUT = 18  # 非法输入
 
 Fault = eFault
-
-class eWarning:
-    WARNING_NONE = 0  # NONE
-    WARNING_OVERTEMP = 1  # 过温
-    WARNING_OVERSPEED = 2  # 超速
-    WARNING_POSITION_LIMIT = 3  # 位置超限
-    WARNING_BUSCOM_RUN = 4  # 总线通讯异常
-    WARNING_OBS_RUN = 5  # 观测器运行异常
-    WARNING_INVALID_INPUT = 6  # 非法输入
-
-Warning = eWarning
 
 eCmdId = CmdId
 FbId = FeedBack
@@ -385,12 +379,11 @@ OBSDATA = {
     15: ProtocolField(15, 'DATA_THETA_MECH', 'theta_mech', '机械角度', 'rad', 'FLD_F32', 0.0, None),
     16: ProtocolField(16, 'DATA_POSITION', 'position', '位置', 'rad', 'FLD_F32', 0.0, None),
     17: ProtocolField(17, 'DATA_POSITION_REF', 'position_ref', '位置参考', 'rad', 'FLD_F32', 0.0, None),
-    18: ProtocolField(18, 'DATA_STATE', 'state', '状态', '', 'FLD_U8', 0, [('INIT', 0), ('IDLE', 1), ('TUNING', 2), ('FAULT', 3), ('WARNING', 4), ('开环模式', 5), ('电流模式', 6), ('PID速度模式', 7), ('PID位置模式', 8), ('MIT模式', 9)]),
-    19: ProtocolField(19, 'DATA_FAULT', 'fault', '故障', '', 'FLD_U8', 0, [('NONE', 0), ('观测器初始化失败', 1), ('总线通信初始化失败', 2), ('电阻整定失败', 3), ('相电阻不平衡', 4), ('电感整定失败', 5), ('磁链整定失败', 6), ('观测器校准失败', 7), ('极对数不匹配', 8), ('电机堵转', 9), ('机械参数校准失败', 10), ('过电压', 11), ('低电压', 12), ('过电流', 13)]),
-    20: ProtocolField(20, 'DATA_WARNING', 'warning', '警告', '', 'FLD_U8', 0, [('NONE', 0), ('过温', 1), ('超速', 2), ('位置超限', 3), ('总线通讯异常', 4), ('观测器运行异常', 5), ('非法输入', 6)]),
-    21: ProtocolField(21, 'DATA_VBUS', 'vbus', '母线电压', 'V', 'FLD_F32', 0.0, None),
-    22: ProtocolField(22, 'DATA_DRIVER_TEMP', 'driver_temp', '驱动温度', '°C', 'FLD_F32', 0.0, None),
-    23: ProtocolField(23, 'DATA_MOTOR_TEMP', 'motor_temp', '电机温度', '°C', 'FLD_F32', 0.0, None),
+    18: ProtocolField(18, 'DATA_MOTOR_STATE', 'motor_state', '电机状态', '', 'FLD_U8', 0, [('INIT', 0), ('IDLE', 1), ('TUNING', 2), ('FAULT', 3), ('开环模式', 4), ('电流模式', 5), ('PID速度模式', 6), ('PID位置模式', 7), ('MIT模式', 8)]),
+    19: ProtocolField(19, 'DATA_FAULT', 'fault', '故障', '', 'FLD_U8', 0, [('NONE', 0), ('观测器初始化失败', 1), ('总线通信初始化失败', 2), ('相电阻不平衡', 3), ('电阻电感整定失败', 4), ('磁链整定失败', 5), ('观测器校准失败', 6), ('极对数不匹配', 7), ('电机堵转', 8), ('机械参数校准失败', 9), ('过电压', 10), ('低电压', 11), ('过电流', 12), ('过温', 13), ('超速', 14), ('位置超限', 15), ('总线通讯异常', 16), ('观测器运行异常', 17), ('非法输入', 18)]),
+    20: ProtocolField(20, 'DATA_VBUS', 'vbus', '母线电压', 'V', 'FLD_F32', 0.0, None),
+    21: ProtocolField(21, 'DATA_DRIVER_TEMP', 'driver_temp', '驱动温度', '°C', 'FLD_F32', 0.0, None),
+    22: ProtocolField(22, 'DATA_MOTOR_TEMP', 'motor_temp', '电机温度', '°C', 'FLD_F32', 0.0, None),
 }
 OBS_BY_NAME = {field.id_name: field for field in OBSDATA.values()}
 

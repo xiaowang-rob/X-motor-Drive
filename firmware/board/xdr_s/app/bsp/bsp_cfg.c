@@ -57,11 +57,15 @@ static const tUartBuffer s_uart1_buf = {
     .tx_buf = s_uart1_tx,
 };
 
-static uint8_t s_usb_rxq[UART_RXQ_BYTES];
+#define USB_RX_SLOT_COUNT 4U
+#define USB_RX_DATA_SIZE 128U
+/* 槽内保存 [id:u8][data...]，因此需要额外 1 字节。 */
+#define USB_RX_PAYLOAD_SIZE (USB_RX_DATA_SIZE + 1U)
+static uint8_t s_usb_rxq[USB_RX_SLOT_COUNT * (USB_RX_PAYLOAD_SIZE + 2U)];
 static const tUsbBuffer s_usb_buf = {
     .rx_storage = s_usb_rxq,
-    .rx_slot_count = UART_RXQ_BYTES,
-    .rx_payload_size = UART_MAX_PKT_SIZE,
+    .rx_slot_count = USB_RX_SLOT_COUNT,
+    .rx_payload_size = USB_RX_DATA_SIZE,
 };
 
 tBusDriver g_bus_can;
@@ -76,7 +80,6 @@ tSample g_sample;
 
 // 板载设备初始化
 bool bsp_base_init(void) {
-
     // 存储：MCU 内部 Flash（介质几何与扇区操作见 bsp_mcu_flash.c）
 
     if (!storage_init(&g_param_storage, Get_ParamPartHandle()) ||
@@ -108,7 +111,6 @@ bool bsp_base_init(void) {
 
 // 外接编码器初始化
 bool bsp_enc_init(eObsList enc, eSpiEncList spi_enc) {
-
     tEncDevHandle *handle;
 
     switch (enc) {

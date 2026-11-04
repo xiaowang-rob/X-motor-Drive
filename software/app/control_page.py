@@ -1,23 +1,33 @@
 """同屏显示波形与手动控制，不连接设备。"""
-from PyQt5.QtCore import Qt, QRectF
-from PyQt5.QtGui import QPainter, QPainterPath, QColor, QPen
+
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
-    QFileDialog, QHBoxLayout, QLabel, QSizePolicy, QStackedWidget,
-    QVBoxLayout, QWidget,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
 from qfluentwidgets import (
-    BodyLabel, CheckBox, ComboBox, DoubleSpinBox, FluentIcon as FIF,
-    HorizontalSeparator, LineEdit, PushButton, Slider, VerticalSeparator,
-    isDarkTheme, qconfig, setCustomStyleSheet,
+    BodyLabel,
+    ComboBox,
+    DoubleSpinBox,
+    FluentIcon as FIF,
+    HorizontalSeparator,
+    LineEdit,
+    PushButton,
+    Slider,
+    ToolButton,
+    VerticalSeparator,
+    setCustomStyleSheet,
 )
 from qfluentwidgets.components.navigation import SegmentedWidget
 
-from protocol import Didx, OBSDATA, eCoreState
+from protocol import Didx, OBSDATA, eMotorState
 from app.ui_components import ContentPage, SectionCard, icon_action, preview_button
-from app.waveform_widget import WaveformWidget
-
-
-CHANNEL_COLORS = ("#58cfc2", "#f5ae50", "#e77fa3", "#9cce70", "#b59af7")
+from app.waveform_widget import CHANNEL_COLORS, WaveformWidget
 
 # 示波可选信号：直接改这个元组即可；下拉名称来自 protocol 的 OBSDATA。
 WAVE_CHANNELS = (
@@ -40,53 +50,20 @@ WAVE_CHANNELS = (
 # 通道行数只由 WAVE_CHANNEL_COUNT 决定；WAVE_CHANNELS 只决定每行下拉的可选项。
 WAVE_CHANNEL_COUNT = 5
 
-# 控制模式来自 obsdata 的 eCoreState；顺序即左侧下拉和右侧顶部导航的顺序。
-MODE_PAGE_MODES =  (
-    ("开环模式", eCoreState.CORE_OPENLOOP),
-    ("电流/力矩", eCoreState.CORE_CURRENT_MODE),
-    ("PID速度", eCoreState.CORE_PID_SPEED),
-    ("PID位置", eCoreState.CORE_PID_POSITION),
-    ("MIT", eCoreState.CORE_MIT_MODE),
+# 控制模式来自 obsdata 的 eMotorState；顺序即左侧下拉和右侧顶部导航的顺序。
+MODE_PAGE_MODES = (
+    ("开环模式", eMotorState.MOTOR_OPENLOOP),
+    ("电流/力矩", eMotorState.MOTOR_CURRENT_MODE),
+    ("PID速度", eMotorState.MOTOR_PID_SPEED),
+    ("PID位置", eMotorState.MOTOR_PID_POSITION),
+    ("MIT", eMotorState.MOTOR_MIT_MODE),
 )
 MODE_STACK_HEIGHT = 96
 
 
-class WaveCanvas(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.channel_colors = CHANNEL_COLORS
-        self.setMinimumSize(360, 240)
-        self.setAccessibleName("波形显示")
-        qconfig.themeChangedFinished.connect(self.update)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        dark = isDarkTheme()
-        painter.setRenderHint(QPainter.Antialiasing)
-        border = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
-        path = QPainterPath()
-        path.addRoundedRect(border, 8, 8)
-        painter.fillPath(path, QColor("#191d24" if dark else "#f5f7fa"))
-        painter.setClipPath(path)
-        plot = self.rect().adjusted(48, 20, -20, -36)
-        painter.setPen(QPen(QColor("#303844" if dark else "#e1e6ed"), 1))
-        for i in range(11):
-            x = plot.left() + plot.width() * i / 10
-            painter.drawLine(int(x), plot.top(), int(x), plot.bottom())
-        for i in range(7):
-            y = plot.top() + plot.height() * i / 6
-            painter.drawLine(plot.left(), int(y), plot.right(), int(y))
-        painter.setPen(QColor("#aeb6c2" if dark else "#59636f"))
-        painter.drawText(12, 18, "幅值")
-        painter.drawText(self.rect().adjusted(0, 0, -20, -8), Qt.AlignBottom | Qt.AlignRight, "时间 / s")
-        painter.setClipping(False)
-        painter.setPen(QPen(QColor("#353d49" if dark else "#dce2ea"), 1))
-        painter.drawRoundedRect(border, 8, 8)
-        painter.end()
-
-
 class TargetControl(QWidget):
     """按起点到终点映射滑条，支持终点小于起点及零跨度。"""
+
     def __init__(self, name, unit, endpoint, parent=None, *, label_width=100):
         super().__init__(parent)
         self.name = name
@@ -114,6 +91,12 @@ class TargetControl(QWidget):
         self.slider = Slider(Qt.Horizontal)
         self.slider.setRange(0, 10000)
         self.slider.setAccessibleName(name + "目标滑条")
+        # qfluentwidgets 的圆点是覆盖在轨道上的子控件，会吞掉按下与拖动事件：
+        # 数值变大后圆点右移，再想抓它往左拖就完全没反应（只增不减）。
+        # 让圆点对鼠标透明，事件直接落到滑条本身，拖动两个方向都生效。
+        handle = getattr(self.slider, "handle", None)
+        if handle is not None:
+            handle.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         row.addWidget(self.minimum)
         row.addWidget(self.slider, 1)
         row.addWidget(self.maximum)
@@ -125,6 +108,9 @@ class TargetControl(QWidget):
         self.slider.valueChanged.connect(self._from_slider)
         self.target.editingFinished.connect(self._from_target)
         self.maximum.editingFinished.connect(self._update_range)
+        # 程序化回写滑条时置位：阻止再次下发，但不能用 blockSignals
+        # ——qfluentwidgets 的指示标正是靠 valueChanged 跟随位置的。
+        self._syncing = False
         self._update_range()
 
     @staticmethod
@@ -170,11 +156,25 @@ class TargetControl(QWidget):
         self.slider.setEnabled(end != 0.0)
         if end == 0.0:
             self.target.setText("0.00")
-            self.slider.setValue(0)
+            self._syncing = True
+            try:
+                self.slider.setValue(0)
+            finally:
+                self._syncing = False
         else:
             self._from_target()
 
+    def sync_slider(self):
+        """把滑条位置对齐到当前目标值文本，并回填规范化的数值。
+
+        只在点击“发送”时调用：滑条自身拖动会实时下发，若在滑条信号里
+        再回写位置，低分辨率区间会因文本取两位小数把滑条拉回旧位置。
+        """
+        self._from_target()
+
     def _from_slider(self, position):
+        if self._syncing:
+            return
         end = self._number(self.maximum, 0.0)
         value = end * position / 10000
         self.target.blockSignals(True)
@@ -188,9 +188,18 @@ class TargetControl(QWidget):
             value = max(min(value, max(0.0, end)), min(0.0, end))
         self.target.setText(f"{value:.2f}")
         position = round(value / end * 10000) if end != 0.0 else 0
-        self.slider.blockSignals(True)
-        self.slider.setValue(position)
-        self.slider.blockSignals(False)
+        # 不能 blockSignals：指示标位置靠 valueChanged 跟随。
+        # 用标志位让本类跳过下发，库侧照常收到信号更新绘制。
+        self._syncing = True
+        try:
+            self.slider.setValue(position)
+        finally:
+            self._syncing = False
+
+    @property
+    def is_syncing(self):
+        """程序化回写滑条期间为 True，调用方据此跳过下发。"""
+        return self._syncing
 
     def value(self):
         return self._number(self.target, 0.0)
@@ -207,18 +216,30 @@ class ControlPage(ContentPage):
         self.control_content = content_widget
         row = QHBoxLayout()
         row.setSpacing(12)
-        self.channel_card = SectionCard("采样通道")
-        self.channel_card.setFixedWidth(192)
-        self.wave_ch, self.channel_badges = [], []
         wave_colors = tuple(
             CHANNEL_COLORS[index % len(CHANNEL_COLORS)]
             for index in range(WAVE_CHANNEL_COUNT)
         )
+        # 波形区在左并占据主要宽度，通道列在右单独一条。
+        plot = SectionCard("波形")
+        self.wave_canvas = WaveformWidget(colors=wave_colors)
+        plot.content.addWidget(self.wave_canvas, 1)
+        row.addWidget(plot, 1)
+
+        self.channel_card = SectionCard("采样通道")
+        self.channel_card.setFixedWidth(180)
+        self.wave_ch, self.wave_badges = [], []
+        self.wave_toggles, self.wave_values = [], []
         for index in range(1, WAVE_CHANNEL_COUNT + 1):
             color = wave_colors[index - 1]
             channel = QVBoxLayout()
             channel.setContentsMargins(0, 0, 0, 0)
             channel.setSpacing(4)
+
+            badge = QLabel()
+            badge.setFixedSize(4, 28)
+            badge.setAccessibleName(f"通道 {index} 颜色")
+            badge.setStyleSheet(f"background-color: {color}; border-radius: 2px;")
             combo = ComboBox()
             combo.setMinimumWidth(0)
             combo.setFixedHeight(32)
@@ -227,39 +248,64 @@ class ControlPage(ContentPage):
                 meta = OBSDATA[candidate]
                 combo.addItem(meta.name, userData=candidate)
             combo.setAccessibleName(f"通道 {index} 信号")
-            line = QLabel()
-            line.setFixedHeight(3)
-            line.setAccessibleName(f"通道 {index} 颜色")
-            line.setStyleSheet(f"background-color: {color}; border-radius: 1px;")
-            channel.addWidget(combo)
-            channel.addWidget(line)
+            select_row = QHBoxLayout()
+            select_row.setContentsMargins(0, 0, 0, 0)
+            select_row.setSpacing(6)
+            select_row.addWidget(badge)
+            select_row.addWidget(combo, 1)
+            channel.addLayout(select_row)
+
+            value = LineEdit()
+            value.setReadOnly(True)
+            value.setFixedHeight(32)
+            value.setText("--")
+            value.setAlignment(Qt.AlignCenter)
+            value.setAccessibleName(f"通道 {index} 当前值")
+            value.setToolTip(f"通道 {index} 当前值")
+            toggle = ToolButton(FIF.PLAY)
+            toggle.setFixedSize(32, 32)
+            toggle.setEnabled(False)
+            toggle.setAccessibleName(f"通道 {index} 采样")
+            toggle.setToolTip(f"通道 {index} 开始采样")
+            control_row = QHBoxLayout()
+            control_row.setContentsMargins(0, 0, 0, 0)
+            control_row.setSpacing(6)
+            control_row.addWidget(value, 1)
+            control_row.addWidget(toggle)
+            channel.addLayout(control_row)
+
             self.channel_card.content.addLayout(channel)
             self.wave_ch.append(combo)
-            self.channel_badges.append(line)
+            self.wave_badges.append(badge)
+            self.wave_toggles.append(toggle)
+            self.wave_values.append(value)
+            toggle.clicked.connect(
+                lambda _=False, row=index - 1: self._toggle_wave_row(row)
+            )
+        # 原“自动 X/Y 轴”开关已移除：自动缩放始终开启，
+        # 手动拖动或滚轮会自动让出控制权，双击波形恢复自动。
+        self.wave_canvas.set_auto_x_scale(True)
+        self.wave_canvas.set_auto_y_scale(True)
         self.channel_card.content.addWidget(HorizontalSeparator())
-        self.auto_x_check = CheckBox("自动 X 轴")
-        self.auto_x_check.setChecked(True)
-        self.channel_card.content.addWidget(self.auto_x_check)
-        self.auto_y_check = CheckBox("自动 Y 轴")
-        self.auto_y_check.setChecked(True)
-        self.channel_card.content.addWidget(self.auto_y_check)
-        self.wave_start_button = preview_button("开始采样")
-        self.channel_card.content.addWidget(self.wave_start_button)
         self.wave_clear_button = PushButton("清空")
         self.wave_clear_button.setFixedHeight(32)
         self.channel_card.content.addWidget(self.wave_clear_button)
         row.addWidget(self.channel_card)
-        plot = SectionCard("波形")
-        self.wave_canvas = WaveformWidget()
-        self.wave_canvas.channel_colors = wave_colors
-        plot.content.addWidget(self.wave_canvas, 1)
-        row.addWidget(plot, 1)
         content.addLayout(row, 1)
-        self.wave_start_button.clicked.connect(self._toggle_wave)
         self.wave_clear_button.clicked.connect(self._clear_wave)
-        self.auto_x_check.toggled.connect(self.wave_canvas.set_auto_x_scale)
-        self.auto_y_check.toggled.connect(self.wave_canvas.set_auto_y_scale)
-        self._wave_running = False
+        # 每行是否在采样；按钮图标与订阅都以此为准。
+        # 必须在连接信号之前就绪：构造期若触发 currentIndexChanged 也要能安全处理。
+        self._wave_rows = [False] * WAVE_CHANNEL_COUNT
+        self._latest_values = [None] * WAVE_CHANNEL_COUNT
+        self._sync_wave_buttons()
+        for row, combo in enumerate(self.wave_ch):
+            combo.currentIndexChanged.connect(
+                lambda _index, r=row: self._on_wave_channel_changed(r)
+            )
+        # 1kHz 数据流不直接刷界面：按 10Hz 把最新值同步到数值框。
+        self._value_timer = QTimer(self)
+        self._value_timer.timeout.connect(self._refresh_wave_values)
+        self._value_timer.start(100)
 
         self.control_card = SectionCard("手动控制")
         self.control_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -299,8 +345,7 @@ class ControlPage(ContentPage):
             self._build_pid_position_page,
             self._build_mit_page,
         )
-        for index, ((label, _), builder) in enumerate(
-                zip(MODE_PAGE_MODES, builders)):
+        for index, ((label, _), builder) in enumerate(zip(MODE_PAGE_MODES, builders)):
             route = f"control_mode_{index}"
             self.mode_routes.append(route)
             self.mode_nav.addItem(route, label)
@@ -315,26 +360,33 @@ class ControlPage(ContentPage):
         self.control_card.content.addLayout(control_body)
         content.addWidget(self.control_card)
 
-        # 保留旧 API 的三个目标控件：位置 / 速度 / 电流
+        # 对外暴露的三个目标控件：位置 / 速度 / 电流
         self.target_controls = [
             self.position_control,
             self.speed_control,
             self.current_control,
         ]
-        self.sliders = [control.slider for control in self.target_controls]
         self.targets = [control.target for control in self.target_controls]
 
         self.mode_nav.currentItemChanged.connect(self._on_mode_route_changed)
         self._apply_mode(0)
 
         self.bind_parameters()
-        for button, action in zip(self.action_buttons, ("disable", "set_zero", "set_limit")):
+        for button, action in zip(
+            self.action_buttons, ("disable", "set_zero", "set_limit")
+        ):
             self.bind_action(button, action)
 
     def _make_target(self, name, unit, endpoint, label_width=100):
         control = TargetControl(name, unit, endpoint, label_width=label_width)
         control.send_button.clicked.connect(
-            lambda _=False, c=control: self._send_target(c))
+            lambda _=False, c=control: self._send_from_button(c)
+        )
+        # 拖动滑条立即下发；_from_slider 先接上，目标值文本已同步。
+        # 程序化回写滑条期间 is_syncing 为真，跳过下发避免重复发送。
+        control.slider.valueChanged.connect(
+            lambda _position, c=control: None if c.is_syncing else self._send_target(c)
+        )
         return control
 
     def _mode_page(self, selector, *controls):
@@ -396,10 +448,10 @@ class ControlPage(ContentPage):
         self.openloop_kind.setAccessibleName("开环输入")
         self.openloop_duty = self._make_target("占空比", "%", 100)
         self.openloop_control = self._make_target("开环角度", "rad", 6.28)
-        self.openloop_kind.currentIndexChanged.connect(
-            self._on_openloop_kind_changed)
+        self.openloop_kind.currentIndexChanged.connect(self._on_openloop_kind_changed)
         return self._mode_page(
-            self.openloop_kind, self.openloop_duty, self.openloop_control)
+            self.openloop_kind, self.openloop_duty, self.openloop_control
+        )
 
     def _on_openloop_kind_changed(self, index):
         if index == 0:
@@ -416,9 +468,9 @@ class ControlPage(ContentPage):
         self.current_torque_control = self._make_target("电流", "A", 10)
         self.current_control = self.current_torque_control
         self.current_torque_kind.currentIndexChanged.connect(
-            self._on_current_torque_kind_changed)
-        return self._mode_page(
-            self.current_torque_kind, self.current_torque_control)
+            self._on_current_torque_kind_changed
+        )
+        return self._mode_page(self.current_torque_kind, self.current_torque_control)
 
     def _on_current_torque_kind_changed(self, index):
         if index == 0:
@@ -480,7 +532,8 @@ class ControlPage(ContentPage):
 
     def _choose_mit_csv(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "选择 MIT CSV 轨迹", "", "CSV 文件 (*.csv)")
+            self, "选择 MIT CSV 轨迹", "", "CSV 文件 (*.csv)"
+        )
         if path:
             self.mit_csv_path.setText(path)
 
@@ -511,44 +564,104 @@ class ControlPage(ContentPage):
             if state == core_state:
                 self._apply_mode(index)
                 return
-        if core_state == eCoreState.CORE_IDLE:
-            self.current_mode = eCoreState.CORE_IDLE
+        if core_state == eMotorState.MOTOR_IDLE:
+            self.current_mode = eMotorState.MOTOR_IDLE
             return
         raise ValueError(f"未知控制模式：{core_state}")
 
     def get_mode(self):
         return self.current_mode
 
-    def _toggle_wave(self):
-        self._wave_running = not self._wave_running
-        if self._wave_running:
+    def _selected_wave_channels(self):
+        """返回已选中且处于采样状态的行：(行号, 信号 ID)。"""
+        return [
+            (index, combo.currentData())
+            for index, combo in enumerate(self.wave_ch)
+            if self._wave_rows[index] and combo.currentData() is not None
+        ]
+
+    def _sync_wave_buttons(self):
+        """按钮图标与可用状态跟随选择框和采样状态。"""
+        for index, combo in enumerate(self.wave_ch):
+            toggle = self.wave_toggles[index]
+            has_channel = combo.currentData() is not None
+            toggle.setEnabled(has_channel)
+            running = self._wave_rows[index] and has_channel
+            toggle.setIcon(FIF.PAUSE if running else FIF.PLAY)
+            toggle.setToolTip(
+                f"通道 {index + 1} {'暂停采样' if running else '开始采样'}"
+            )
+
+    def _resubscribe(self):
+        """按当前各行状态重新订阅；全部停止时通知业务层退订。"""
+        channels = self._selected_wave_channels()
+        if channels:
             self.wave_canvas.start()
-            self.wave_start_button.setText("停止采样")
-            channels = [
-                (index, combo.currentData())
-                for index, combo in enumerate(self.wave_ch)
-                if combo.currentData() is not None
-            ]
             self.action_requested.emit("wave_start", {"channels": channels})
         else:
             self.wave_canvas.pause()
-            self.wave_start_button.setText("开始采样")
             self.action_requested.emit("wave_stop", None)
+
+    def _toggle_wave_row(self, row):
+        """单行启停：选择框选好即可直接开采样，图标同步切换。"""
+        if self.wave_ch[row].currentData() is None:
+            return
+        self._wave_rows[row] = not self._wave_rows[row]
+        if not self._wave_rows[row]:
+            # 停止该行时清掉它的曲线与读数，避免留下冻结的旧波形。
+            self.wave_canvas.clear_row(row)
+            self.wave_values[row].setText("--")
+            self._latest_values[row] = None
+        self._sync_wave_buttons()
+        self._resubscribe()
+
+    def _on_wave_channel_changed(self, row):
+        """选择框改动：新选中的行直接开始采样，并立即重新订阅。"""
+        combo = self.wave_ch[row]
+        # 换了信号就丢掉旧曲线，避免不同量纲的数据接在一起。
+        self.wave_canvas.clear_row(row)
+        self._latest_values[row] = None
+        if combo.currentData() is None:
+            self._wave_rows[row] = False
+            self.wave_values[row].setText("--")
+        else:
+            self._wave_rows[row] = True
+        self._sync_wave_buttons()
+        self._resubscribe()
+
+    def _refresh_wave_values(self):
+        """把 1kHz 数据流的最新值按 10Hz 同步到数值框。"""
+        for index, value in enumerate(self._latest_values):
+            if value is None:
+                continue
+            self.wave_values[index].setText(f"{value:.3f}")
 
     def _clear_wave(self):
         self.wave_canvas.clear_waveforms()
+        for index in range(WAVE_CHANNEL_COUNT):
+            self.wave_values[index].setText("--")
+            self._latest_values[index] = None
 
-    def add_wave_data(self, channel, value):
-        self.wave_canvas.add_waveform_data(int(channel), float(value))
+    def add_wave_data(self, rows, value):
+        """rows 为单个行号或行号集合：同一信号可以同时显示在多行。"""
+        self.wave_canvas.add_waveform_data(rows, value)
+        # 界面读数走 10Hz 定时器刷新，这里只记录最新值，避免 1kHz 刷控件。
+        if isinstance(rows, int):
+            rows = (rows,)
+        for row in rows:
+            if 0 <= row < WAVE_CHANNEL_COUNT:
+                self._latest_values[row] = float(value)
+
+    def _send_from_button(self, control):
+        """点击发送：先把滑条对齐到目标值文本，再下发同一个值。"""
+        control.sync_slider()
+        self._send_target(control)
 
     def _send_target(self, control):
         channel = control.target.accessibleName().replace("目标值", "")
         self.action_requested.emit(
-            "send_target", {"channel": channel, "value": control.value()})
-
-    def get_targets(self):
-        return {control.objectName() or control.target.accessibleName(): control.target.text()
-                for control in self.target_controls}
+            "send_target", {"channel": channel, "value": control.value()}
+        )
 
     def set_targets(self, values):
         for control in self.target_controls:
@@ -556,9 +669,3 @@ class ControlPage(ContentPage):
             if key in values:
                 control.target.setText(str(values[key]))
                 control.target.editingFinished.emit()
-
-    def set_wave_channels(self, channels):
-        for combo, value in zip(self.wave_ch, channels):
-            index = combo.findText(value) if isinstance(value, str) else combo.findData(value)
-            if index >= 0:
-                combo.setCurrentIndex(index)

@@ -80,6 +80,7 @@ typedef enum
     PARAM_CAN_RATE = 0x48, /* CAN速率 */
     PARAM_CAN_ID = 0x49, /* CAN ID */
     PARAM_CAN_MODE = 0x4A, /* CAN模式 */
+    PARAM_ALL = 0xFF, /* 全部参数；写入时仅发送此 ID 表示应用全部已写入参数，重置时表示全部重置，不携带 value */
 } eParameter;
 
 typedef enum

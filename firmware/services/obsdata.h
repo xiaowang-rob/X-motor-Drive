@@ -14,6 +14,7 @@ typedef struct {
     uint8_t type; // eFieldType
 } tDataField;
 
+void dm_data_init(void);
 // 读一个通道（未绑定时返回 0.0f）
 void dm_data_get(eObsData data, uint8_t *val, uint8_t *len);
 

@@ -30,13 +30,14 @@ typedef struct {
     float rate;       // 一阶变化率
     float rate_d2;    // 二阶变化率(仅 S 型需要)
     bool busy;
+    bool reset;
 
 } tTraj;
 
 //  核心 API
 bool traj_init(tTraj *traj, tParameter *param);
-void traj_reset(tTraj *traj, float current_value);
-void traj_set_target(tTraj *traj, float target);
+void traj_reset(tTraj *traj);
+void traj_set_target(tTraj *traj, float target, float cur_val);
 void traj_Update(tTraj *traj, float dt);
 
 #endif //  __TRAJECTORY_H

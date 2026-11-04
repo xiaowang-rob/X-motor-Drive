@@ -23,56 +23,48 @@ typedef enum
     DATA_THETA_MECH = 0x0F, /* 机械角度 */
     DATA_POSITION = 0x10, /* 位置 */
     DATA_POSITION_REF = 0x11, /* 位置参考 */
-    DATA_STATE = 0x12, /* 状态 */
+    DATA_MOTOR_STATE = 0x12, /* 电机状态 */
     DATA_FAULT = 0x13, /* 故障 */
-    DATA_WARNING = 0x14, /* 警告 */
-    DATA_VBUS = 0x15, /* 母线电压 */
-    DATA_DRIVER_TEMP = 0x16, /* 驱动温度 */
-    DATA_MOTOR_TEMP = 0x17, /* 电机温度 */
+    DATA_VBUS = 0x14, /* 母线电压 */
+    DATA_DRIVER_TEMP = 0x15, /* 驱动温度 */
+    DATA_MOTOR_TEMP = 0x16, /* 电机温度 */
 } eObsData;
 
 typedef enum
 {
-    CORE_INIT = 0, /* INIT */
-    CORE_IDLE = 1, /* IDLE */
-    CORE_TUNING = 2, /* TUNING */
-    CORE_FAULT = 3, /* FAULT */
-    CORE_WARNING = 4, /* WARNING */
-    CORE_OPENLOOP = 5, /* 开环模式 */
-    CORE_CURRENT_MODE = 6, /* 电流模式 */
-    CORE_PID_SPEED = 7, /* PID速度模式 */
-    CORE_PID_POSITION = 8, /* PID位置模式 */
-    CORE_MIT_MODE = 9, /* MIT模式 */
-} eCoreState;
+    MOTOR_INIT = 0, /* INIT */
+    MOTOR_IDLE = 1, /* IDLE */
+    MOTOR_TUNING = 2, /* TUNING */
+    MOTOR_FAULT = 3, /* FAULT */
+    MOTOR_OPENLOOP = 4, /* 开环模式 */
+    MOTOR_CURRENT_MODE = 5, /* 电流模式 */
+    MOTOR_PID_SPEED = 6, /* PID速度模式 */
+    MOTOR_PID_POSITION = 7, /* PID位置模式 */
+    MOTOR_MIT_MODE = 8, /* MIT模式 */
+} eMotorState;
 
 typedef enum
 {
     FAULT_NONE = 0, /* NONE */
     FAULT_OBS_INIT = 1, /* 观测器初始化失败 */
     FAULT_BUSCOM_INIT = 2, /* 总线通信初始化失败 */
-    FAULT_RS_TUNE = 3, /* 电阻整定失败 */
-    FAULT_RS_IMBALANCE = 4, /* 相电阻不平衡 */
-    FAULT_LS_TUNE = 5, /* 电感整定失败 */
-    FAULT_PSIF_TUNE = 6, /* 磁链整定失败 */
-    FAULT_OBS_TUNE = 7, /* 观测器校准失败 */
-    FAULT_POLE_PAIR_MISMATCH = 8, /* 极对数不匹配 */
-    FAULT_MOTOR_LOCK = 9, /* 电机堵转 */
-    FAULT_MECH_PARAM_FAIL = 10, /* 机械参数校准失败 */
-    FAULT_OVERVOLTAGE = 11, /* 过电压 */
-    FAULT_UNDERVOLTAGE = 12, /* 低电压 */
-    FAULT_OVERCURRENT = 13, /* 过电流 */
+    FAULT_RS_IMBALANCE = 3, /* 相电阻不平衡 */
+    FAULT_RL_TUNE = 4, /* 电阻电感整定失败 */
+    FAULT_PSIF_TUNE = 5, /* 磁链整定失败 */
+    FAULT_OBS_TUNE = 6, /* 观测器校准失败 */
+    FAULT_POLE_PAIR_MISMATCH = 7, /* 极对数不匹配 */
+    FAULT_MOTOR_LOCK = 8, /* 电机堵转 */
+    FAULT_MECH_PARAM_FAIL = 9, /* 机械参数校准失败 */
+    FAULT_OVERVOLTAGE = 10, /* 过电压 */
+    FAULT_UNDERVOLTAGE = 11, /* 低电压 */
+    FAULT_OVERCURRENT = 12, /* 过电流 */
+    FAULT_OVERTEMP = 13, /* 过温 */
+    FAULT_OVERSPEED = 14, /* 超速 */
+    FAULT_POSITION_LIMIT = 15, /* 位置超限 */
+    FAULT_BUSCOM_RUN = 16, /* 总线通讯异常 */
+    FAULT_OBS_RUN = 17, /* 观测器运行异常 */
+    FAULT_INVALID_INPUT = 18, /* 非法输入 */
 } eFault;
-
-typedef enum
-{
-    WARNING_NONE = 0, /* NONE */
-    WARNING_OVERTEMP = 1, /* 过温 */
-    WARNING_OVERSPEED = 2, /* 超速 */
-    WARNING_POSITION_LIMIT = 3, /* 位置超限 */
-    WARNING_BUSCOM_RUN = 4, /* 总线通讯异常 */
-    WARNING_OBS_RUN = 5, /* 观测器运行异常 */
-    WARNING_INVALID_INPUT = 6, /* 非法输入 */
-} eWarning;
 
 typedef struct
 {
@@ -93,15 +85,14 @@ typedef struct
     float *theta_mech;
     float *position;
     float *position_ref;
-    uint8_t *state;
+    uint8_t *motor_state;
     uint8_t *fault;
-    uint8_t *warning;
     float *vbus;
     float *driver_temp;
     float *motor_temp;
 } tObsData;
 
-#define DATA_NUM 0x18
+#define DATA_NUM 0x17
 
 #define DATA_FIELDS(X) \
     X(DATA_CURRENT_U, current_u, FLD_F32) \
@@ -121,9 +112,8 @@ typedef struct
     X(DATA_THETA_MECH, theta_mech, FLD_F32) \
     X(DATA_POSITION, position, FLD_F32) \
     X(DATA_POSITION_REF, position_ref, FLD_F32) \
-    X(DATA_STATE, state, FLD_U8) \
+    X(DATA_MOTOR_STATE, motor_state, FLD_U8) \
     X(DATA_FAULT, fault, FLD_U8) \
-    X(DATA_WARNING, warning, FLD_U8) \
     X(DATA_VBUS, vbus, FLD_F32) \
     X(DATA_DRIVER_TEMP, driver_temp, FLD_F32) \
     X(DATA_MOTOR_TEMP, motor_temp, FLD_F32)

@@ -4,6 +4,9 @@
 #define TRAJ_EPSILON 1.0e-6f
 #define TRAJ_TOL_DEFAULT 0.001f
 
+//  重置状态
+void traj_reset(tTraj *traj) { traj->reset = false; }
+
 //  初始化
 bool traj_init(tTraj *traj, tParameter *param) {
 
@@ -14,22 +17,21 @@ bool traj_init(tTraj *traj, tParameter *param) {
         .tolerance = param->traj_tolerance,
         .mode = param->traj_mode,
     };
+    memset(traj, 0, sizeof(traj));
     traj->cfg = cfg;
-    traj_reset(traj, 0.0f);
     return true;
 }
 
-//  重置状态
-void traj_reset(tTraj *traj, float current_value) {
-    traj->target = current_value;
-    traj->current = current_value;
-    traj->rate = 0.0f;
-    traj->rate_d2 = 0.0f;
-    traj->busy = false;
-}
-
 //  设置目标
-void traj_set_target(tTraj *traj, float target) {
+void traj_set_target(tTraj *traj, float target, float cur_val) {
+    if (!traj->reset) {
+        traj->target = cur_val;
+        traj->current = cur_val;
+        traj->rate = 0.0f;
+        traj->rate_d2 = 0.0f;
+        traj->busy = false;
+        traj->reset = true;
+    }
     traj->target = target;
     float err = XFABSF(target - traj->current);
     float tol =

@@ -1,10 +1,19 @@
 """常驻全局状态栏；连接操作与设备状态分行呈现。"""
+
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QSizePolicy
 from PyQt5.QtCore import Qt, pyqtSignal
 from qfluentwidgets import (
-    ComboBox, CaptionLabel, StrongBodyLabel, ToolButton, LineEdit,
-    HorizontalSeparator, VerticalSeparator, FluentIcon as FIF,
-    Theme, setTheme, isDarkTheme,
+    ComboBox,
+    CaptionLabel,
+    StrongBodyLabel,
+    ToolButton,
+    LineEdit,
+    HorizontalSeparator,
+    VerticalSeparator,
+    FluentIcon as FIF,
+    Theme,
+    setTheme,
+    isDarkTheme,
 )
 from app.ui_components import preview_button, SurfaceCard, style_console_line
 
@@ -48,7 +57,6 @@ class StatusBar(QWidget):
         self.host_output.setToolTip("上位机执行输出")
         controls.addWidget(self.host_output, 1)
 
-
         separator = VerticalSeparator()
         separator.setFixedHeight(20)
         controls.addSpacing(4)
@@ -69,7 +77,7 @@ class StatusBar(QWidget):
             ("voltage", "母线电压", "—"),
             ("temperature", "设备温度", "—"),
             ("motor_temperature", "电机温度", "—"),
-            ("state", "运行状态", "—"),
+            ("state", "电机状态", "—"),
             ("error", "错误", "—"),
         ]
         for index, (key, title, value) in enumerate(items):
@@ -90,8 +98,12 @@ class StatusBar(QWidget):
         self.reset_button = preview_button("核心复位")
         status.addWidget(self.system_reset_button)
         status.addWidget(self.reset_button)
-        self.system_reset_button.clicked.connect(lambda: self.action_requested.emit("system_reset"))
-        self.reset_button.clicked.connect(lambda: self.action_requested.emit("status_reset"))
+        self.system_reset_button.clicked.connect(
+            lambda: self.action_requested.emit("system_reset")
+        )
+        self.reset_button.clicked.connect(
+            lambda: self.action_requested.emit("core_reset")
+        )
         content.addLayout(status)
         main.addWidget(self.card)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)

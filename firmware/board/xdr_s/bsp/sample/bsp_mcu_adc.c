@@ -54,7 +54,7 @@ static bool vt_open(volatile uint16_t *adc_buf) {
     if (!adc_enable(VT_ADC))
         return false;
     LL_DMA_DisableChannel(VT_ADC_DMA, VT_ADC_DMA_CH);
-    LL_DMA_SetMode(VT_ADC_DMA, VT_ADC_DMA_CH, LL_DMA_MODE_CIRCULAR);
+    LL_DMA_SetMode(VT_ADC_DMA, VT_ADC_DMA_CH, LL_DMA_MODE_NORMAL);
     LL_DMA_SetPeriphAddress(
         VT_ADC_DMA,
         VT_ADC_DMA_CH,
@@ -122,8 +122,10 @@ static bool sample_vt(void *handle, float *vbus, uint8_t *temp) {
     tMcuAdcDev *dev = (tMcuAdcDev *)handle;
     if (vbus)
         *vbus = dev->vt_adc_buf[VBUS_CH] * vbus_scale;
-    if (temp)
-        *temp = TEMP_TABLE[dev->vt_adc_buf[TEMP_CH] & 0xff];
+    if (temp) {
+        uint8_t index = (dev->vt_adc_buf[TEMP_CH] & 0xff) * (24.0f / (*vbus));
+        *temp = TEMP_TABLE[index];
+    }
     return true;
 }
 

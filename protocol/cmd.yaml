@@ -1,0 +1,403 @@
+schema_version: 1
+endian: little
+max_payload: 128
+notes:
+  - 字段 size/offset 显式声明并由脚本校验；动态字段 size 为 null，共享字节位字段使用 bits。
+  - scale 为 2 的整数指数：raw = round(value * 2^scale)，解码 value = raw / 2^scale；round 为半远离零。
+  - request_variants 按 request_selector 选择完整 payload 布局；每个分支均包含首字节控制模式。
+  - 参数特殊 ID 定义在 parameter.yaml；PARAM_ALL 写入请求不携带 value。
+  - scale_exp 字段 API 使用正配置指数，线上存其负数；scale_exp_ref 的物理值为 raw * 2^(-配置指数)。
+  - overflow 默认为 error；显式 saturate 时才执行饱和裁剪。
+  - "request: [] 表示空请求，response: none 表示无回复，feedback 引用 enums.eFeedBack。"
+  - CMD_DATA_STREAM 是设备主动上报；values 的类型和顺序来自订阅上下文。
+enums:
+  - enum_name: eUartFrame
+    comment: USBcdc/UART 协议格式
+    items:
+      - { id_name: UART_PACKET_HEAD, id: "0x81", comment: 包头 }
+      - { id_name: UART_PACKET_TAIL, id: "0x8E", comment: 包尾 }
+  - enum_name: eFeedBack
+    comment: 通用执行结果反馈
+    items:
+      - { id_name: FB_EXECUTE, id: "0x91", comment: 执行成功 }
+      - { id_name: FB_FAILURE, id: "0x9E", comment: 执行失败 }
+commands:
+  - id_name: CMD_CONNECT
+    id: "0xF0"
+    comment: 连接状态
+    request:
+      - name: state
+        type: FLD_U8
+        enum: { disconnect: 0, connect: 1 }
+        size: 1
+        offset: 0
+    response: feedback
+  - id_name: CMD_HEARTBEAT
+    id: "0xFB"
+    comment: 心跳请求；只回状态包，不与示波数据流耦合
+    request: []
+    response:
+      - { name: state, type: FLD_U8, size: 1, offset: 0 }
+      - { name: fault, type: FLD_U8, size: 1, offset: 1 }
+      - { name: vbus, type: FLD_U16, scale: 8, unit: V, size: 2, offset: 2 }
+      - { name: driver_temp, type: FLD_U8, unit: °C, size: 1, offset: 4 }
+      - { name: motor_temp, type: FLD_U8, unit: °C, size: 1, offset: 5 }
+  - id_name: CMD_CORE_NRST
+    id: "0xFD"
+    comment: 核心复位
+    request: []
+    response: feedback
+  - id_name: CMD_SYSTEM_RESET
+    id: "0xFC"
+    comment: 系统复位
+    request: []
+    response: none
+  - id_name: CMD_RL_TUNNING
+    id: "0xE1"
+    comment: RL校准
+    request: []
+    response: feedback
+  - id_name: CMD_PSIF_TUNNING
+    id: "0xE2"
+    comment: Psif校准
+    request: []
+    response: feedback
+  - id_name: CMD_MECH_TUNNING
+    id: "0xE3"
+    comment: 机械参数校准
+    request: []
+    response: feedback
+  - id_name: CMD_OBS_TUNNING
+    id: "0xE4"
+    comment: 观测器校准
+    request: []
+    response: feedback
+  - id_name: CMD_PID_TUNNING
+    id: "0xE5"
+    comment: PID参数校准
+    request: []
+    response: feedback
+  - id_name: CMD_MIT_TUNNING
+    id: "0xE6"
+    comment: MIT参数校准
+    request: []
+    response: feedback
+  - id_name: CMD_PARAM_RELOAD
+    id: "0xC4"
+    comment: 参数重置；特殊 ID 见 parameter.yaml
+    request:
+      - { name: id, type: FLD_U8, value_source: PARAMETERS, size: 1, offset: 0 }
+    response: feedback
+  - id_name: CMD_PARAM_WRITE
+    id: "0xC5"
+    comment: 参数写入；特殊 ID 见 parameter.yaml，特殊 ID 不携带 value
+    request:
+      - { name: id, type: FLD_U8, value_source: PARAMETERS, size: 1, offset: 0 }
+      - {
+          name: value,
+          type: DYNAMIC,
+          value_source: PARAMETERS,
+          id_ref: id,
+          size: null,
+          offset: 1,
+        }
+    response: feedback
+  - id_name: CMD_PARAM_READ
+    id: "0xC6"
+    comment: 参数读取
+    request:
+      - { name: id, type: FLD_U8, value_source: PARAMETERS, size: 1, offset: 0 }
+    response:
+      - { name: id, type: FLD_U8, value_source: PARAMETERS, size: 1, offset: 0 }
+      - {
+          name: value,
+          type: DYNAMIC,
+          value_source: PARAMETERS,
+          id_ref: id,
+          size: null,
+          offset: 1,
+        }
+  - id_name: CMD_PARAM_SAVE
+    id: "0xC7"
+    comment: 参数保存
+    request: []
+    response: feedback
+  - id_name: CMD_DATA_ASK
+    id: "0xC8"
+    comment: 观测数据查询；回复解码需要请求的 id 上下文
+    request:
+      - { name: id, type: FLD_U8, value_source: OBSDATA, size: 1, offset: 0 }
+    response:
+      - {
+          name: value,
+          type: DYNAMIC,
+          value_source: OBSDATA,
+          context_ref: id,
+          size: null,
+          offset: 0,
+        }
+  - id_name: CMD_DATA_STREAM_SET
+    id: "0xC9"
+    comment: 示波数据流订阅，最多 5 路
+    request:
+      - { name: count, type: FLD_U8, size: 1, offset: 0 }
+      - name: ids
+        type: FLD_U8
+        repeat: count
+        max_count: 5
+        value_source: OBSDATA
+        size: null
+        offset: 1
+    response: feedback
+  - id_name: CMD_CTRL_CONFIG
+    id: "0xB0"
+    comment: 控制模式配置；首字节取自 obsdata 的 eMotorState，普通分支共 2 字节，MIT 分支共 8 字节
+    request:
+      - name: mode
+        type: FLD_U8
+        enum_from:
+          - MOTOR_OPENLOOP
+          - MOTOR_CURRENT_MODE
+          - MOTOR_PID_SPEED
+          - MOTOR_PID_POSITION
+          - MOTOR_MIT_MODE
+        size: 1
+        offset: 0
+    request_selector: mode
+    request_variants:
+      openloop:
+        - name: mode
+          type: FLD_U8
+          enum_from:
+            - MOTOR_OPENLOOP
+          size: 1
+          offset: 0
+        - name: control
+          type: FLD_U8
+          enum: { angle: 0, velocity: 1 }
+          size: 1
+          offset: 1
+      current:
+        - name: mode
+          type: FLD_U8
+          enum_from:
+            - MOTOR_CURRENT_MODE
+          size: 1
+          offset: 0
+        - name: control
+          type: FLD_U8
+          enum: { current: 0, torque: 1 }
+          size: 1
+          offset: 1
+      pid_speed:
+        - name: mode
+          type: FLD_U8
+          enum_from:
+            - MOTOR_PID_SPEED
+          size: 1
+          offset: 0
+        - name: control
+          type: FLD_U8
+          enum: { normal: 0, field_weakening: 1 }
+          size: 1
+          offset: 1
+      pid_position:
+        - name: mode
+          type: FLD_U8
+          enum_from:
+            - MOTOR_PID_POSITION
+          size: 1
+          offset: 0
+        - name: control
+          type: FLD_U8
+          enum: { normal: 0, pvt: 1 }
+          comment: PVT 控制预留
+          size: 1
+          offset: 1
+      mit:
+        - name: mode
+          type: FLD_U8
+          enum_from:
+            - MOTOR_MIT_MODE
+          size: 1
+          offset: 0
+        - name: scale
+          type: FLD_U8
+          comment: kp、kd 共用的非负缩放指数；raw = round(value * 2^scale)
+          default: 16
+          size: 1
+          offset: 1
+        - {
+            name: kp,
+            type: FLD_U24,
+            scale_ref: scale,
+            unit: N·m/rad,
+            size: 3,
+            offset: 2,
+          }
+        - {
+            name: kd,
+            type: FLD_U24,
+            scale_ref: scale,
+            unit: N·m·s/rad,
+            size: 3,
+            offset: 5,
+          }
+    response: none
+  - id_name: CMD_OPENLOOP_CTRL
+    id: "0xB1"
+    comment: 开环控制；角度/速度模式由 CMD_CTRL_CONFIG 配置
+    request:
+      - name: duty
+        type: FLD_U16
+        scale: 8
+        overflow: saturate
+        unit: "%"
+        size: 2
+        offset: 0
+      - { name: value, type: FLD_F32, unit: rad | rad/s, size: 4, offset: 2 }
+    response: none
+  - id_name: CMD_CUR_TAU_CTRL
+    id: "0xB3"
+    comment: 电流/力矩控制；电流/力矩模式由 CMD_CTRL_CONFIG 配置
+    request:
+      - { name: value, type: FLD_F32, unit: A | N·m, size: 4, offset: 0 }
+    response: none
+  - id_name: CMD_PID_VEL_CTRL
+    id: "0xB4"
+    comment: 速度PID控制
+    request:
+      - { name: velocity, type: FLD_F32, unit: rad/s, size: 4, offset: 0 }
+    response: none
+  - id_name: CMD_PID_POS_CTRL
+    id: "0xB5"
+    comment: 位置PID控制
+    request:
+      - { name: position, type: FLD_F32, unit: rad, size: 4, offset: 0 }
+    response: none
+  - id_name: CMD_MIT_CTRL
+    id: "0xB6"
+    comment: MIT控制；配置正指数 6/8，线上为 -6/-8
+    request:
+      - name: position
+        type: FLD_I24
+        scale: 18
+        overflow: saturate
+        unit: rad
+        size: 3
+        offset: 0
+      - name: velocity_scale
+        type: FLD_I4
+        bits:
+          - 0
+          - 3
+        scale_exp: true
+        default: 6
+        size: 1
+        offset: 3
+      - name: torque_scale
+        type: FLD_I4
+        bits:
+          - 4
+          - 7
+        scale_exp: true
+        default: 8
+        size: 1
+        offset: 3
+      - name: velocity
+        type: FLD_I16
+        scale_exp_ref: velocity_scale
+        overflow: saturate
+        unit: rad/s
+        size: 2
+        offset: 4
+      - name: torque
+        type: FLD_I16
+        scale_exp_ref: torque_scale
+        overflow: saturate
+        unit: N·m
+        size: 2
+        offset: 6
+    response: none
+  - id_name: CMD_DISABLE
+    id: "0xBB"
+    comment: 释放电机
+    request: []
+    response: none
+  - id_name: CMD_SET_ZERO_POS
+    id: "0xBD"
+    comment: 设置零点
+    request: []
+    response: none
+  - id_name: CMD_SET_LIMIT_POS
+    id: "0xBE"
+    comment: 以当前位置设置极限位置
+    request: []
+    response: none
+  - id_name: CMD_IAP_ENTER
+    id: "0xA1"
+    comment: 保存目标版本和大小后进入IAP模式；保存失败不得复位
+    request:
+      - { name: version, type: FLD_U32, size: 4, offset: 0 }
+      - { name: size, type: FLD_U32, size: 4, offset: 4 }
+    response: feedback
+  - id_name: CMD_IAP_ERASE_FLASH
+    id: "0xA2"
+    comment: 擦除Flash
+    request:
+      - { name: size, type: FLD_U32, size: 4, offset: 0 }
+    response: feedback
+  - id_name: CMD_IAP_WRITE_FLASH
+    id: "0xA3"
+    comment: 写入Flash
+    request:
+      - { name: offset, type: FLD_U32, size: 4, offset: 0 }
+      - { name: data, type: BYTES, max_size: 124, size: null, offset: 4 }
+    response:
+      - { name: offset, type: FLD_U32, size: 4, offset: 0 }
+      - { name: status, type: FLD_U8, enum: eFeedBack, size: 1, offset: 4 }
+  - id_name: CMD_IAP_VERIFY_FLASH
+    id: "0xA4"
+    comment: 校验Flash
+    request:
+      - { name: crc32, type: FLD_U32, size: 4, offset: 0 }
+      - { name: size, type: FLD_U32, size: 4, offset: 4 }
+    response: feedback
+  - id_name: CMD_IAP_EXIT
+    id: "0xA5"
+    comment: 退出IAP模式
+    request: []
+    response: none
+  - id_name: CMD_ASK_BL_VERSION
+    id: "0xA6"
+    comment: 查询bootloader版本
+    request: []
+    response:
+      - { name: text, type: STRING, encoding: utf-8, size: null, offset: 0 }
+  - id_name: CMD_ASK_APP_VERSION
+    id: "0xA7"
+    comment: 查询app版本
+    request: []
+    response:
+      - { name: text, type: STRING, encoding: utf-8, size: null, offset: 0 }
+  - id_name: CMD_ASK_DEVICE_MESSAGE
+    id: "0xA8"
+    comment: 查询设备信息
+    request: []
+    response:
+      - { name: text, type: STRING, encoding: utf-8, size: null, offset: 0 }
+  - id_name: CMD_DATA_STREAM
+    id: "0xCA"
+    comment: 示波数据流主动上报；由订阅决定内容
+    kind: event
+    request: []
+    response:
+      - { name: count, type: FLD_U8, size: 1, offset: 0 }
+      - name: values
+        type: DYNAMIC
+        value_source: OBSDATA
+        count_ref: count
+        context_ref: channel_ids
+        max_count: 5
+        size: null
+        offset: 1

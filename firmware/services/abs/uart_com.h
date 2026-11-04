@@ -77,7 +77,7 @@ bool uart_init(tUartDriver *uart, const tUartDevHandle *handle,
                const tUartBuffer *buf);
 
 // 启动接收并注册回调（运行期参数：帧头 / 帧尾）
-bool uart_start(tUartDriver *uart, uint8_t head, uint8_t tail);
+bool uart_start(tUartDriver *uart);
 
 // 发送一帧（自动补帧头/长度/CRC/帧尾）
 bool uart_send(tUartDriver *uart, const tUart_Frame *frame);

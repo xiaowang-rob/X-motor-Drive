@@ -1,5 +1,5 @@
 #include "uart_com.h"
-
+#include "cmd_list.h"
 #include <string.h>
 
 #include "crc.h"
@@ -20,26 +20,30 @@ static void uart_on_rx_data(void *ctx, const uint8_t *data, uint16_t len) {
     if (!uart || !data || len == 0U)
         return;
 
-    if (QUEUE_STATUS_OK != queue_static_enqueue_bulk(&uart->rx_queue, data, len)) {
+    if (QUEUE_STATUS_OK !=
+        queue_static_enqueue_bulk(&uart->rx_queue, data, len)) {
         uart->rstate = DEV_BUSY; // 队列满：丢弃本次收到的字节
         return;
     }
     uart->rstate = DEV_RUNNING;
 }
 
-bool uart_init(tUartDriver *uart, const tUartDevHandle *handle, const tUartBuffer *buf) {
+bool uart_init(tUartDriver *uart, const tUartDevHandle *handle,
+               const tUartBuffer *buf) {
     if (!uart || !handle || !handle->ops || !handle->dev)
         return false;
     uart->handle = handle;
 
     if (!uart || !buf || !uart->handle || !uart->handle->ops)
         return false;
-    if (!buf->rx_queue_buf || buf->rx_queue_size == 0U || !buf->frame_buf || !buf->tx_buf)
+    if (!buf->rx_queue_buf || buf->rx_queue_size == 0U || !buf->frame_buf ||
+        !buf->tx_buf)
         return false;
 
     // 只初始化业务字段；ops / handle 是装配结果，不在本层改动
-    uart->pkt_head = 0U;
-    uart->pkt_tail = 0U;
+
+    uart->pkt_head = UART_PACKET_HEAD;
+    uart->pkt_tail = UART_PACKET_TAIL;
     uart->in_frame = false;
     uart->rx_index = 0U;
     uart->frame_buf = buf->frame_buf;
@@ -47,18 +51,18 @@ bool uart_init(tUartDriver *uart, const tUartDevHandle *handle, const tUartBuffe
     uart->tstate = DEV_OFFLINE;
     uart->rstate = DEV_OFFLINE;
 
-    if (QUEUE_STATUS_OK != queue_static_init(&uart->rx_queue, buf->rx_queue_buf, buf->rx_queue_size))
+    if (QUEUE_STATUS_OK != queue_static_init(&uart->rx_queue,
+                                             buf->rx_queue_buf,
+                                             buf->rx_queue_size))
         return false;
 
     return true;
 }
 
-bool uart_start(tUartDriver *uart, uint8_t head, uint8_t tail) {
-    if (!uart || !uart->handle || !uart->handle->ops || !uart->handle->ops->open || !uart->handle->ops->set_rx_cb)
+bool uart_start(tUartDriver *uart) {
+    if (!uart || !uart->handle || !uart->handle->ops ||
+        !uart->handle->ops->open || !uart->handle->ops->set_rx_cb)
         return false;
-
-    uart->pkt_head = head;
-    uart->pkt_tail = tail;
 
     if (!uart->handle->ops->open(uart->handle->dev))
         return false;
@@ -72,7 +76,8 @@ bool uart_start(tUartDriver *uart, uint8_t head, uint8_t tail) {
 }
 
 bool uart_send(tUartDriver *uart, const tUart_Frame *frame) {
-    if (!uart || !frame || !uart->handle || !uart->handle->ops || !uart->handle->ops->send)
+    if (!uart || !frame || !uart->handle || !uart->handle->ops ||
+        !uart->handle->ops->send)
         return false;
     if (frame->data_len > UART_MAX_PKT_SIZE)
         return false;
@@ -87,7 +92,8 @@ bool uart_send(tUartDriver *uart, const tUart_Frame *frame) {
     tx_buf[1] = frame->id;
     tx_buf[2] = (uint8_t)len;
     memcpy(&tx_buf[3], frame->data, len);
-    tx_buf[3U + len] = crc8(&tx_buf[1], (uint16_t)(len + 2U)); // id + len + payload
+    tx_buf[3U + len] =
+        crc8(&tx_buf[1], (uint16_t)(len + 2U)); // id + len + payload
     tx_buf[4U + len] = uart->pkt_tail;
 
     if (!uart->handle->ops->send(uart->handle->dev, tx_buf, total)) {
@@ -116,14 +122,16 @@ bool uart_process_frame(tUartDriver *uart, tUart_Frame *frame) {
 
         // 帧尾（且已收到 id/len/crc 的最短长度）
         if (byte == uart->pkt_tail && uart->rx_index >= 3U) {
-            uint16_t total = (uint16_t)uart->frame_buf[1] + 3U; // id+len+payload+crc
+            uint16_t total =
+                (uint16_t)uart->frame_buf[1] + 3U; // id+len+payload+crc
             uart->in_frame = false;
 
             if (uart->rx_index != total || total > frame_cap)
                 continue; // 长度不符：丢弃
 
             // 校验 id + len + payload
-            if (crc8(uart->frame_buf, (uint16_t)(total - 1U)) != uart->frame_buf[total - 1U])
+            if (crc8(uart->frame_buf, (uint16_t)(total - 1U)) !=
+                uart->frame_buf[total - 1U])
                 continue; // CRC 错：丢弃
 
             frame->id = uart->frame_buf[0];

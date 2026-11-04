@@ -1,4 +1,4 @@
-"""USB 设备枚举；ID 来自 protocol/devices.json 的生成结果。"""
+"""USB 设备枚举；ID 来自 protocol/devices.yaml 的生成结果。"""
 from protocol import devices
 
 try:

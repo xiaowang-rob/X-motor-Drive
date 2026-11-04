@@ -1,14 +1,14 @@
 # XDr 上位机
 
-`start.py` 启动 UI；`app/services/device_service.py` 负责串口、参数、波形和 IAP。所有 payload 为小端二进制，**协议唯一来源是仓库根目录的 `protocol/*.json`**。
+`start.py` 启动 UI；`app/services/device_service.py` 负责串口、参数、波形和 IAP。所有 payload 为小端二进制，**协议唯一来源是仓库根目录的 `protocol/*.yaml`**。
 
 ## 协议生成
 
 ```bash
-# 在仓库根目录运行：校验 JSON，同时生成 Python 模块和 C 头文件
+# 在仓库根目录运行：校验 YAML，同时生成 Python 模块和 C 头文件
 python3 protocol/gen_protocol.py
 
-# CI / 提交前：确认生成代码没有落后于 JSON
+# CI / 提交前：确认生成代码没有落后于 YAML
 python3 protocol/gen_protocol.py --check
 
 # 可选：覆盖 payload.h 输出位置（其他 C 头仍生成到 firmware/protocol/）
@@ -17,9 +17,9 @@ python3 protocol/gen_protocol.py --c-output /tmp/payload.h
 
 输入文件：
 
-- `protocol/cmd.json`：帧常量、命令 ID、请求/回复字段、通用反馈和特殊请求；payload 已内嵌在各命令中。
-- `protocol/fieldvaluetype.json`：字段的线宽与 C/Python 类型映射。
-- `protocol/parameter.json`、`protocol/obsdata.json`：参数、观测项、单位、默认值和选项。
+- `protocol/cmd.yaml`：帧常量、命令 ID、请求/回复字段、通用反馈和特殊请求；payload 已内嵌在各命令中。
+- `protocol/fieldvaluetype.yaml`：字段的线宽与 C/Python 类型映射。
+- `protocol/parameter.yaml`、`protocol/obsdata.yaml`：参数、观测项、单位、默认值和选项。
 
 输出：
 
@@ -46,11 +46,15 @@ python3 protocol/gen_protocol.py --c-output /tmp/payload.h
 python3 -m pip install -r software/requirements.txt
 ```
 
-运行环境还需提供 libusb 1.0 后端。Linux 通常由发行版的 `libusb-1.0` 软件包提供；Windows 需安装可被 PyUSB 加载的 libusb 后端，后续 Bulk 通信需为设备绑定 WinUSB。
+运行环境还需提供 libusb 1.0 后端。Linux 通常由发行版的 `libusb-1.0` 软件包提供，并需通过 udev 规则授予当前用户设备访问权限；Windows 需安装可被 PyUSB 加载的 libusb 后端，并为 APP、BL 对应的 USB 设备分别绑定 WinUSB（可用 Zadig）。
 
-设备列表每 2.5 秒扫描一次，显示 `USB XDr-S APP`、`USB XDr-S BL`、`USB XDr-P APP` 或 `USB XDr-P BL`，附带 VID/PID 和总线地址以区分同型号设备。ID 引用由 `protocol/devices.json` 生成的 `protocol/devices.py`，不再维护旧 PID 表。缺少 PyUSB 或 USB 后端时会在日志中报告扫描失败，串口扫描仍可继续。
+设备列表每 2.5 秒扫描一次，显示 `(USB)XDr-S`、`(USB)XDr-S BL`、`(USB)XDr-P` 或 `(USB)XDr-P BL`。内部仍按 VID/PID 和总线地址定位选中的设备。ID 引用由 `protocol/devices.yaml` 生成的 `protocol/devices.py`，不再维护旧 PID 表。缺少 PyUSB 或 USB 后端时会在日志中报告扫描失败，串口和蓝牙扫描仍可继续。
 
-目前 USB 仅实现识别与列表展示，尚未接入 Bulk 通信；选择 USB 并点击连接会提示通信尚未接入。
+选择 USB 后点击连接，将认领 Vendor 接口 0 / alt 0，通过 OUT `0x01`、IN `0x81` 进行 Bulk 收发；不转换成串口、不嵌套 UART 帧。打开成功后沿用现有 `CMD_CONNECT`、心跳、参数和数据流处理。与原串口流程一致，界面“已连接”表示传输已打开，不代表设备业务已确认；一秒没有有效回包将报告心跳超时。APP 必须实现 USB 命令处理和回包后才能正常通信，本次上位机接入不替代固件业务实现。
+
+USB 帧：`A5 5A | id:u8 | len:u16 LE | data | CRC16 LE`。`len` 只计算数据，范围 0..4095；CRC16/CCITT-FALSE（poly `0x1021`、init `0xFFFF`）覆盖头部和数据。支持半帧、连续多帧、CRC/非法长度重新同步和半帧空闲超时；64 字节整倍数的发送追加 ZLP。收发异常及手动断开会停止线程、释放 USB 接口并清空待发送队列。
+
+尚未进行实机 USB 收发、热插拔及 IAP 验证。IAP 仍保留现有整区 CRC 校验 TODO，此次只接通底层传输，不代表完整升级流程已验证。
 
 ## 传输与业务
 

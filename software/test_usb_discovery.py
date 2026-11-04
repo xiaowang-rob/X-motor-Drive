@@ -1,5 +1,5 @@
 """无需 Qt 或 USB 硬件的设备枚举测试。"""
-import json
+import yaml
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -10,8 +10,8 @@ from app.services import usb_discovery as discovery
 
 class UsbDiscoveryTests(unittest.TestCase):
     def test_ids_match_json(self):
-        config = json.loads((Path(__file__).resolve().parents[1] /
-                             'protocol/devices.json').read_text())
+        config = yaml.safe_load((Path(__file__).resolve().parents[1] /
+                                 'protocol/devices.yaml').read_text())
         expected = {(int(item['vid'], 16), int(item['pid'], 16))
                     for board in config['devices'].values()
                     for item in board.values()}

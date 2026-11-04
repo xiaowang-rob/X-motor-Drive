@@ -10,10 +10,11 @@ from protocol import payload as wire
 class ProtocolTest(unittest.TestCase):
     def test_schema_generated_fixed_payloads(self):
         self.assertEqual(codec.pack_connect(True), b"\x01")
-        self.assertEqual(codec.pack_openloop_ctrl(False, 0.5, 1.0).hex(), "0080000000803f")
-        self.assertEqual(codec.pack_current_torque(True, 2.0).hex(), "0100000040")
+        self.assertEqual(codec.pack_openloop_ctrl(0.5, 1.0).hex(), "80000000803f")
+        self.assertEqual(codec.pack_current_torque(2.0).hex(), "00000040")
         self.assertEqual(codec.pack_single(1.0).hex(), "0000803f")
-        self.assertEqual(codec.pack_mit_config(1.0, 2.0).hex(), "0000803f00000040")
+        self.assertEqual(codec.pack_ctrl_config(4, 1).hex(), "0401")
+        self.assertEqual(codec.pack_ctrl_config_mit(1.0, 2.0).hex(), "0810000001000002")
         self.assertEqual(codec.pack_iap_erase(1024), b"\x00\x04\x00\x00")
         self.assertEqual(codec.pack_iap_verify(0x12345678, 12).hex(), "785634120c000000")
 
@@ -44,12 +45,12 @@ class ProtocolTest(unittest.TestCase):
             codec.unpack_data_stream(b"\x02\x00", channels)
 
     def test_heartbeat_scale_and_mit_round_trip(self):
-        heartbeat = codec.pack_heartbeat([1, 0, 0, 48.5, 40, 41])
-        self.assertEqual(heartbeat.hex(), "01000080302829")
+        heartbeat = codec.pack_heartbeat([1, 0, 48.5, 40, 41])
+        self.assertEqual(heartbeat.hex(), "010080302829")
         decoded = codec.unpack_heartbeat(heartbeat)
-        self.assertEqual(decoded[:3], [1, 0, 0])
-        self.assertAlmostEqual(decoded[3], 48.5)
-        self.assertEqual(decoded[4:], [40, 41])
+        self.assertEqual(decoded[:2], [1, 0])
+        self.assertAlmostEqual(decoded[2], 48.5)
+        self.assertEqual(decoded[3:], [40, 41])
         payload = codec.pack_mit_ctrl(-1.5, 2.5, -3.25, velocity_exp=6, torque_exp=8)
         self.assertEqual(len(payload), 8)
         self.assertEqual(payload.hex(), "0000fa8aa000c0fc")
@@ -72,10 +73,10 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(len(codec.pack_iap_write(0, b"x" * 124)), 128)
         with self.assertRaises(ValueError):
             codec.pack_iap_write(0, b"x" * 125)
-        saturated = codec.pack_openloop_ctrl(False, 1e9, 0)
-        self.assertEqual(saturated[1:3], b"\xff\xff")
+        saturated = codec.pack_openloop_ctrl(1e9, 0)
+        self.assertEqual(saturated[0:2], b"\xff\xff")
         with self.assertRaises(ValueError):
-            codec.pack_openloop_ctrl(False, math.nan, 0)
+            codec.pack_openloop_ctrl(math.nan, 0)
         with self.assertRaises(ValueError):
             codec.unpack_heartbeat(b"\x01")
         with self.assertRaises(ValueError):

@@ -19,7 +19,7 @@ typedef void (*usb_rx_frame_cb)(void *ctx, const uint8_t *data, uint16_t len);
 typedef struct {
     bool (*open)(void *handle);
     /* 成功表示已复制并入驱动队列，不表示 USB 发送完成或业务 ACK。 */
-    bool (*send)(void *handle, const uint8_t *data, uint16_t len);
+    bool (*send)(void *handle, uint8_t id, const uint8_t *data, uint16_t len);
     /* 驱动保证切换回调与中断互斥；RX 指针仅在回调期间有效。 */
     void (*set_rx_cb)(void *handle, usb_rx_frame_cb cb, void *ctx);
     bool (*is_ready)(void *handle);
@@ -41,7 +41,7 @@ typedef struct {
 typedef struct {
     uint8_t id;        /* 命令 ID，由内部消息首字节解出。 */
     uint8_t *data;     /* 参数输出缓冲，不包含命令 ID；无参数时可为 NULL。 */
-    uint16_t capacity; /* 参数输出缓冲区容量。 */
+    uint16_t capacity; /* 输出缓冲容量，不包含 ID。 */
     uint16_t data_len; /* 参数长度；缓冲不足时返回所需长度且不出队。 */
 } tUsb_Frame;
 
@@ -68,7 +68,7 @@ bool usb_init(tUsbDriver *usb, const tUsbDevHandle *handle,
 bool usb_start(tUsbDriver *usb);
 bool usb_is_ready(const tUsbDriver *usb);
 /* 主循环/线程调用，禁止从 ISR 或 RX 回调调用；一次调用是一条完整消息。 */
-bool usb_send(tUsbDriver *usb, const uint8_t *data, uint16_t len);
+bool usb_send(tUsbDriver *usb, uint8_t id, const uint8_t *data, uint16_t len);
 /* 非阻塞；false 表示空队列、参数无效或输出容量不足，不弹出半条报文。 */
 bool usb_process_frame(tUsbDriver *usb, tUsb_Frame *frame);
 

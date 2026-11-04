@@ -153,7 +153,7 @@ CALIBRATIONS = {
     ),
     "observer": CalibrationSpec(
         scope="观测器校准",
-        fields=(Pidx.PARAM_TUNE_CURRENT,),
+        fields=(Pidx.PARAM_TUNE_CURRENT, Pidx.PARAM_TUNE_VEL),
         actions=(
             (CmdId.CMD_OBS_TUNNING, "观测器校准"),
             (CmdId.CMD_SET_ZERO_POS, "设置零位"),
@@ -269,8 +269,8 @@ class ConfigPage(TabbedPage):
             (FIF.SAVE_AS, "另存配置"),
             (FIF.DELETE, "删除配置"),
             (None, ""),
-            (FIF.DOWNLOAD, "读取参数"),
-            (FIF.UP, "写入参数"),
+            (FIF.UP, "读取参数"),
+            (FIF.DOWNLOAD, "写入参数"),
             (FIF.SAVE, "保存参数"),
             (FIF.SYNC, "恢复默认参数"),
         ]:

@@ -17,7 +17,9 @@ typedef struct {
     const tStorageDevHandle *handle;
     eDeviceStatus dstate;
     uint32_t size;
-    uint32_t free_addr; /* 活跃页内偏移 */
+    uint32_t free_addr;   /* 活跃页内偏移 */
+    uint32_t free_offset; /* 活跃页内偏移  因为double
+                             word对齐写入，所以需要记录偏移量 */
 } tStorage;
 extern tStorage g_param_storage;
 extern tStorage g_log_storage;

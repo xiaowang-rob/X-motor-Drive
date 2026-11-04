@@ -1,9 +1,14 @@
 """XDr 纯 UI 主窗口，设备业务暂不接入。"""
+
 from pathlib import Path
 from PyQt5.QtGui import QIcon, QColor
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from qfluentwidgets import (
-    FluentWindow, FluentIcon as FIF, Theme, setTheme, setThemeColor,
+    FluentWindow,
+    FluentIcon as FIF,
+    Theme,
+    setTheme,
+    setThemeColor,
 )
 from app.status_bar import StatusBar
 from app.config_page import ConfigPage
@@ -20,7 +25,6 @@ class MainWindow(FluentWindow):
         setThemeColor(QColor("#4f9cf9"), save=False)
         super().__init__()
         self.setWindowTitle("XDr · Tool")
-        self.setWindowIcon(QIcon(str(Path(__file__).parent / "images" / "logo.png")))
         self.resize(1440, 960)
         self.setMinimumSize(1180, 800)
 

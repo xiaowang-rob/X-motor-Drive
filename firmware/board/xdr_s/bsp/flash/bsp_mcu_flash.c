@@ -147,48 +147,69 @@ static bool fla_mcu_read(void *handle, uint32_t addr, uint8_t *data,
     return true;
 }
 
-// G4 只能按 64bit(double-word) 对齐编程：要求 addr 8 字节对齐，
-// 尾部不足 8 字节处补 0xFF 后整 double-word 写入（目标须已擦除）。
 static bool fla_mcu_write(void *handle, uint32_t addr, const uint8_t *data,
                           uint32_t len) {
     const tMcuFlashPart *inst = (const tMcuFlashPart *)handle;
+
     if (!inst || !data || len == 0U)
         return false;
-    uint32_t flash_addr = addr + inst->start_addr;
-    if (flash_addr < inst->start_addr || len > inst->size)
+
+    /* 分区起始地址必须 Double Word 对齐 */
+    if ((inst->start_addr & 7U) != 0U)
         return false;
-    if ((flash_addr & 7U) != 0U) // 硬件限制：double-word 对齐
+
+    /* 起始地址必须 Double Word 对齐 */
+    if ((addr & 7U) != 0U)
         return false;
+
+    /* 检查逻辑写入范围 */
+    if (addr > inst->size || len > inst->size - addr)
+        return false;
+
+    /* 实际编程长度向上对齐到 Double Word */
+    uint32_t aligned_len = (len + 7U) & ~7U;
+
+    /* 检查实际编程范围，防止尾部填充越过分区 */
+    if (aligned_len > inst->size - addr)
+        return false;
+
+    uint32_t flash_addr = inst->start_addr + addr;
 
     if (HAL_FLASH_Unlock() != HAL_OK)
         return false;
 
-    uint32_t i = 0U;
     bool ok = true;
 
-    // 主体：完整 8 字节
-    for (; ok && (i + 7U) < len; i += 8U) {
-        uint64_t dword = 0U;
-        for (uint32_t b = 0U; b < 8U; b++)
-            dword |= (uint64_t)data[i + b] << (8U * b);
-        if (HAL_FLASH_Program(
-                FLASH_TYPEPROGRAM_DOUBLEWORD, flash_addr + i, dword) != HAL_OK)
-            ok = false;
-    }
+    for (uint32_t i = 0U; i < aligned_len; i += 8U) {
+        /* 默认填充 0xEE */
+        uint8_t buf[8];
+        memset(buf, 0xEE, sizeof(buf));
 
-    // 尾部：不足 8 字节，补 0xFF（= 擦除态）后整 double-word 写入
-    if (ok && i < len) {
-        uint64_t dword = 0xFFFFFFFFFFFFFFFFULL;
-        for (uint32_t b = 0U; (i + b) < len; b++) {
-            dword &= ~((uint64_t)0xFFU << (8U * b));
-            dword |= (uint64_t)data[i + b] << (8U * b);
+        /* 当前 Double Word 中实际数据长度 */
+        uint32_t copy_len = 0U;
+
+        if (i < len) {
+            copy_len = len - i;
+
+            if (copy_len > sizeof(buf))
+                copy_len = sizeof(buf);
+
+            memcpy(buf, &data[i], copy_len);
         }
-        if (HAL_FLASH_Program(
-                FLASH_TYPEPROGRAM_DOUBLEWORD, flash_addr + i, dword) != HAL_OK)
+
+        uint64_t dword = 0U;
+        memcpy(&dword, buf, sizeof(dword));
+
+        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD,
+                              flash_addr + i,
+                              dword) != HAL_OK) {
             ok = false;
+            break;
+        }
     }
 
     HAL_FLASH_Lock();
+
     return ok;
 }
 

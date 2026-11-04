@@ -1,10 +1,10 @@
 """可复用的参数行；只发布请求，由业务层负责协议和设备访问。"""
+
 import math
 import struct
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QSizePolicy
 from qfluentwidgets import BodyLabel, ComboBox, LineEdit, FluentIcon as FIF
-
 
 VAL_TYPE_TO_UI = {
     "FLD_U8": "uint8",
@@ -17,6 +17,7 @@ VAL_TYPE_TO_UI = {
 
 class ParameterInput(QWidget):
     """统一参数行；label_width 设置标题及单位宽度，输入框自适应，按钮固定。"""
+
     DEFAULT_LABEL_WIDTH = 240
     EDITOR_MIN_WIDTH = 60
 
@@ -26,13 +27,33 @@ class ParameterInput(QWidget):
     value_changed = pyqtSignal(object, object)
     validation_failed = pyqtSignal(object, str)
 
-    def __init__(self, name, param_id, protocol_id=None, data_type="float32", unit="",
-                 options=None, default=None, read_only=False, parent=None, *,
-                 label_width=None, show_actions=True):
+    def __init__(
+        self,
+        name,
+        param_id,
+        protocol_id=None,
+        data_type="float32",
+        unit="",
+        options=None,
+        default=None,
+        read_only=False,
+        parent=None,
+        *,
+        label_width=None,
+        show_actions=True,
+    ):
         super().__init__(parent)
         from app.ui_components import icon_action
 
-        if data_type not in ("uint8", "uint16", "uint32", "int32", "float32", "bool", "str"):
+        if data_type not in (
+            "uint8",
+            "uint16",
+            "uint32",
+            "int32",
+            "float32",
+            "bool",
+            "str",
+        ):
             raise ValueError(f"不支持的参数类型：{data_type}")
 
         self.param_id = param_id
@@ -45,7 +66,9 @@ class ParameterInput(QWidget):
             options = [("否", False), ("是", True)]
 
         self.label = BodyLabel(f"{name}（{unit}）" if unit else name)
-        self.set_label_width(self.DEFAULT_LABEL_WIDTH if label_width is None else label_width)
+        self.set_label_width(
+            self.DEFAULT_LABEL_WIDTH if label_width is None else label_width
+        )
         self.label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
         self.editor = ComboBox() if options is not None else LineEdit()
         if options is not None:
@@ -58,9 +81,9 @@ class ParameterInput(QWidget):
         self.editor.setAccessibleName(self.label.text())
         self.label.setBuddy(self.editor)
 
-        self.write_button = icon_action(FIF.UP, "写入参数")
+        self.write_button = icon_action(FIF.DOWNLOAD, "写入参数")
         self.default_button = icon_action(FIF.SYNC, "恢复默认")
-        self.read_button = icon_action(FIF.DOWNLOAD, "读取参数")
+        self.read_button = icon_action(FIF.UP, "读取参数")
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(6)
@@ -75,7 +98,8 @@ class ParameterInput(QWidget):
         self.set_device_enabled(False)
         self.set_read_only(read_only)
         self.read_button.clicked.connect(
-            lambda: self.read_requested.emit(self.protocol_id))
+            lambda: self.read_requested.emit(self.protocol_id)
+        )
         self.write_button.clicked.connect(self._request_write)
         self.default_button.clicked.connect(self._request_default)
         if options is not None:

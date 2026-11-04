@@ -15,7 +15,11 @@
             "preLaunchTask": "编译",
             "configFiles": [
                 "${workspaceFolder}/firmware/build/debug_openocd.cfg"
-            ]
+            ],
+            "liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": 10
+            }
         }
     ]
 }

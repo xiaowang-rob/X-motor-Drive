@@ -32,8 +32,6 @@ const tUsbDevHandle *Get_USB_VendorHandle(void);
  * send is thread/main-loop context only, never call it from an ISR/RX callback.
  * Caller must retry when false. Reset/disconnect discards all pending messages.
  */
-bool bsp_usb_vendor_send(void *handle, const uint8_t *data, uint16_t len);
-bool bsp_usb_vendor_ready(void);
 
 typedef struct {
     uint32_t tx_messages; /* Queued, not necessarily delivered. */

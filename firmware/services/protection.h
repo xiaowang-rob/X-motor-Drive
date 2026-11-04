@@ -5,9 +5,7 @@
 #include "xfoc_main.h"
 
 typedef struct {
-
-    bool fault_flag;
-    bool warning_flag;
+    eFault fault; // 故障
     float max_current;
     float max_vel;
     float min_voltage;
@@ -16,9 +14,12 @@ typedef struct {
     float tolerance_time_ms;
 } tProtectionManager;
 
+extern tProtectionManager pro_manager;
+
 // functions
 void pro_manager_init(tParameter *param);
 void pro_manager_reset(void);
-void pro_manager_main_loop(tXFocCore *core);
+void pm_handle_fault(eFault fault);
+void pro_manager_main_loop(tXFocMotor *motor);
 
 #endif // __PROTECTION_H

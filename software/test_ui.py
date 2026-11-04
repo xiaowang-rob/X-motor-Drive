@@ -2,6 +2,7 @@
 import os
 import sys
 import unittest
+from unittest.mock import call, patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import struct
 from PyQt5.QtCore import Qt
@@ -18,13 +19,14 @@ from app.ui_components import (
 )
 from app.parameter_input import ParameterInput
 from app.calibration_card import CalibrationCard
-from app.config_page import COMMUNICATION_PARAMS, MOTOR_PARAMS
+from app.config_page import COMMUNICATION_PARAMS, MOTOR_PARAMS, PROTECTION_PAGES
 from app.control_page import (
-    MODE_PAGE_MODES, WAVE_CHANNEL_COUNT, WAVE_CHANNELS,
+    ControlPage, MODE_PAGE_MODES, WAVE_CHANNEL_COUNT, WAVE_CHANNELS,
 )
 from app.services import payload_codec as codec
+from app.waveform_widget import WaveformWidget
 from protocol import (
-    CmdId, FbId, PARAMETERS, Pidx, Didx, OBSDATA, UartFrame, eCoreState,
+    CmdId, FbId, PARAMETERS, Pidx, Didx, OBSDATA, UartFrame, eMotorState,
 )
 
 
@@ -78,10 +80,13 @@ class UITest(unittest.TestCase):
         self.assertIsInstance(page.motor_calibration, CalibrationCard)
         self.assertIsInstance(page.observer_nav.nav, SegmentedWidget)
         self.assertIsInstance(page.controller_nav.nav, SegmentedWidget)
-        self.assertIsInstance(page.protection_nav.nav, SegmentedWidget)
+        self.assertIsInstance(page.protection_scroll, ScrollCard)
         self.assertEqual(page.observer_nav.stack.count(), 6)
         self.assertEqual(page.controller_nav.stack.count(), 3)
-        self.assertEqual(page.protection_nav.stack.count(), 2)
+        self.assertEqual(
+            set(page.protection_scroll.parameters),
+            {PARAMETERS[param_id].name for param_id in PROTECTION_PAGES},
+        )
 
         self.assertEqual(
             set(page.motor_scroll.parameters),
@@ -287,6 +292,314 @@ class UITest(unittest.TestCase):
             page.action_requested.disconnect(record_action)
             page.set_device_enabled(True)
 
+    def test_wave_channel_change_resubscribes(self):
+        page = ControlPage()
+        requests = []
+        page.action_requested.connect(
+            lambda action, payload: requests.append((action, payload)))
+        try:
+            # 未采样时改通道不发任何命令。
+            page.wave_ch[0].setCurrentIndex(1)
+            self.assertEqual(requests, [])
+
+            page._wave_running = True
+            page.add_wave_data(0, 1.0)
+            self.assertIsNotNone(page.wave_canvas._channel_view(0))
+
+            requests.clear()
+            page.wave_ch[0].setCurrentIndex(2)
+            # 采样中改通道：清空旧波形 + 立即按新通道重新订阅。
+            self.assertIsNone(page.wave_canvas._channel_view(0))
+            self.assertEqual(len(requests), 1)
+            action, payload = requests[0]
+            self.assertEqual(action, "wave_start")
+            self.assertEqual(
+                payload["channels"],
+                [(0, page.wave_ch[0].currentData())],
+            )
+
+            # 取消通道（未选择）同样立即生效。
+            requests.clear()
+            page.wave_ch[0].setCurrentIndex(0)
+            self.assertEqual(requests[0][0], "wave_start")
+            self.assertEqual(requests[0][1]["channels"], [])
+        finally:
+            page.action_requested.disconnect()
+            page.deleteLater()
+
+    def test_waveform_draw_reuses_buffer(self):
+        from PyQt5.QtCore import QPointF
+        canvas = WaveformWidget(max_points=4, min_view_points=2, max_view_points=3)
+        try:
+            canvas.add_waveform_data(0, [1.0, 2.0, 3.0])
+            canvas._batch_update_plot()
+            # 刷新只重画有数据的通道，其余通道保持空。
+            self.assertEqual(len(canvas.curves[0].getData()[1]), 3)
+            self.assertIsNone(canvas.curves[1].getData()[1])
+
+            # 悬停复用绘制缓存，不再重建整段数组。
+            center = canvas.plot_widget.sceneBoundingRect().center()
+            with patch.object(
+                    WaveformWidget, "_channel_view",
+                    side_effect=AssertionError("悬停不应重建数组")):
+                canvas._on_mouse_hover(QPointF(center))
+
+            # 强制全量刷新与批量刷新走同一条绘制路径。
+            with patch.object(canvas, "_redraw") as redraw:
+                canvas._batch_update_plot()
+                redraw.assert_not_called()  # 没有脏通道就不重画
+                canvas.add_waveform_data(1, 5.0)
+                canvas._batch_update_plot()
+                redraw.assert_called_once_with([1])
+        finally:
+            canvas.deleteLater()
+
+    def test_waveform_x_window_follows_sample_rate(self):
+        canvas = WaveformWidget(max_points=4000)
+        try:
+            # 固件 1ms 一帧、显示 3s → 3000 点。
+            self.assertEqual(canvas.window_points(), 3000)
+            # 采样率变化只影响跨度，与波形幅度无关。
+            canvas.set_sample_interval(1.25)
+            self.assertEqual(canvas.window_points(), 2400)
+            self.assertEqual(canvas.window_points(), 2400)
+            # 换算结果超过缓冲容量时按容量截断：没有的数据画不出来。
+            canvas.set_sample_interval(0.5)
+            self.assertEqual(canvas.window_points(), canvas.max_points)
+            canvas.set_sample_interval(0.1)
+            self.assertEqual(canvas.window_points(), canvas.max_points)
+            # 采样间隔未知时退回 max_view_points。
+            canvas.set_sample_interval(None)
+            self.assertEqual(canvas.window_points(), canvas.max_view_points)
+
+            canvas.set_sample_interval(1.0)
+            for value in range(3500):
+                canvas.add_waveform_data(0, float(value % 100))
+            canvas.auto_scale_x_axis()
+            x_range = canvas.plot_widget.getViewBox().viewRange()[0]
+            self.assertAlmostEqual(x_range[1], 3500, places=3)
+            self.assertAlmostEqual(x_range[1] - x_range[0], 3000, places=3)
+
+            # 数据不足一个窗口时左对齐到 0。
+            canvas.clear_waveforms()
+            canvas.add_waveform_data(0, 1.0)
+            canvas.auto_scale_x_axis()
+            x_range = canvas.plot_widget.getViewBox().viewRange()[0]
+            self.assertAlmostEqual(x_range[0], 0, places=3)
+            self.assertAlmostEqual(x_range[1], 3000, places=3)
+        finally:
+            canvas.deleteLater()
+
+    def test_waveform_ring_buffer(self):
+        canvas = WaveformWidget(max_points=4, min_view_points=2, max_view_points=3)
+        try:
+            for value in (1.0, 2.0, 3.0, 4.0):
+                canvas.add_waveform_data(0, value)
+            self.assertEqual(
+                canvas._channel_view(0).tolist(), [1.0, 2.0, 3.0, 4.0])
+            # 缓冲满后环形覆盖最旧数据，顺序仍是旧 → 新。
+            for value in (5.0, 6.0):
+                canvas.add_waveform_data(0, value)
+            self.assertEqual(
+                canvas._channel_view(0).tolist(), [3.0, 4.0, 5.0, 6.0])
+            # 同一采样值可同时写入多行（多行订阅同一信号）。
+            canvas.add_waveform_data((1, 2), 7.0)
+            self.assertEqual(canvas._channel_view(1).tolist(), [7.0])
+            self.assertEqual(canvas._channel_view(2).tolist(), [7.0])
+            self.assertIsNone(canvas._channel_view(3))
+            canvas.clear_waveforms()
+            self.assertIsNone(canvas._channel_view(0))
+        finally:
+            canvas.deleteLater()
+
+    def test_stream_frames_skip_terminal(self):
+        service = self.window.device_service
+        service.terminal.clear_log()
+        with patch.object(service, "_stream_channels", []):
+            service._on_frame(
+                CmdId.CMD_DATA_STREAM,
+                codec.pack_data_stream([Didx.DATA_POSITION], [1.0]))
+            service._on_frame(
+                CmdId.CMD_HEARTBEAT,
+                codec.pack_heartbeat([1, 0, 48.0, 40.0, 41.0]))
+        self.assertEqual(service.terminal.output.toPlainText().strip(), "")
+        # 事件性回包仍然要留痕。
+        service._on_frame(CmdId.CMD_CONNECT, b"")
+        self.assertIn("CMD_CONNECT", service.terminal.output.toPlainText())
+
+    def test_data_stream_subscription_mapping(self):
+        page = ControlPage()
+        service = self.window.device_service
+        try:
+            with patch.object(service, "control_page", page), \
+                    patch.object(service, "_connected", False):
+                service._wave_map = {
+                    0: Didx.DATA_POSITION,
+                    1: Didx.DATA_POSITION,
+                    2: Didx.DATA_VELOCITY,
+                }
+                service._set_subscription()
+                # 同一信号只订阅一次，但两行都要上屏。
+                self.assertEqual(
+                    service._stream_channels,
+                    [Didx.DATA_POSITION, Didx.DATA_VELOCITY])
+                self.assertEqual(
+                    service._rows_by_channel[Didx.DATA_POSITION], [0, 1])
+
+                payload = codec.pack_data_stream(
+                    service._stream_channels, [1.5, -2.5])
+                service._handle_data_stream(payload)
+                self.assertEqual(
+                    page.wave_canvas._channel_view(0).tolist(), [1.5])
+                self.assertEqual(
+                    page.wave_canvas._channel_view(1).tolist(), [1.5])
+                self.assertEqual(
+                    page.wave_canvas._channel_view(2).tolist(), [-2.5])
+
+                # 停止采样后到达的残留帧没有解码上下文，不能抛异常。
+                service._wave_map = {}
+                service._set_subscription()
+                self.assertEqual(service._stream_channels, [])
+                service._handle_data_stream(payload)
+        finally:
+            page.deleteLater()
+
+    def test_slider_changes_send_targets(self):
+        page = ControlPage()
+        service = self.window.device_service
+        page.action_requested.connect(service._handle_control_action)
+        cases = [
+            (eMotorState.MOTOR_OPENLOOP, page.openloop_duty, None,
+             CmdId.CMD_OPENLOOP_CTRL, lambda: codec.pack_openloop_ctrl(50, 0)),
+            (eMotorState.MOTOR_OPENLOOP, page.openloop_control, None,
+             CmdId.CMD_OPENLOOP_CTRL, lambda: codec.pack_openloop_ctrl(50, 3.14)),
+            (eMotorState.MOTOR_OPENLOOP, page.openloop_control,
+             lambda: page.openloop_kind.setCurrentIndex(1),
+             CmdId.CMD_OPENLOOP_CTRL, lambda: codec.pack_openloop_ctrl(50, 100)),
+            (eMotorState.MOTOR_CURRENT_MODE, page.current_torque_control, None,
+             CmdId.CMD_CUR_TAU_CTRL, lambda: codec.pack_current_torque(5)),
+            (eMotorState.MOTOR_CURRENT_MODE, page.current_torque_control,
+             lambda: page.current_torque_kind.setCurrentIndex(1),
+             CmdId.CMD_CUR_TAU_CTRL, lambda: codec.pack_current_torque(2.5)),
+            (eMotorState.MOTOR_PID_SPEED, page.speed_control, None,
+             CmdId.CMD_PID_VEL_CTRL, lambda: codec.pack_single(50)),
+            (eMotorState.MOTOR_PID_POSITION, page.position_control, None,
+             CmdId.CMD_PID_POS_CTRL, lambda: codec.pack_single(90)),
+            (eMotorState.MOTOR_MIT_MODE, page.mit_position, None,
+             CmdId.CMD_MIT_CTRL, lambda: codec.pack_mit_ctrl(90)),
+        ]
+        try:
+            with patch.object(service, "control_page", page), \
+                    patch.object(service, "_connected", True), \
+                    patch.object(service.serial, "send", return_value=True) as send:
+                for mode, control, setup, command, expected in cases:
+                    with self.subTest(mode=mode, channel=control.name, setup=setup):
+                        page.set_mode(mode)
+                        if setup:
+                            setup()
+                        send.reset_mock()
+                        control.slider.setValue(5000)
+                        send.assert_called_once_with(command, expected())
+                        # 同值不重复发送；手动发送按钮仍然可用。
+                        control.slider.setValue(5000)
+                        send.assert_called_once_with(command, expected())
+                        control.send_button.clicked.emit()
+                        self.assertEqual(send.call_count, 2)
+
+                send.reset_mock()
+                service._connected = False
+                page.mit_position.slider.setValue(2500)
+                send.assert_not_called()
+        finally:
+            page.deleteLater()
+
+    def test_target_updates_do_not_send(self):
+        page = ControlPage()
+        requests = []
+        page.action_requested.connect(lambda action, payload: requests.append((action, payload)))
+        try:
+            control = page.openloop_control
+            control.slider.setValue(5000)
+            requests.clear()
+            page.openloop_kind.setCurrentIndex(1)
+            control.maximum.setText("0")
+            control.maximum.editingFinished.emit()
+            control.maximum.setText("-10")
+            control.maximum.editingFinished.emit()
+            page.set_targets({"位置": 2.5, "速度": 3, "电流": 1})
+            self.assertEqual(requests, [])
+            control.slider.setValue(5000)
+            self.assertEqual(requests, [
+                ("send_target", {"channel": "开环速度", "value": -5.0}),
+            ])
+            requests.clear()
+            # 非零滑条改成零跨度，也不应下发控制命令。
+            control.maximum.setText("0")
+            control.maximum.editingFinished.emit()
+            self.assertEqual(requests, [])
+        finally:
+            page.deleteLater()
+
+    def test_ctrl_config_core_reset_and_mit_branch(self):
+        service = self.window.device_service
+        page = self.window.control_page
+        mode_control = {
+            eMotorState.MOTOR_OPENLOOP: lambda: page.openloop_kind.setCurrentIndex(1),
+            eMotorState.MOTOR_CURRENT_MODE:
+                lambda: page.current_torque_kind.setCurrentIndex(1),
+            eMotorState.MOTOR_PID_SPEED: lambda: None,
+            eMotorState.MOTOR_PID_POSITION: lambda: None,
+            eMotorState.MOTOR_MIT_MODE: lambda: None,
+        }
+        try:
+            with patch.object(service, "_connected", True), \
+                    patch.object(service.serial, "send", return_value=True) as send:
+                for mode, control in (
+                    (eMotorState.MOTOR_OPENLOOP, 1),
+                    (eMotorState.MOTOR_CURRENT_MODE, 1),
+                    (eMotorState.MOTOR_PID_SPEED, 0),
+                    (eMotorState.MOTOR_PID_POSITION, 0),
+                ):
+                    with self.subTest(mode=mode):
+                        page.set_mode(mode)
+                        mode_control[mode]()
+                        send.reset_mock()
+                        service._handle_control_action("enable", None)
+                        # 使能只发一次配置，不再补发目标值。
+                        send.assert_called_once_with(
+                            CmdId.CMD_CTRL_CONFIG,
+                            codec.pack_ctrl_config(mode, control),
+                        )
+
+                page.set_mode(eMotorState.MOTOR_MIT_MODE)
+                send.reset_mock()
+                service._handle_control_action(
+                    "send_mit_config", {"csv": "", "period_ms": 100})
+                self.assertEqual(send.call_count, 1)
+                self.assertEqual(send.call_args_list[0][0][0], CmdId.CMD_CTRL_CONFIG)
+                payload = send.call_args_list[0][0][1]
+                self.assertEqual(len(payload), 8)
+                self.assertEqual(payload[0], eMotorState.MOTOR_MIT_MODE)
+
+                send.reset_mock()
+                service._handle_status_action("core_reset")
+                send.assert_called_once_with(CmdId.CMD_CORE_NRST, b"")
+        finally:
+            page.openloop_kind.setCurrentIndex(0)
+            page.current_torque_kind.setCurrentIndex(0)
+            page.set_mode(eMotorState.MOTOR_OPENLOOP)
+
+    def test_status_bar_reset_buttons_emit_actions(self):
+        status = self.window.top_area
+        actions = []
+        status.action_requested.connect(actions.append)
+        try:
+            status.reset_button.clicked.emit()
+            status.system_reset_button.clicked.emit()
+            self.assertEqual(actions, ["core_reset", "system_reset"])
+        finally:
+            status.action_requested.disconnect(actions.append)
+
     def test_target_ranges(self):
         page = self.window.control_page
         for control in page.target_controls:
@@ -317,18 +630,18 @@ class UITest(unittest.TestCase):
     def test_control_modes(self):
         page = self.window.control_page
         # 其他测试可能切换过模式，先回到开环页再验证。
-        page.set_mode(eCoreState.CORE_OPENLOOP)
+        page.set_mode(eMotorState.MOTOR_OPENLOOP)
         self.assertIsInstance(page.mode_nav, SegmentedWidget)
         self.assertEqual(page.mode_stack.count(), len(MODE_PAGE_MODES))
         self.assertEqual(len(page.mode_routes), len(MODE_PAGE_MODES))
         self.assertEqual(len(page.enable_buttons), len(MODE_PAGE_MODES))
         self.assertTrue(all(button.isEnabled() for button in page.enable_buttons))
-        self.assertEqual(page.get_mode(), eCoreState.CORE_OPENLOOP)
+        self.assertEqual(page.get_mode(), eMotorState.MOTOR_OPENLOOP)
         self.assertEqual(page.mode_stack.currentIndex(), 0)
         self.assertFalse(page.mode_nav.isHidden())
         self.assertEqual(page.mode_nav.currentRouteKey(), page.mode_routes[0])
 
-        page.set_mode(eCoreState.CORE_OPENLOOP)
+        page.set_mode(eMotorState.MOTOR_OPENLOOP)
         self.assertEqual(page.mode_stack.currentIndex(), 0)
         self.assertEqual(page.mode_nav.currentRouteKey(), page.mode_routes[0])
         self.assertEqual(page.openloop_kind.count(), 2)
@@ -339,7 +652,7 @@ class UITest(unittest.TestCase):
         self.assertEqual(page.openloop_control.label.text(), "开环速度(rad/s)")
         self.assertEqual(page.openloop_control.maximum.text(), "200")
 
-        page.set_mode(eCoreState.CORE_CURRENT_MODE)
+        page.set_mode(eMotorState.MOTOR_CURRENT_MODE)
         self.assertEqual(page.mode_stack.currentIndex(), 1)
         self.assertEqual(page.current_torque_kind.count(), 2)
         self.assertEqual(page.current_torque_control.name, "电流")
@@ -348,12 +661,12 @@ class UITest(unittest.TestCase):
         self.assertEqual(page.current_torque_control.name, "力矩")
         self.assertEqual(page.current_torque_control.label.text(), "力矩(N·m)")
 
-        page.set_mode(eCoreState.CORE_PID_SPEED)
+        page.set_mode(eMotorState.MOTOR_PID_SPEED)
         self.assertEqual(page.mode_stack.currentIndex(), 2)
-        page.set_mode(eCoreState.CORE_PID_POSITION)
+        page.set_mode(eMotorState.MOTOR_PID_POSITION)
         self.assertEqual(page.mode_stack.currentIndex(), 3)
 
-        page.set_mode(eCoreState.CORE_MIT_MODE)
+        page.set_mode(eMotorState.MOTOR_MIT_MODE)
         self.assertEqual(page.mode_stack.currentIndex(), 4)
         self.assertEqual(page.mit_period.value(), 100)
         self.assertEqual(page.mit_kind.count(), 2)
@@ -364,10 +677,10 @@ class UITest(unittest.TestCase):
         self.assertEqual(page.mit_config_send.text(), "开始执行")
 
         # 导航只切页，不发送模式命令。
-        page.set_mode(eCoreState.CORE_OPENLOOP)
+        page.set_mode(eMotorState.MOTOR_OPENLOOP)
         page.mode_nav.setCurrentItem(page.mode_routes[1])
         self.assertEqual(page.mode_stack.currentIndex(), 1)
-        self.assertEqual(page.get_mode(), eCoreState.CORE_CURRENT_MODE)
+        self.assertEqual(page.get_mode(), eMotorState.MOTOR_CURRENT_MODE)
 
         requests = []
 
@@ -376,14 +689,14 @@ class UITest(unittest.TestCase):
 
         page.action_requested.connect(record_action)
         try:
-            page.set_mode(eCoreState.CORE_OPENLOOP)
+            page.set_mode(eMotorState.MOTOR_OPENLOOP)
             page.mode_nav.setCurrentItem(page.mode_routes[1])
             self.assertFalse(any(action == "set_mode" for action, _ in requests))
 
             page.enable_buttons[0].clicked.emit()
             self.assertEqual(requests[-1][0], "enable")
 
-            page.set_mode(eCoreState.CORE_MIT_MODE)
+            page.set_mode(eMotorState.MOTOR_MIT_MODE)
             page.set_device_enabled(True)
             page.mit_kind.setCurrentIndex(1)
             page.mit_csv_path.setText("/tmp/mit.csv")
@@ -398,7 +711,7 @@ class UITest(unittest.TestCase):
             page.openloop_kind.setCurrentIndex(0)
             page.current_torque_kind.setCurrentIndex(0)
             page.mit_kind.setCurrentIndex(0)
-            page.set_mode(eCoreState.CORE_OPENLOOP)
+            page.set_mode(eMotorState.MOTOR_OPENLOOP)
 
     def test_parameter_defaults_from_protocol(self):
         page = self.window.config_page
@@ -480,10 +793,12 @@ class UITest(unittest.TestCase):
         values = service._collect_config_values()
         self.assertIn("PARAM_MOTOR_RS", values)
 
-        self.assertEqual(service._target_command("位置"), CmdId.CMD_PID_POS_CTRL)
-        w.control_page.set_mode(eCoreState.CORE_MIT_MODE)
-        self.assertEqual(service._target_command("位置"), CmdId.CMD_MIT_CTRL)
-        w.control_page.set_mode(eCoreState.CORE_IDLE)
+        self.assertEqual(
+            service._build_target_payload("位置", 0.0)[0], CmdId.CMD_PID_POS_CTRL)
+        w.control_page.set_mode(eMotorState.MOTOR_MIT_MODE)
+        self.assertEqual(
+            service._build_target_payload("位置", 0.0)[0], CmdId.CMD_MIT_CTRL)
+        w.control_page.set_mode(eMotorState.MOTOR_IDLE)
 
         packet = service.serial._build_packet(CmdId.CMD_CONNECT, b"")
         self.assertEqual(packet[0], UartFrame.UART_PACKET_HEAD)
@@ -514,7 +829,7 @@ class UITest(unittest.TestCase):
         self.assertEqual([(m.id, v) for m, v in restored],
                          [(m.id, v) for m, v in records])
 
-        status_values = [1, 0, 0, 48.0, 40.0, 41.0]
+        status_values = [1, 0, 48.0, 40.0, 41.0]
         heartbeat = codec.pack_heartbeat(status_values)
         self.assertEqual(codec.unpack_heartbeat(heartbeat), status_values)
 
@@ -525,11 +840,12 @@ class UITest(unittest.TestCase):
         with self.assertRaises(ValueError):
             codec.pack_stream_set(list(range(6)))
 
-        self.assertEqual(len(codec.pack_openloop_ctrl(False, 0.5, 1.0)), 7)
-        self.assertEqual(len(codec.pack_current_torque(True, 2.0)), 5)
+        self.assertEqual(len(codec.pack_openloop_ctrl(0.5, 1.0)), 6)
+        self.assertEqual(len(codec.pack_current_torque(2.0)), 4)
         self.assertEqual(len(codec.pack_single(1.0)), 4)
         self.assertEqual(len(codec.pack_mit_ctrl(1, 2, 3)), 8)
-        self.assertEqual(len(codec.pack_mit_config(1, 2)), 8)
+        self.assertEqual(len(codec.pack_ctrl_config(4, 1)), 2)
+        self.assertEqual(len(codec.pack_ctrl_config_mit(1, 2)), 8)
         self.assertEqual(codec.pack_connect(True), b"\x01")
         self.assertEqual(len(codec.pack_iap_erase(1024)), 4)
         self.assertEqual(len(codec.pack_iap_write(0, b"x" * 120)), 124)

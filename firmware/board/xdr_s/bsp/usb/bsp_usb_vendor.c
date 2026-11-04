@@ -87,7 +87,8 @@ void bsp_usb_vendor_on_tx_done(void) {
 
 bool bsp_usb_vendor_ready(void) { return USBD_VENDOR_IsReady() != 0U; }
 
-bool bsp_usb_vendor_send(void *handle, const uint8_t *data, uint16_t len) {
+bool bsp_usb_vendor_send(void *handle, uint8_t id, const uint8_t *data,
+                         uint16_t len) {
     /* Thread-context producers only: a higher-priority ISR could interrupt
      * DataIn midway through its queue update, even with USB IRQ disabled. */
     if (handle != &g_uart_usb || __get_IPSR() != 0U)
@@ -110,16 +111,16 @@ bool bsp_usb_vendor_send(void *handle, const uint8_t *data, uint16_t len) {
 
     bool accepted = false;
     /* Internal messages include command at data[0]; wire length excludes it. */
-    uint32_t wire_len = (uint32_t)len + BSP_USB_VENDOR_OVERHEAD - 1U;
-    if (data != NULL && len != 0U && len <= BSP_USB_VENDOR_MAX_PAYLOAD &&
+    uint32_t wire_len = (uint32_t)len + BSP_USB_VENDOR_OVERHEAD;
+    if (data != NULL && len <= BSP_USB_VENDOR_MAX_PAYLOAD &&
         bsp_usb_vendor_ready() &&
         USB_RING_SIZE - (tx_head - tx_tail) >= wire_len + 2U) {
         uint8_t header[BSP_USB_VENDOR_HEADER_SIZE] = {
             0xA5,
             0x5A,
-            data[0],
-            (uint8_t)(len - 1U),
-            (uint8_t)((len - 1U) >> 8),
+            id,
+            (uint8_t)(len),
+            (uint8_t)((len) >> 8),
         };
         uint32_t pos = tx_head;
         tx_ring[pos++ & USB_RING_MASK] = (uint8_t)wire_len;
@@ -129,7 +130,7 @@ bool bsp_usb_vendor_send(void *handle, const uint8_t *data, uint16_t len) {
             tx_ring[pos++ & USB_RING_MASK] = header[i];
             crc = crc16_byte(crc, header[i]);
         }
-        for (uint16_t i = 1U; i < len; ++i) {
+        for (uint16_t i = 0; i < len; ++i) {
             tx_ring[pos++ & USB_RING_MASK] = data[i];
             crc = crc16_byte(crc, data[i]);
         }
@@ -184,7 +185,8 @@ static void rx_parse(void) {
         rx_tail += total;
         ++stats.rx_messages;
         if (g_uart_usb.rx_cb != NULL)
-            g_uart_usb.rx_cb(g_uart_usb.rx_ctx, rx_payload, (uint16_t)(len + 1U));
+            g_uart_usb.rx_cb(
+                g_uart_usb.rx_ctx, rx_payload, (uint16_t)(len + 1U));
         else
             ++stats.rx_no_callback;
     }
