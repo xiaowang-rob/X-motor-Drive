@@ -19,8 +19,6 @@
         "PARAM_QCLKP": 0.0,
         "PARAM_QCLKI": 0.0,
         "PARAM_CFALPHA": 0.5,
-        "PARAM_TUNE_CURRENT": 10,
-        "PARAM_TUNE_VEL": 20,
         "PARAM_ROTOR_OBS": 0,
         "PARAM_ABS_POS_OBS": 0,
         "PARAM_THETA_OFFSET": 0.0,

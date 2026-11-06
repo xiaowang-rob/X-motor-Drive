@@ -18,6 +18,12 @@ bool encoder_init(tEncoder *enc, const tEncDevHandle *handle) {
     memset(&enc->sample, 0U, sizeof(enc->sample));
     enc->valid_counter = 0U;
 
+    if (enc->handle->ops->init &&
+        !enc->handle->ops->init(enc->handle->dev)) {
+        enc->dstate = DEV_RUN_ERROR;
+        return false;
+    }
+
     if (!enc->handle->ops->open(enc->handle->dev)) {
         enc->dstate = DEV_RUN_ERROR;
         return false;

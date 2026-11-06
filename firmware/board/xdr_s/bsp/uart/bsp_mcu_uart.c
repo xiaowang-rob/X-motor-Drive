@@ -22,7 +22,7 @@ tMcuUart mcu_uart2 = {
 
 // ---- 中断 ----
 
-void USART2_IRQHandler(void) {
+void mcu_uart_irq(void) {
     /* ============ IDLE：线路空闲，一帧（或一段）结束 ============ */
     if (LL_USART_IsActiveFlag_IDLE(USART2) &&
         LL_USART_IsEnabledIT_IDLE(USART2)) {
@@ -61,7 +61,7 @@ void USART2_IRQHandler(void) {
 }
 
 /* TX DMA 完成中断：关闭 TX 请求，避免后续空闲线仍不断发 0x00 */
-void DMA1_Channel3_IRQHandler(void) {
+void mcu_uart_dma_tx_irq(void) {
     if (LL_DMA_IsActiveFlag_TC3(DMA1)) {
         LL_DMA_ClearFlag_TC3(DMA1);
         LL_USART_DisableDMAReq_TX(USART2); /* ★ 关键：关闭 TX DMA 请求 */

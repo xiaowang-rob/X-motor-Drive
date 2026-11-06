@@ -1,16 +1,20 @@
+#include "enc_hall.h"
+
 #include "bsp_enc_tim.h"
+#include "bsp_mcu.h"
 #include "tim.h"
 
+static bool hall_enc_init(void *handle);
 static bool hall_enc_open(void *handle);
 static bool hall_enc_close(void *handle);
 static bool hall_enc_read(void *handle, tEncSample *sample);
-static void hall_enc_abort(void *handle);
+static void hall_enc_irq(void *handle);
 
-const tEncoderOps bsp_hall_enc_ops = {
+static const tEncoderOps enc_hall_ops = {
+    .init = hall_enc_init,
     .open = hall_enc_open,
     .close = hall_enc_close,
     .read = hall_enc_read,
-    .abort = hall_enc_abort,
 };
 
 // TODO:后续由参数配置
@@ -21,10 +25,13 @@ typedef struct HALL_ENCODER_CONFIG {
     uint8_t filter;
 } tHallEncCfg;
 
-tHallEncCfg hall_cfg = {
+static tHallEncCfg hall_cfg = {
+    // 默认 120° 相序环；实际板级接线不同时必须按参数校准。
+    .sequence = {1, 3, 2, 6, 4, 5},
     .prescaler = 0,
     .filter = 0,
 };
+
 typedef struct HALL_ENCODER_DEVICE {
     volatile bool s_open, s_error, s_overflow;
     volatile uint8_t s_sector;
@@ -34,21 +41,29 @@ typedef struct HALL_ENCODER_DEVICE {
 
 static tHallEncDev hall_enc;
 
-const tEncDevHandle HALL_ENCHandle = {
-    .ops = &bsp_hall_enc_ops,
+static const tEncDevHandle s_hall_handle = {
+    .ops = &enc_hall_ops,
     .dev = &hall_enc,
 };
-const tEncDevHandle *Get_HALL_ENCHandle(void) { return &HALL_ENCHandle; }
+
+const tEncDevHandle *enc_hall_handle(void) { return &s_hall_handle; }
 
 static uint8_t hall_state(void) {
     return ((GPIOA->IDR >> 6U) & 3U) | ((GPIOB->IDR & 1U) << 2U);
 }
+
 static int sector(uint8_t state) {
     for (unsigned i = 0; i < 6; ++i)
         if (hall_cfg.sequence[i] == state)
             return (int)i;
     return -1;
 }
+
+static bool hall_enc_init(void *handle) {
+    (void)handle;
+    return true;
+}
+
 static bool hall_enc_open(void *handle) {
     if (!handle)
         return false;
@@ -64,42 +79,46 @@ static bool hall_enc_open(void *handle) {
         seen |= (uint8_t)(1U << state);
     }
 
+    bsp_tim_enc_init();
     int initial = sector(hall_state());
     if (initial < 0)
         return false;
-    TIM3->CR1 = 0U;
-    TIM3->PSC = hall_cfg.prescaler;
-    TIM3->ARR = 0xffffU;
-    // TI1S: CH1/2/3 XOR；TI1F_ED 对任意 Hall 边沿产生触发。
-    TIM3->CR2 = TIM_CR2_TI1S;
-    // CC1S=TRC：捕获 TI1F_ED 的触发脉冲，与硬件复位共用事件。
-    // IC1F 配置 TI1 输入滤波；实际毛刺抑制效果需要在板上验证。
-    TIM3->CCMR1 =
-        TIM_CCMR1_CC1S | ((uint32_t)hall_cfg.filter << TIM_CCMR1_IC1F_Pos);
-    // TS=TI1F_ED(100)，SMS=Reset(100)：捕获旧计数并硬件清零。
-    TIM3->SMCR = (4U << TIM_SMCR_TS_Pos) | (4U << TIM_SMCR_SMS_Pos);
-    // TI1F_ED 已将 XOR 的双边沿转换为脉冲；TRC 只捕获脉冲上升沿。
-    TIM3->CCER = TIM_CCER_CC1E;
-    TIM3->EGR = TIM_EGR_UG;
-    TIM3->SR = 0U;
+    const tTimEncConfig cfg = {
+        .psc = hall_cfg.prescaler,
+        .arr = 0xffffU,
+        // TI1S: CH1/2/3 XOR；TI1F_ED 对任意 Hall 边沿产生触发。
+        .cr2 = TIM_CR2_TI1S,
+        // CC1S=TRC：捕获 TI1F_ED 的触发脉冲，与硬件复位共用事件。
+        // IC1F 配置 TI1 输入滤波；实际毛刺抑制效果需要在板上验证。
+        .ccmr1 =
+            TIM_CCMR1_CC1S | ((uint32_t)hall_cfg.filter << TIM_CCMR1_IC1F_Pos),
+        // TS=TI1F_ED(100)，SMS=Reset(100)：捕获旧计数并硬件清零。
+        .smcr = (4U << TIM_SMCR_TS_Pos) | (4U << TIM_SMCR_SMS_Pos),
+        // TI1F_ED 已将 XOR 的双边沿转换为脉冲；TRC 只捕获脉冲上升沿。
+        .ccer = TIM_CCER_CC1E,
+        .dier = TIM_DIER_CC1IE | TIM_DIER_UIE,
+        // URS=1：从模式复位不产生更新中断，仅溢出才报告超时。
+        .cr1 = TIM_CR1_URS | TIM_CR1_CEN,
+    };
     inst->s_sector = (uint8_t)initial;
     inst->s_direction = 0;
     inst->s_interval = 0;
     inst->s_timestamp = HAL_GetTick();
     inst->s_error = inst->s_overflow = false;
     inst->s_open = true;
-    TIM3->DIER = TIM_DIER_CC1IE | TIM_DIER_UIE;
-    // URS=1：从模式复位不产生更新中断，仅溢出才报告超时。
-    TIM3->CR1 = TIM_CR1_URS | TIM_CR1_CEN;
+    bsp_tim_register_cb(hall_enc_irq, inst);
+    bsp_tim_enc_configure(&cfg);
     return true;
 }
-void hall_enc_irq(void *handle) {
+
+static void hall_enc_irq(void *handle) {
     if (!handle)
         return;
     tHallEncDev *inst = (tHallEncDev *)handle;
 
-    uint32_t status = TIM3->SR;
-    TIM3->SR = ~(status & (TIM_SR_CC1IF | TIM_SR_CC1OF | TIM_SR_UIF));
+    uint32_t status = bsp_tim_enc_status();
+    bsp_tim_enc_clear_status(status &
+                             (TIM_SR_CC1IF | TIM_SR_CC1OF | TIM_SR_UIF));
     if (!inst->s_open)
         return;
     if (status & TIM_SR_UIF)
@@ -107,7 +126,7 @@ void hall_enc_irq(void *handle) {
     if (status & TIM_SR_CC1OF)
         inst->s_error = true; // ISR 来不及，禁止继续输出可信角度
     if (status & TIM_SR_CC1IF) {
-        uint32_t captured = TIM3->CCR1;
+        uint32_t captured = bsp_tim_enc_capture(1U);
         int next = sector(hall_state());
         if (next < 0) {
             inst->s_error = true;
@@ -122,16 +141,15 @@ void hall_enc_irq(void *handle) {
         inst->s_sector = (uint8_t)next;
         inst->s_interval = inst->s_overflow ? 0U : captured;
         inst->s_overflow = false;
-        inst->s_timestamp = HAL_GetTick();
+        inst->s_timestamp = bsp_time_us();
     }
 }
+
 static bool hall_enc_read(void *handle, tEncSample *sample) {
-    if (!handle)
+    if (!handle || !sample)
         return false;
     tHallEncDev *inst = (tHallEncDev *)handle;
 
-    if (!sample)
-        return false;
     if (!inst->s_open)
         return false;
     uint32_t saved = __get_PRIMASK();
@@ -146,7 +164,7 @@ static bool hall_enc_read(void *handle, tEncSample *sample) {
         .referenced = true,
         .interval_ticks = inst->s_overflow ? 0U : inst->s_interval,
         .direction = inst->s_direction,
-        .ts_ms = inst->s_timestamp,
+        .ts_us = inst->s_timestamp,
     };
     __set_PRIMASK(saved);
     if (error)
@@ -154,17 +172,14 @@ static bool hall_enc_read(void *handle, tEncSample *sample) {
     *sample = next;
     return true;
 }
+
 static bool hall_enc_close(void *handle) {
     if (!handle)
         return false;
     tHallEncDev *inst = (tHallEncDev *)handle;
 
     inst->s_open = false;
-    TIM3->DIER = 0U;
-    TIM3->CCER = 0U;
-    TIM3->CR1 = 0U;
+    bsp_tim_enc_stop();
+    bsp_tim_register_cb(NULL, NULL);
     return true;
-}
-static void hall_enc_abort(void *handle) {
-    /* 无异步事务；错误通过重新 open 清除 */
 }

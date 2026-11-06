@@ -27,7 +27,7 @@ typedef enum {
 typedef struct {
     uint16_t raw;        // 保留 SPI 码值；其他模式为计数/Hall状态
     uint32_t resolution; // 支持 ABI 65536
-    uint32_t ts_ms;
+    uint32_t ts_us;
     float angle_rad; // [0,2pi)，含义由 angle_kind 指明
     eBspAngleKind angle_kind;
     bool referenced; // ABI 为是否见过 Z；Hall 不表示机械零点
@@ -36,12 +36,12 @@ typedef struct {
     int8_t direction;        // Hall 相序方向，-1/0/+1
 } tEncSample;
 
-// 驱动接口（板级实现）；handle 为驱动实例
+// 驱动接口（板级实现）；dev 为驱动实例
 typedef struct {
-    bool (*open)(void *handle);                     // 启动该路
-    bool (*close)(void *handle);                    // 停止该路
-    bool (*read)(void *handle, tEncSample *sample); // 读一次采样值
-    void (*abort)(void *handle);                    // 中止（抬 CS 等）
+    bool (*init)(void *dev);                     // 初始化
+    bool (*open)(void *dev);                     // 启动该路
+    bool (*close)(void *dev);                    // 停止该路
+    bool (*read)(void *dev, tEncSample *sample); // 读一次采样值
 } tEncoderOps;
 
 typedef struct {

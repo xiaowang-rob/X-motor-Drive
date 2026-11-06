@@ -3,7 +3,7 @@
 import math
 import struct
 
-from protocol import Didx, OBSDATA, PARAMETERS, Pidx, eMotorState
+from protocol import CmdId, Didx, OBSDATA, PARAMETERS, Pidx, eMotorState
 from protocol import codec
 from protocol import payload as layout
 
@@ -218,6 +218,24 @@ def unpack_data_stream(payload, channel_ids):
         values.append(value)
     _length(payload, offset)
     return values
+
+
+def pack_calibration(command, values):
+    """校准输入直接放入命令 payload，不经过参数读写协议。"""
+    layouts = {
+        CmdId.CMD_RL_TUNNING: "CMD_RL_TUNNING_REQUEST",
+        CmdId.CMD_PSIF_TUNNING: "CMD_PSIF_TUNNING_REQUEST",
+        CmdId.CMD_MECH_TUNNING: "CMD_MECH_TUNNING_REQUEST",
+        CmdId.CMD_OBS_TUNNING: "CMD_OBS_TUNNING_REQUEST",
+        CmdId.CMD_PID_TUNNING: "CMD_PID_TUNNING_REQUEST",
+        CmdId.CMD_MIT_TUNNING: "CMD_MIT_TUNNING_REQUEST",
+    }
+    if command not in layouts:
+        raise ValueError("未知校准命令")
+    return codec.encode(layouts[command], {
+        "tune_current": _finite(values["tune_current"]),
+        "tune_vel": _finite(values["tune_vel"]),
+    })
 
 
 def pack_connect(state):

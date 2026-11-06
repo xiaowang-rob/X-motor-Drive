@@ -1,27 +1,55 @@
 #ifndef __BSP_ENC_SPI_H
 #define __BSP_ENC_SPI_H
 
-#include "bsp_enc.h"
+#include <stdbool.h>
+#include <stdint.h>
 
-typedef struct SpiEncDev tSpiEncDev;
-// 芯片协议层：只描述模式、分辨率和一次同步读角，不持有物理实例。
-// read 在公共驱动独占总线且已配置模式后调用。
+#include "main.h"
+
+// SPI 编码器链路层：SPI1 + DMA 的异步单事务接口。
+// 本层不包含芯片协议，三个芯片驱动各自实现 tEncoderOps。
+
+typedef enum {
+    BSP_ENC_SPI_MODE_0 = 0,
+    BSP_ENC_SPI_MODE_1,
+    BSP_ENC_SPI_MODE_2,
+    BSP_ENC_SPI_MODE_3,
+} tBspEncSpiMode;
+
+typedef enum {
+    BSP_ENC_SPI_DATA_8BIT = 0,
+    BSP_ENC_SPI_DATA_16BIT,
+} tBspEncSpiDataBits;
+
+typedef enum {
+    BSP_ENC_SPI_OK = 0,
+    BSP_ENC_SPI_ERR_DMA,
+    BSP_ENC_SPI_ERR_SPI,
+} tBspEncSpiResult;
+
+typedef void (*tBspEncSpiCallback)(tBspEncSpiResult result, void *context);
+
 typedef struct {
-    uint8_t cpol;
-    uint8_t cpha;
-    uint8_t data_bits;
-    uint16_t resolution;
-    bool (*read)(tSpiEncDev *dev, uint16_t *raw);
-} tSpiEncChipOps;
+    GPIO_TypeDef *cs_port;
+    uint32_t cs_pin;
+    tBspEncSpiMode mode;
+    tBspEncSpiDataBits data_bits;
+    tBspEncSpiCallback callback;
+    void *context;
+} tBspEncSpiConfig;
 
-extern const tSpiEncChipOps spi_mt6816_ops;
-extern const tSpiEncChipOps spi_mt6835_ops;
-extern const tSpiEncChipOps spi_as5047_ops;
+// 初始化 SPI1/DMA/CS 并注册完成回调。一次只能配置一路编码器。
+bool bsp_enc_spi_init(const tBspEncSpiConfig *config);
 
-// 单次 CS 帧：拉低 CS → 全双工收发 → 等待总线空闲 → 拉高 CS。
-// len 为字节数；16 位模式使用低字节在前的内存视图，不要求缓冲区对齐。
-// 仅供 chip ops 调用，多帧协议通过多次调用产生 CS 边界。
-bool enc_spi_transfer(tSpiEncDev *dev, const uint8_t *tx, uint8_t *rx,
-                      uint16_t len);
+// 启动一次完整 CS 事务（CS 拉低 → DMA 全双工 → 完成后回调中 CS 抬高）。
+// frame_count 为数据项个数：8-bit 模式为字节数，16-bit 模式为 halfword 数。
+bool bsp_enc_spi_start(const void *tx_buf, void *rx_buf, uint16_t frame_count);
+
+bool bsp_enc_spi_is_busy(void);
+
+// 中断入口，由 stm32g4xx_it.c 调用。
+void bsp_enc_spi_dma_rx_irq(void);
+void bsp_enc_spi_dma_tx_irq(void);
+void bsp_enc_spi_spi_irq(void);
 
 #endif // __BSP_ENC_SPI_H

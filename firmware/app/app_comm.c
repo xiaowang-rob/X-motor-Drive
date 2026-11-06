@@ -8,6 +8,7 @@
 #include "obsdata.h"
 #include "parameters.h"
 #include "protection.h"
+#include "tune.h"
 
 #include "app_main.h"
 #include "bsp_cfg.h"
@@ -451,16 +452,66 @@ static void _process_command(ePort port, uint8_t cmd_id, const uint8_t *data,
         _target_mit_ctrl(data, len);
         break;
 
-    case CMD_RL_TUNNING:
-    case CMD_PSIF_TUNNING:
-    case CMD_MECH_TUNNING:
-    case CMD_OBS_TUNNING:
-    case CMD_PID_TUNNING:
-    case CMD_MIT_TUNNING:
-        // TODO: 校准服务入口/全局 tTune 尚未在 cmd_process 之外初始化
-        _reply(port, cmd_id, false);
+    case CMD_RL_TUNNING: {
+        uint8_t payload_size;
+        float tune_current;
+        DEPACK_RL_TUNNING_REQUEST(payload_size, data, tune_current);
+        if (payload_size != len)
+            pm_handle_fault(FAULT_INVALID_INPUT);
+        else
+            tune_start(TUNE_RL, tune_current, 0.0f);
         break;
-
+    }
+    case CMD_PSIF_TUNNING: {
+        uint8_t payload_size;
+        float tune_vel;
+        DEPACK_PSIF_TUNNING_REQUEST(payload_size, data, tune_vel);
+        if (payload_size != len)
+            pm_handle_fault(FAULT_INVALID_INPUT);
+        else
+            tune_start(TUNE_Psif, 0.0f, tune_vel);
+        break;
+    }
+    case CMD_MECH_TUNNING: {
+        uint8_t payload_size;
+        float tune_cur, tune_vel;
+        DEPACK_MECH_TUNNING_REQUEST(payload_size, data, tune_cur, tune_vel);
+        if (payload_size != len)
+            pm_handle_fault(FAULT_INVALID_INPUT);
+        else
+            tune_start(TUNE_MECH, tune_cur, tune_vel);
+        break;
+    }
+    case CMD_OBS_TUNNING: {
+        uint8_t payload_size;
+        float tune_cur, tune_vel;
+        DEPACK_OBS_TUNNING_REQUEST(payload_size, data, tune_cur, tune_vel);
+        if (payload_size != len)
+            pm_handle_fault(FAULT_INVALID_INPUT);
+        else
+            tune_start(TUNE_OBS, tune_cur, tune_vel);
+        break;
+    }
+    case CMD_PID_TUNNING: {
+        uint8_t payload_size;
+        float tune_cur, tune_vel;
+        DEPACK_PID_TUNNING_REQUEST(payload_size, data, tune_cur, tune_vel);
+        if (payload_size != len)
+            pm_handle_fault(FAULT_INVALID_INPUT);
+        else
+            tune_start(TUNE_PID, tune_cur, tune_vel);
+        break;
+    }
+    case CMD_MIT_TUNNING: {
+        uint8_t payload_size;
+        float tune_cur, tune_vel;
+        DEPACK_MIT_TUNNING_REQUEST(payload_size, data, tune_cur, tune_vel);
+        if (payload_size != len)
+            pm_handle_fault(FAULT_INVALID_INPUT);
+        else
+            tune_start(TUNE_MIT, tune_cur, tune_vel);
+        break;
+    }
     default:
         pm_handle_fault(FAULT_INVALID_INPUT);
         break;

@@ -4,15 +4,8 @@
 #include "encoder.h"
 #include "parameter_list.h"
 
-// sincos encoder
-const tEncDevHandle *Get_SINCOS_ENCHandle(void);
-// spi encoder handle
-const tEncDevHandle *Get_SPI_ENCHandle(eSpiEncList chip);
-// 内置 encoder
-const tEncDevHandle *Get_INT_ENCHandle(void);
-// abi encoder
-const tEncDevHandle *Get_ABI_ENCHandle(void);
-// hall encoder
-const tEncDevHandle *Get_HALL_ENCHandle(void);
+// 总 API：按观测器类型返回驱动句柄（ops + dev）。
+// OBS_NONE 或参数无效返回 NULL；OBS_INT_ENC 固定板载 MT6816。
+const tEncDevHandle *bsp_enc_get_handle(eObsList enc, eSpiEncList spi_chip);
 
-#endif
+#endif // __BSP_ENC_H

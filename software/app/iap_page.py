@@ -22,6 +22,7 @@ class IAPPage(ContentPage):
         self.device_card = PlainCard("设备版本信息")
         self.device_card.add_fields([
             ("设备型号", ""),
+            ("硬件版本", ""),
             ("Bootloader 版本", ""),
             ("Application 版本", ""),
         ], read_only=True, data_type="str", show_actions=False)

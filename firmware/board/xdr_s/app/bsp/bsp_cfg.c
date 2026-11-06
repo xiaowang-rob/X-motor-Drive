@@ -111,30 +111,12 @@ bool bsp_base_init(void) {
 
 // 外接编码器初始化
 bool bsp_enc_init(eObsList enc, eSpiEncList spi_enc) {
-    tEncDevHandle *handle;
-
-    switch (enc) {
-    case OBS_NONE:
+    if (enc == OBS_NONE)
         return true;
 
-    case OBS_INT_ENC:
-        handle = Get_INT_ENCHandle();
-        break;
-    case OBS_ENC_HALL:
-        handle = Get_HALL_ENCHandle();
-        break;
-    case OBS_ENC_SPI:
-        handle = Get_SPI_ENCHandle(spi_enc);
-        break;
-    case OBS_ENC_ABI:
-        handle = Get_ABI_ENCHandle();
-        break;
-    case OBS_ENC_SINCOS:
-        handle = Get_SINCOS_ENCHandle();
-        break;
-    default:
+    const tEncDevHandle *handle = bsp_enc_get_handle(enc, spi_enc);
+    if (!handle)
         return false;
-    }
 
     return encoder_init(&g_enc, handle);
 }

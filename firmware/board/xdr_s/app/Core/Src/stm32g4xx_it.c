@@ -22,7 +22,9 @@
 #include "main.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "bsp_enc_spi.h"
 #include "bsp_pwm.h"
+#include "bsp_uart.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -213,9 +215,9 @@ void DMA1_Channel2_IRQHandler(void) {
 /**
  * @brief This function handles DMA1 channel3 global interrupt.
  */
-__weak void DMA1_Channel3_IRQHandler(void) {
+void DMA1_Channel3_IRQHandler(void) {
     /* USER CODE BEGIN DMA1_Channel3_IRQn 0 */
-
+    mcu_uart_dma_tx_irq();
     /* USER CODE END DMA1_Channel3_IRQn 0 */
     /* USER CODE BEGIN DMA1_Channel3_IRQn 1 */
 
@@ -239,7 +241,7 @@ void DMA1_Channel4_IRQHandler(void) {
  */
 void DMA1_Channel5_IRQHandler(void) {
     /* USER CODE BEGIN DMA1_Channel5_IRQn 0 */
-
+    bsp_enc_spi_dma_rx_irq();
     /* USER CODE END DMA1_Channel5_IRQn 0 */
     /* USER CODE BEGIN DMA1_Channel5_IRQn 1 */
 
@@ -251,7 +253,7 @@ void DMA1_Channel5_IRQHandler(void) {
  */
 void DMA1_Channel6_IRQHandler(void) {
     /* USER CODE BEGIN DMA1_Channel6_IRQn 0 */
-
+    bsp_enc_spi_dma_tx_irq();
     /* USER CODE END DMA1_Channel6_IRQn 0 */
     /* USER CODE BEGIN DMA1_Channel6_IRQn 1 */
 
@@ -303,7 +305,7 @@ void TIM1_UP_TIM16_IRQHandler(void) {
  */
 void SPI1_IRQHandler(void) {
     /* USER CODE BEGIN SPI1_IRQn 0 */
-
+    bsp_enc_spi_spi_irq();
     /* USER CODE END SPI1_IRQn 0 */
     /* USER CODE BEGIN SPI1_IRQn 1 */
 
@@ -314,9 +316,9 @@ void SPI1_IRQHandler(void) {
  * @brief This function handles USART2 global interrupt / USART2 wake-up
  * interrupt through EXTI line 26.
  */
-__weak void USART2_IRQHandler(void) {
+void USART2_IRQHandler(void) {
     /* USER CODE BEGIN USART2_IRQn 0 */
-
+    mcu_uart_irq();
     /* USER CODE END USART2_IRQn 0 */
     /* USER CODE BEGIN USART2_IRQn 1 */
 

@@ -58,8 +58,6 @@ fields:
 - {field: qclkp, name: q轴电流环Kp, id_name: PARAM_QCLKP, unit: A/V, val_type: FLD_F32, default: 0.0}
 - {field: qclki, name: q轴电流环Ki, id_name: PARAM_QCLKI, unit: A/(V·s), val_type: FLD_F32, default: 0.0}
 - {field: cfalpha, name: 电流滤波系数, id_name: PARAM_CFALPHA, unit: 0~1, val_type: FLD_F32, default: 0.5}
-- {field: tune_current, name: 校准电流, id_name: PARAM_TUNE_CURRENT, unit: A, val_type: FLD_F32, default: 10}
-- {field: tune_vel, name: 校准速度, id_name: PARAM_TUNE_VEL, unit: rad/s, val_type: FLD_F32, default: 20}
 - field: rotor_obs
   name: 转子观测器
   id_name: PARAM_ROTOR_OBS

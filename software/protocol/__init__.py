@@ -33,64 +33,62 @@ class Pidx:
     PARAM_QCLKP = 17  # q轴电流环Kp
     PARAM_QCLKI = 18  # q轴电流环Ki
     PARAM_CFALPHA = 19  # 电流滤波系数
-    PARAM_TUNE_CURRENT = 20  # 校准电流
-    PARAM_TUNE_VEL = 21  # 校准速度
-    PARAM_ROTOR_OBS = 22  # 转子观测器
-    PARAM_ABS_POS_OBS = 23  # 绝对位置观测器
-    PARAM_THETA_OFFSET = 24  # 角度偏移
-    PARAM_POSITIVE_DIR = 25  # 方向反转
-    PARAM_THETA_SOURCE = 26  # 角度源
-    PARAM_VEL_SOURCE = 27  # 速度源
-    PARAM_HFI_SMO_THRESHOLD = 28  # HFI/SMO切换阈值
-    PARAM_HALL_TABLE_0 = 29  # HALL编码器表0
-    PARAM_HALL_TABLE_1 = 30  # HALL编码器表1
-    PARAM_HALL_TABLE_2 = 31  # HALL编码器表2
-    PARAM_HALL_TABLE_3 = 32  # HALL编码器表3
-    PARAM_HALL_TABLE_4 = 33  # HALL编码器表4
-    PARAM_HALL_TABLE_5 = 34  # HALL编码器表5
-    PARAM_HALL_TABLE_6 = 35  # HALL编码器表6
-    PARAM_HALL_TABLE_7 = 36  # HALL编码器表7
-    PARAM_ABI_COUNT = 37  # ABI编码器线数
-    PARAM_SIN_AMP = 38  # SIN幅值
-    PARAM_COS_AMP = 39  # COS幅值
-    PARAM_SIN_OFFSET = 40  # SIN偏移
-    PARAM_COS_OFFSET = 41  # COS偏移
-    PARAM_SINCOS_FL = 42  # SINCOS滤波系数
-    PARAM_ENC_CHIP = 43  # 编码器芯片
-    PARAM_VLKP = 44  # 速度环Kp
-    PARAM_VLKI = 45  # 速度环Ki
-    PARAM_VELOCITY_LIMIT = 46  # 速度限制
-    PARAM_POS_PIDMODE = 47  # 位置环模式
-    PARAM_PLKP = 48  # 位置环Kp
-    PARAM_PLKI = 49  # 位置环Ki
-    PARAM_PLKD = 50  # 位置环Kd
-    PARAM_PLALPHA = 51  # 位置环滤波系数
-    PARAM_POS_LIMIT_MODE = 52  # 位置限制模式
-    PARAM_POS_MIN_LIMIT = 53  # 最小位置
-    PARAM_POS_MAX_LIMIT = 54  # 最大位置
-    PARAM_MIT_KP = 55  # MIT 刚度(Kp)
-    PARAM_MIT_KD = 56  # MIT 阻尼(Kd)
-    PARAM_MIT_KPMAX = 57  # MIT 最大刚度
-    PARAM_MIT_KDMAX = 58  # MIT 最大阻尼
-    PARAM_MIT_TMAX = 59  # MIT最大扭矩
-    PARAM_FWLKP = 60  # 弱磁Kp
-    PARAM_FWLKI = 61  # 弱磁Ki
-    PARAM_TRAJ_MODE = 62  # 轨迹规划器模式
-    PARAM_TRAJ_LIMIT_D1 = 63  # 轨迹一阶限幅
-    PARAM_TRAJ_LIMIT_D2 = 64  # 轨迹二阶限幅
-    PARAM_TRAJ_LIMIT_D3 = 65  # 轨迹三阶限幅
-    PARAM_TRAJ_TOLERANCE = 66  # 轨迹容差
-    PARAM_UNDERVOLTAGE_THRESHOLD = 67  # 欠压阈值
-    PARAM_OVERVOLTAGE_THRESHOLD = 68  # 过压阈值
-    PARAM_OVERTEMP_THRESHOLD = 69  # 过温阈值
-    PARAM_PRO_TOLERANCE = 70  # 保护超限容忍度
-    PARAM_PRO_TOLERANCE_TIME_MS = 71  # 保护超限容忍时间
-    PARAM_CAN_RATE = 72  # CAN速率
-    PARAM_CAN_ID = 73  # CAN ID
-    PARAM_CAN_MODE = 74  # CAN模式
+    PARAM_ROTOR_OBS = 20  # 转子观测器
+    PARAM_ABS_POS_OBS = 21  # 绝对位置观测器
+    PARAM_THETA_OFFSET = 22  # 角度偏移
+    PARAM_POSITIVE_DIR = 23  # 方向反转
+    PARAM_THETA_SOURCE = 24  # 角度源
+    PARAM_VEL_SOURCE = 25  # 速度源
+    PARAM_HFI_SMO_THRESHOLD = 26  # HFI/SMO切换阈值
+    PARAM_HALL_TABLE_0 = 27  # HALL编码器表0
+    PARAM_HALL_TABLE_1 = 28  # HALL编码器表1
+    PARAM_HALL_TABLE_2 = 29  # HALL编码器表2
+    PARAM_HALL_TABLE_3 = 30  # HALL编码器表3
+    PARAM_HALL_TABLE_4 = 31  # HALL编码器表4
+    PARAM_HALL_TABLE_5 = 32  # HALL编码器表5
+    PARAM_HALL_TABLE_6 = 33  # HALL编码器表6
+    PARAM_HALL_TABLE_7 = 34  # HALL编码器表7
+    PARAM_ABI_COUNT = 35  # ABI编码器线数
+    PARAM_SIN_AMP = 36  # SIN幅值
+    PARAM_COS_AMP = 37  # COS幅值
+    PARAM_SIN_OFFSET = 38  # SIN偏移
+    PARAM_COS_OFFSET = 39  # COS偏移
+    PARAM_SINCOS_FL = 40  # SINCOS滤波系数
+    PARAM_ENC_CHIP = 41  # 编码器芯片
+    PARAM_VLKP = 42  # 速度环Kp
+    PARAM_VLKI = 43  # 速度环Ki
+    PARAM_VELOCITY_LIMIT = 44  # 速度限制
+    PARAM_POS_PIDMODE = 45  # 位置环模式
+    PARAM_PLKP = 46  # 位置环Kp
+    PARAM_PLKI = 47  # 位置环Ki
+    PARAM_PLKD = 48  # 位置环Kd
+    PARAM_PLALPHA = 49  # 位置环滤波系数
+    PARAM_POS_LIMIT_MODE = 50  # 位置限制模式
+    PARAM_POS_MIN_LIMIT = 51  # 最小位置
+    PARAM_POS_MAX_LIMIT = 52  # 最大位置
+    PARAM_MIT_KP = 53  # MIT 刚度(Kp)
+    PARAM_MIT_KD = 54  # MIT 阻尼(Kd)
+    PARAM_MIT_KPMAX = 55  # MIT 最大刚度
+    PARAM_MIT_KDMAX = 56  # MIT 最大阻尼
+    PARAM_MIT_TMAX = 57  # MIT最大扭矩
+    PARAM_FWLKP = 58  # 弱磁Kp
+    PARAM_FWLKI = 59  # 弱磁Ki
+    PARAM_TRAJ_MODE = 60  # 轨迹规划器模式
+    PARAM_TRAJ_LIMIT_D1 = 61  # 轨迹一阶限幅
+    PARAM_TRAJ_LIMIT_D2 = 62  # 轨迹二阶限幅
+    PARAM_TRAJ_LIMIT_D3 = 63  # 轨迹三阶限幅
+    PARAM_TRAJ_TOLERANCE = 64  # 轨迹容差
+    PARAM_UNDERVOLTAGE_THRESHOLD = 65  # 欠压阈值
+    PARAM_OVERVOLTAGE_THRESHOLD = 66  # 过压阈值
+    PARAM_OVERTEMP_THRESHOLD = 67  # 过温阈值
+    PARAM_PRO_TOLERANCE = 68  # 保护超限容忍度
+    PARAM_PRO_TOLERANCE_TIME_MS = 69  # 保护超限容忍时间
+    PARAM_CAN_RATE = 70  # CAN速率
+    PARAM_CAN_ID = 71  # CAN ID
+    PARAM_CAN_MODE = 72  # CAN模式
     PARAM_ALL = 255  # 全部参数；写入时仅发送此 ID 表示应用全部已写入参数，重置时表示全部重置，不携带 value
-    NUM_OF_PARAM = 75  # PARAM总数
-PARAM_NUM = 75
+    NUM_OF_PARAM = 73  # PARAM总数
+PARAM_NUM = 73
 
 class Didx:
     DATA_CURRENT_U = 1  # U相电流
@@ -303,61 +301,59 @@ PARAMETERS = {
     17: ProtocolField(17, 'PARAM_QCLKP', 'qclkp', 'q轴电流环Kp', 'A/V', 'FLD_F32', 0.0, None),
     18: ProtocolField(18, 'PARAM_QCLKI', 'qclki', 'q轴电流环Ki', 'A/(V·s)', 'FLD_F32', 0.0, None),
     19: ProtocolField(19, 'PARAM_CFALPHA', 'cfalpha', '电流滤波系数', '0~1', 'FLD_F32', 0.5, None),
-    20: ProtocolField(20, 'PARAM_TUNE_CURRENT', 'tune_current', '校准电流', 'A', 'FLD_F32', 10, None),
-    21: ProtocolField(21, 'PARAM_TUNE_VEL', 'tune_vel', '校准速度', 'rad/s', 'FLD_F32', 20, None),
-    22: ProtocolField(22, 'PARAM_ROTOR_OBS', 'rotor_obs', '转子观测器', '', 'FLD_U8', 0, [('无观测', 0), ('内置编码器', 1), ('霍尔编码器', 2), ('SPI编码器', 3), ('ABI编码器', 4), ('正余弦编码器', 5), ('HFI+SMO观测器', 6)]),
-    23: ProtocolField(23, 'PARAM_ABS_POS_OBS', 'abs_pos_obs', '绝对位置观测器', '', 'FLD_U8', 0, [('无观测', 0), ('内置编码器', 1), ('霍尔编码器', 2), ('SPI编码器', 3), ('ABI编码器', 4), ('正余弦编码器', 5), ('HFI+SMO观测器', 6)]),
-    24: ProtocolField(24, 'PARAM_THETA_OFFSET', 'theta_offset', '角度偏移', 'rad', 'FLD_F32', 0.0, None),
-    25: ProtocolField(25, 'PARAM_POSITIVE_DIR', 'positive_dir', '方向反转', '', 'FLD_BOOL', False, None),
-    26: ProtocolField(26, 'PARAM_THETA_SOURCE', 'theta_source', '角度源', '', 'FLD_U8', 0, [('PLL', 0), ('原始角度', 1)]),
-    27: ProtocolField(27, 'PARAM_VEL_SOURCE', 'vel_source', '速度源', '', 'FLD_U8', 0, [('PLL', 0), ('差分速度', 1)]),
-    28: ProtocolField(28, 'PARAM_HFI_SMO_THRESHOLD', 'hfi_smo_threshold', 'HFI/SMO切换阈值', 'rad/s', 'FLD_F32', 0.0, None),
-    29: ProtocolField(29, 'PARAM_HALL_TABLE_0', 'hall_table_0', 'HALL编码器表0', '', 'FLD_U8', 255, None),
-    30: ProtocolField(30, 'PARAM_HALL_TABLE_1', 'hall_table_1', 'HALL编码器表1', '', 'FLD_U8', 255, None),
-    31: ProtocolField(31, 'PARAM_HALL_TABLE_2', 'hall_table_2', 'HALL编码器表2', '', 'FLD_U8', 255, None),
-    32: ProtocolField(32, 'PARAM_HALL_TABLE_3', 'hall_table_3', 'HALL编码器表3', '', 'FLD_U8', 255, None),
-    33: ProtocolField(33, 'PARAM_HALL_TABLE_4', 'hall_table_4', 'HALL编码器表4', '', 'FLD_U8', 255, None),
-    34: ProtocolField(34, 'PARAM_HALL_TABLE_5', 'hall_table_5', 'HALL编码器表5', '', 'FLD_U8', 255, None),
-    35: ProtocolField(35, 'PARAM_HALL_TABLE_6', 'hall_table_6', 'HALL编码器表6', '', 'FLD_U8', 255, None),
-    36: ProtocolField(36, 'PARAM_HALL_TABLE_7', 'hall_table_7', 'HALL编码器表7', '', 'FLD_U8', 255, None),
-    37: ProtocolField(37, 'PARAM_ABI_COUNT', 'abi_count', 'ABI编码器线数', 'counts/rev', 'FLD_U16', 8192, None),
-    38: ProtocolField(38, 'PARAM_SIN_AMP', 'sin_amp', 'SIN幅值', 'V', 'FLD_F32', 1.0, None),
-    39: ProtocolField(39, 'PARAM_COS_AMP', 'cos_amp', 'COS幅值', 'V', 'FLD_F32', 1.0, None),
-    40: ProtocolField(40, 'PARAM_SIN_OFFSET', 'sin_offset', 'SIN偏移', 'V', 'FLD_F32', 1.65, None),
-    41: ProtocolField(41, 'PARAM_COS_OFFSET', 'cos_offset', 'COS偏移', 'V', 'FLD_F32', 1.65, None),
-    42: ProtocolField(42, 'PARAM_SINCOS_FL', 'sincos_fl', 'SINCOS滤波系数', '0~1', 'FLD_F32', 0.5, None),
-    43: ProtocolField(43, 'PARAM_ENC_CHIP', 'enc_chip', '编码器芯片', '', 'FLD_U8', 0, [('MT6816', 0), ('MT6835', 1), ('AS5047', 2)]),
-    44: ProtocolField(44, 'PARAM_VLKP', 'vlkp', '速度环Kp', '', 'FLD_F32', 0.0, None),
-    45: ProtocolField(45, 'PARAM_VLKI', 'vlki', '速度环Ki', '', 'FLD_F32', 0.0, None),
-    46: ProtocolField(46, 'PARAM_VELOCITY_LIMIT', 'velocity_limit', '速度限制', 'rad/s', 'FLD_F32', 500, None),
-    47: ProtocolField(47, 'PARAM_POS_PIDMODE', 'pos_pidmode', '位置环模式', '', 'FLD_U8', 0, [('PVC三环级联(抗干扰)', 0), ('PC双环(高响应)', 1)]),
-    48: ProtocolField(48, 'PARAM_PLKP', 'plkp', '位置环Kp', '1/s', 'FLD_F32', 0.0, None),
-    49: ProtocolField(49, 'PARAM_PLKI', 'plki', '位置环Ki', '1/s²', 'FLD_F32', 0.0, None),
-    50: ProtocolField(50, 'PARAM_PLKD', 'plkd', '位置环Kd', '', 'FLD_F32', 0.0, None),
-    51: ProtocolField(51, 'PARAM_PLALPHA', 'plalpha', '位置环滤波系数', '0~1', 'FLD_F32', 0.5, None),
-    52: ProtocolField(52, 'PARAM_POS_LIMIT_MODE', 'pos_limit_mode', '位置限制模式', '', 'FLD_U8', 0, [('禁用', 0), ('最小位置限制', 1), ('最大位置限制', 2), ('双端位置限制', 3)]),
-    53: ProtocolField(53, 'PARAM_POS_MIN_LIMIT', 'pos_min_limit', '最小位置', 'rad', 'FLD_F32', -15000, None),
-    54: ProtocolField(54, 'PARAM_POS_MAX_LIMIT', 'pos_max_limit', '最大位置', 'rad', 'FLD_F32', 15000, None),
-    55: ProtocolField(55, 'PARAM_MIT_KP', 'mit_kp', 'MIT 刚度(Kp)', 'N·m/rad', 'FLD_F32', 0.0, None),
-    56: ProtocolField(56, 'PARAM_MIT_KD', 'mit_kd', 'MIT 阻尼(Kd)', 'N·m·s/rad', 'FLD_F32', 0.0, None),
-    57: ProtocolField(57, 'PARAM_MIT_KPMAX', 'mit_kpmax', 'MIT 最大刚度', 'N·m/rad', 'FLD_F32', 0.0, None),
-    58: ProtocolField(58, 'PARAM_MIT_KDMAX', 'mit_kdmax', 'MIT 最大阻尼', 'N·m·s/rad', 'FLD_F32', 0.0, None),
-    59: ProtocolField(59, 'PARAM_MIT_TMAX', 'mit_tmax', 'MIT最大扭矩', 'N·m', 'FLD_F32', 0.0, None),
-    60: ProtocolField(60, 'PARAM_FWLKP', 'fwlkp', '弱磁Kp', '', 'FLD_F32', 0.0, None),
-    61: ProtocolField(61, 'PARAM_FWLKI', 'fwlki', '弱磁Ki', '', 'FLD_F32', 0.0, None),
-    62: ProtocolField(62, 'PARAM_TRAJ_MODE', 'traj_mode', '轨迹规划器模式', '', 'FLD_U8', 0, [('禁用', 0), ('梯形轨迹(斜坡缓冲)', 1), ('曲线轨迹(双重缓冲)', 2)]),
-    63: ProtocolField(63, 'PARAM_TRAJ_LIMIT_D1', 'traj_limit_d1', '轨迹一阶限幅', 'unit/s', 'FLD_F32', 0.0, None),
-    64: ProtocolField(64, 'PARAM_TRAJ_LIMIT_D2', 'traj_limit_d2', '轨迹二阶限幅', 'unit/s²', 'FLD_F32', 0.0, None),
-    65: ProtocolField(65, 'PARAM_TRAJ_LIMIT_D3', 'traj_limit_d3', '轨迹三阶限幅', 'unit/s³', 'FLD_F32', 0.0, None),
-    66: ProtocolField(66, 'PARAM_TRAJ_TOLERANCE', 'traj_tolerance', '轨迹容差', '0~1', 'FLD_F32', 0.0, None),
-    67: ProtocolField(67, 'PARAM_UNDERVOLTAGE_THRESHOLD', 'undervoltage_threshold', '欠压阈值', 'V', 'FLD_F32', 20, None),
-    68: ProtocolField(68, 'PARAM_OVERVOLTAGE_THRESHOLD', 'overvoltage_threshold', '过压阈值', 'V', 'FLD_F32', 26, None),
-    69: ProtocolField(69, 'PARAM_OVERTEMP_THRESHOLD', 'overtemp_threshold', '过温阈值', '℃', 'FLD_F32', 80, None),
-    70: ProtocolField(70, 'PARAM_PRO_TOLERANCE', 'pro_tolerance', '保护超限容忍度', '0~1', 'FLD_F32', 0.1, None),
-    71: ProtocolField(71, 'PARAM_PRO_TOLERANCE_TIME_MS', 'pro_tolerance_time_ms', '保护超限容忍时间', 'ms', 'FLD_F32', 1, None),
-    72: ProtocolField(72, 'PARAM_CAN_RATE', 'can_rate', 'CAN速率', '', 'FLD_U8', 0, [('1Mbps', 0), ('500Kbps', 1)]),
-    73: ProtocolField(73, 'PARAM_CAN_ID', 'can_id', 'CAN ID', '', 'FLD_U32', 1, None),
-    74: ProtocolField(74, 'PARAM_CAN_MODE', 'can_mode', 'CAN模式', '', 'FLD_U8', 0, [('静默模式', 0), ('响应模式', 1)]),
+    20: ProtocolField(20, 'PARAM_ROTOR_OBS', 'rotor_obs', '转子观测器', '', 'FLD_U8', 0, [('无观测', 0), ('内置编码器', 1), ('霍尔编码器', 2), ('SPI编码器', 3), ('ABI编码器', 4), ('正余弦编码器', 5), ('HFI+SMO观测器', 6)]),
+    21: ProtocolField(21, 'PARAM_ABS_POS_OBS', 'abs_pos_obs', '绝对位置观测器', '', 'FLD_U8', 0, [('无观测', 0), ('内置编码器', 1), ('霍尔编码器', 2), ('SPI编码器', 3), ('ABI编码器', 4), ('正余弦编码器', 5), ('HFI+SMO观测器', 6)]),
+    22: ProtocolField(22, 'PARAM_THETA_OFFSET', 'theta_offset', '角度偏移', 'rad', 'FLD_F32', 0.0, None),
+    23: ProtocolField(23, 'PARAM_POSITIVE_DIR', 'positive_dir', '方向反转', '', 'FLD_BOOL', False, None),
+    24: ProtocolField(24, 'PARAM_THETA_SOURCE', 'theta_source', '角度源', '', 'FLD_U8', 0, [('PLL', 0), ('原始角度', 1)]),
+    25: ProtocolField(25, 'PARAM_VEL_SOURCE', 'vel_source', '速度源', '', 'FLD_U8', 0, [('PLL', 0), ('差分速度', 1)]),
+    26: ProtocolField(26, 'PARAM_HFI_SMO_THRESHOLD', 'hfi_smo_threshold', 'HFI/SMO切换阈值', 'rad/s', 'FLD_F32', 0.0, None),
+    27: ProtocolField(27, 'PARAM_HALL_TABLE_0', 'hall_table_0', 'HALL编码器表0', '', 'FLD_U8', 255, None),
+    28: ProtocolField(28, 'PARAM_HALL_TABLE_1', 'hall_table_1', 'HALL编码器表1', '', 'FLD_U8', 255, None),
+    29: ProtocolField(29, 'PARAM_HALL_TABLE_2', 'hall_table_2', 'HALL编码器表2', '', 'FLD_U8', 255, None),
+    30: ProtocolField(30, 'PARAM_HALL_TABLE_3', 'hall_table_3', 'HALL编码器表3', '', 'FLD_U8', 255, None),
+    31: ProtocolField(31, 'PARAM_HALL_TABLE_4', 'hall_table_4', 'HALL编码器表4', '', 'FLD_U8', 255, None),
+    32: ProtocolField(32, 'PARAM_HALL_TABLE_5', 'hall_table_5', 'HALL编码器表5', '', 'FLD_U8', 255, None),
+    33: ProtocolField(33, 'PARAM_HALL_TABLE_6', 'hall_table_6', 'HALL编码器表6', '', 'FLD_U8', 255, None),
+    34: ProtocolField(34, 'PARAM_HALL_TABLE_7', 'hall_table_7', 'HALL编码器表7', '', 'FLD_U8', 255, None),
+    35: ProtocolField(35, 'PARAM_ABI_COUNT', 'abi_count', 'ABI编码器线数', 'counts/rev', 'FLD_U16', 8192, None),
+    36: ProtocolField(36, 'PARAM_SIN_AMP', 'sin_amp', 'SIN幅值', 'V', 'FLD_F32', 1.0, None),
+    37: ProtocolField(37, 'PARAM_COS_AMP', 'cos_amp', 'COS幅值', 'V', 'FLD_F32', 1.0, None),
+    38: ProtocolField(38, 'PARAM_SIN_OFFSET', 'sin_offset', 'SIN偏移', 'V', 'FLD_F32', 1.65, None),
+    39: ProtocolField(39, 'PARAM_COS_OFFSET', 'cos_offset', 'COS偏移', 'V', 'FLD_F32', 1.65, None),
+    40: ProtocolField(40, 'PARAM_SINCOS_FL', 'sincos_fl', 'SINCOS滤波系数', '0~1', 'FLD_F32', 0.5, None),
+    41: ProtocolField(41, 'PARAM_ENC_CHIP', 'enc_chip', '编码器芯片', '', 'FLD_U8', 0, [('MT6816', 0), ('MT6835', 1), ('AS5047', 2)]),
+    42: ProtocolField(42, 'PARAM_VLKP', 'vlkp', '速度环Kp', '', 'FLD_F32', 0.0, None),
+    43: ProtocolField(43, 'PARAM_VLKI', 'vlki', '速度环Ki', '', 'FLD_F32', 0.0, None),
+    44: ProtocolField(44, 'PARAM_VELOCITY_LIMIT', 'velocity_limit', '速度限制', 'rad/s', 'FLD_F32', 500, None),
+    45: ProtocolField(45, 'PARAM_POS_PIDMODE', 'pos_pidmode', '位置环模式', '', 'FLD_U8', 0, [('PVC三环级联(抗干扰)', 0), ('PC双环(高响应)', 1)]),
+    46: ProtocolField(46, 'PARAM_PLKP', 'plkp', '位置环Kp', '1/s', 'FLD_F32', 0.0, None),
+    47: ProtocolField(47, 'PARAM_PLKI', 'plki', '位置环Ki', '1/s²', 'FLD_F32', 0.0, None),
+    48: ProtocolField(48, 'PARAM_PLKD', 'plkd', '位置环Kd', '', 'FLD_F32', 0.0, None),
+    49: ProtocolField(49, 'PARAM_PLALPHA', 'plalpha', '位置环滤波系数', '0~1', 'FLD_F32', 0.5, None),
+    50: ProtocolField(50, 'PARAM_POS_LIMIT_MODE', 'pos_limit_mode', '位置限制模式', '', 'FLD_U8', 0, [('禁用', 0), ('最小位置限制', 1), ('最大位置限制', 2), ('双端位置限制', 3)]),
+    51: ProtocolField(51, 'PARAM_POS_MIN_LIMIT', 'pos_min_limit', '最小位置', 'rad', 'FLD_F32', -15000, None),
+    52: ProtocolField(52, 'PARAM_POS_MAX_LIMIT', 'pos_max_limit', '最大位置', 'rad', 'FLD_F32', 15000, None),
+    53: ProtocolField(53, 'PARAM_MIT_KP', 'mit_kp', 'MIT 刚度(Kp)', 'N·m/rad', 'FLD_F32', 0.0, None),
+    54: ProtocolField(54, 'PARAM_MIT_KD', 'mit_kd', 'MIT 阻尼(Kd)', 'N·m·s/rad', 'FLD_F32', 0.0, None),
+    55: ProtocolField(55, 'PARAM_MIT_KPMAX', 'mit_kpmax', 'MIT 最大刚度', 'N·m/rad', 'FLD_F32', 0.0, None),
+    56: ProtocolField(56, 'PARAM_MIT_KDMAX', 'mit_kdmax', 'MIT 最大阻尼', 'N·m·s/rad', 'FLD_F32', 0.0, None),
+    57: ProtocolField(57, 'PARAM_MIT_TMAX', 'mit_tmax', 'MIT最大扭矩', 'N·m', 'FLD_F32', 0.0, None),
+    58: ProtocolField(58, 'PARAM_FWLKP', 'fwlkp', '弱磁Kp', '', 'FLD_F32', 0.0, None),
+    59: ProtocolField(59, 'PARAM_FWLKI', 'fwlki', '弱磁Ki', '', 'FLD_F32', 0.0, None),
+    60: ProtocolField(60, 'PARAM_TRAJ_MODE', 'traj_mode', '轨迹规划器模式', '', 'FLD_U8', 0, [('禁用', 0), ('梯形轨迹(斜坡缓冲)', 1), ('曲线轨迹(双重缓冲)', 2)]),
+    61: ProtocolField(61, 'PARAM_TRAJ_LIMIT_D1', 'traj_limit_d1', '轨迹一阶限幅', 'unit/s', 'FLD_F32', 0.0, None),
+    62: ProtocolField(62, 'PARAM_TRAJ_LIMIT_D2', 'traj_limit_d2', '轨迹二阶限幅', 'unit/s²', 'FLD_F32', 0.0, None),
+    63: ProtocolField(63, 'PARAM_TRAJ_LIMIT_D3', 'traj_limit_d3', '轨迹三阶限幅', 'unit/s³', 'FLD_F32', 0.0, None),
+    64: ProtocolField(64, 'PARAM_TRAJ_TOLERANCE', 'traj_tolerance', '轨迹容差', '0~1', 'FLD_F32', 0.0, None),
+    65: ProtocolField(65, 'PARAM_UNDERVOLTAGE_THRESHOLD', 'undervoltage_threshold', '欠压阈值', 'V', 'FLD_F32', 20, None),
+    66: ProtocolField(66, 'PARAM_OVERVOLTAGE_THRESHOLD', 'overvoltage_threshold', '过压阈值', 'V', 'FLD_F32', 26, None),
+    67: ProtocolField(67, 'PARAM_OVERTEMP_THRESHOLD', 'overtemp_threshold', '过温阈值', '℃', 'FLD_F32', 80, None),
+    68: ProtocolField(68, 'PARAM_PRO_TOLERANCE', 'pro_tolerance', '保护超限容忍度', '0~1', 'FLD_F32', 0.1, None),
+    69: ProtocolField(69, 'PARAM_PRO_TOLERANCE_TIME_MS', 'pro_tolerance_time_ms', '保护超限容忍时间', 'ms', 'FLD_F32', 1, None),
+    70: ProtocolField(70, 'PARAM_CAN_RATE', 'can_rate', 'CAN速率', '', 'FLD_U8', 0, [('1Mbps', 0), ('500Kbps', 1)]),
+    71: ProtocolField(71, 'PARAM_CAN_ID', 'can_id', 'CAN ID', '', 'FLD_U32', 1, None),
+    72: ProtocolField(72, 'PARAM_CAN_MODE', 'can_mode', 'CAN模式', '', 'FLD_U8', 0, [('静默模式', 0), ('响应模式', 1)]),
 }
 PARAM_BY_NAME = {field.id_name: field for field in PARAMETERS.values()}
 

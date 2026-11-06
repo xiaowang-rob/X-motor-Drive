@@ -133,46 +133,41 @@ PROTECTION_PAGES = (
     Pidx.PARAM_PRO_TOLERANCE_TIME_MS,
 )
 
-# 校准卡片配置：fields 为协议参数，actions 为 (命令 ID, 按钮文字)。
+# 校准卡片配置：with_inputs 启用独立电流/速度输入，actions 为 (命令 ID, 按钮文字)。
 # help_text 可以直接改成自己的说明，点击 info 按钮弹窗显示。
 CALIBRATIONS = {
     "motor": CalibrationSpec(
         scope="电机校准",
-        fields=(Pidx.PARAM_TUNE_CURRENT, Pidx.PARAM_TUNE_VEL),
+        with_inputs=True,
         actions=(
             (CmdId.CMD_RL_TUNNING, "RL校准"),
             (CmdId.CMD_PSIF_TUNNING, "Psif校准"),
             (CmdId.CMD_MECH_TUNNING, "机械校准"),
         ),
         help_text=(
-            "RL 校准：测量相电阻与电感。\n"
-            "Psif 校准：测量永磁体磁链。\n"
-            "机械校准：测量转动惯量与阻尼。\n"
+            "-------RL 校准-------\n"
+            "测量相电阻与dq电感。\n测量过程电机不会大范围动，会卡哒一下对齐，电流限制给额定电流的1/4即可\n"
+            "-------Psif 校准-------\n"
+            "测量永磁体磁链。\n测量会跑pid速度模式，不能挂负载，不能有位置限制，其速度限制一般越大越好，一般可以给100rad/s\n"
+            "-------机械 校准-------\n"
+            "测量转动惯量J与阻尼B。\n测量会跑电流模式，挂负载测量，不能有位置限制，"
             "请按实际电机状态填写校准电流/速度后执行。"
         ),
     ),
     "observer": CalibrationSpec(
         scope="观测器校准",
-        fields=(Pidx.PARAM_TUNE_CURRENT, Pidx.PARAM_TUNE_VEL),
-        actions=(
-            (CmdId.CMD_OBS_TUNNING, "观测器校准"),
-            (CmdId.CMD_SET_ZERO_POS, "设置零位"),
-        ),
-        help_text=(
-            "观测器校准前请确认编码器或霍尔安装正确。\n"
-            "设置零位会把当前位置写入零点。"
-        ),
+        with_inputs=True,
+        actions=((CmdId.CMD_OBS_TUNNING, "观测器校准"),),
+        help_text="观测器校准前请确认编码器或霍尔安装正确。",
     ),
-    # PID/MIT 目前没有独立校准参数；需要时在 fields 中加入 Pidx.PARAM_*。
-    "pid": CalibrationSpec(
+    "ctrl": CalibrationSpec(
         scope="PID校准",
-        actions=((CmdId.CMD_PID_TUNNING, "PID校准"),),
-        help_text="PID 校准说明请在此编辑。",
-    ),
-    "mit": CalibrationSpec(
-        scope="MIT校准",
-        actions=((CmdId.CMD_MIT_TUNNING, "MIT校准"),),
-        help_text="MIT 校准说明请在此编辑。",
+        with_inputs=True,
+        actions=(
+            (CmdId.CMD_PID_TUNNING, "PID校准"),
+            (CmdId.CMD_MIT_TUNNING, "MIT校准"),
+        ),
+        help_text=("PID 校准说明请在此编辑。\n" "MIT 校准说明请在此编辑。"),
     ),
 }
 
@@ -343,10 +338,8 @@ class ConfigPage(TabbedPage):
 
         calibration_row = QHBoxLayout()
         calibration_row.setSpacing(12)
-        self.pid_calibration = CalibrationCard(CALIBRATIONS["pid"])
-        self.mit_calibration = CalibrationCard(CALIBRATIONS["mit"])
-        calibration_row.addWidget(self.pid_calibration, 1)
-        calibration_row.addWidget(self.mit_calibration, 1)
+        self.ctrl_calibration = CalibrationCard(CALIBRATIONS["ctrl"])
+        calibration_row.addWidget(self.ctrl_calibration, 1)
         layout.addLayout(calibration_row)
 
     def _build_trajectory(self):

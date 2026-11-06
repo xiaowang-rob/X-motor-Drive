@@ -9,6 +9,10 @@
 #define MCU_UART_DMA_CH LL_DMA_CHANNEL_3
 #define MCU_UART_RX_SIZE 64U // 定长接受长度
 
+// 中断
+void mcu_uart_irq(void);
+void mcu_uart_dma_tx_irq(void);
+
 // 驱动实例
 const tUartDevHandle *Get_MCU_UsartHandle(void);
 

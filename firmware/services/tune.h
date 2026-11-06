@@ -24,11 +24,10 @@
 #define LS_RANGE_MAX 300e-6f    // 电感合理上限 (H)
 #define LS_AVG_CYCLES 5         // 平均滤波次数
 
-#define EC_ALIGN_MS 100.0f          // 编码器校准对齐等待时间
-#define EC_OPEN_LOOP_OMEGA 17.4533f // 开环角速度 (rad/s), 原 1000°/s
-#define EC_SAMPLE_STEP_E 0.1745f    // 采样步长 (rad)
-#define EC_TRAVEL_POS 6.3f          // 拖动机械角度rad
-#define EC_FIT_MAX_MSE 0.001f       // 最大拟合质量阈值
+#define EC_ALIGN_MS 100.0f       // 编码器校准对齐等待时间
+#define EC_SAMPLE_STEP_E 0.1745f // 采样步长 (rad)
+#define EC_TRAVEL_POS 6.3f       // 拖动机械角度rad
+#define EC_FIT_MAX_MSE 0.001f    // 最大拟合质量阈值
 
 #define PSIF_VEL_LOW_COEF 0.25f   // 低速限系数 为高限速*coef
 #define PSIF_NUM_POINTS 5         // 转速点数
@@ -78,5 +77,7 @@ typedef struct {
 } tTune;
 
 extern tTune g_tune;
+
+void tune_start(eTuneType type, float cur_limit, float vel_limit);
 
 #endif // __TUNE_H

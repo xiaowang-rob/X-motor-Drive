@@ -83,6 +83,52 @@ typedef enum
         (_out_length) = proto_encode(PROTO_LAYOUT_CMD_HEARTBEAT_RESPONSE, (_packet), _proto_values); \
     } while (0)
 
+#define DEPACK_RL_TUNNING_REQUEST(_out_length, _packet, tune_current) \
+    do { \
+        double _proto_values[1]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_RL_TUNNING_REQUEST, (_packet), _proto_values); \
+        (tune_current) = _proto_values[0]; \
+    } while (0)
+
+#define DEPACK_PSIF_TUNNING_REQUEST(_out_length, _packet, tune_vel) \
+    do { \
+        double _proto_values[1]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_PSIF_TUNNING_REQUEST, (_packet), _proto_values); \
+        (tune_vel) = _proto_values[0]; \
+    } while (0)
+
+#define DEPACK_MECH_TUNNING_REQUEST(_out_length, _packet, tune_current, tune_vel) \
+    do { \
+        double _proto_values[2]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_MECH_TUNNING_REQUEST, (_packet), _proto_values); \
+        (tune_current) = _proto_values[0]; \
+        (tune_vel) = _proto_values[1]; \
+    } while (0)
+
+#define DEPACK_OBS_TUNNING_REQUEST(_out_length, _packet, tune_current, tune_vel) \
+    do { \
+        double _proto_values[2]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_OBS_TUNNING_REQUEST, (_packet), _proto_values); \
+        (tune_current) = _proto_values[0]; \
+        (tune_vel) = _proto_values[1]; \
+    } while (0)
+
+#define DEPACK_PID_TUNNING_REQUEST(_out_length, _packet, tune_current, tune_vel) \
+    do { \
+        double _proto_values[2]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_PID_TUNNING_REQUEST, (_packet), _proto_values); \
+        (tune_current) = _proto_values[0]; \
+        (tune_vel) = _proto_values[1]; \
+    } while (0)
+
+#define DEPACK_MIT_TUNNING_REQUEST(_out_length, _packet, tune_current, tune_vel) \
+    do { \
+        double _proto_values[2]; \
+        (_out_length) = proto_decode(PROTO_LAYOUT_CMD_MIT_TUNNING_REQUEST, (_packet), _proto_values); \
+        (tune_current) = _proto_values[0]; \
+        (tune_vel) = _proto_values[1]; \
+    } while (0)
+
 #define DEPACK_PARAM_RELOAD_REQUEST(_out_length, _packet, id) \
     do { \
         double _proto_values[1]; \

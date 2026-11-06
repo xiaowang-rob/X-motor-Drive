@@ -155,8 +155,18 @@ class DeviceService(QObject):
         self.status.connect_but.setEnabled(True)
         self._enable_controls()
         self._set_subscription()
+        self.iap_page.set_device_info({"设备型号": self._device_model(entry)})
         self._host(f"已连接：{entry.get('display', entry.get('device'))}")
         self.iap_page.append_driver_log(f"已连接：{entry.get('display', '')}")
+
+    @staticmethod
+    def _device_model(entry):
+        """型号取自枚举条目：'XDr-S APP' / 'XDr-S BL' 去掉工作模式后缀。"""
+        name = str(entry.get("type") or "")
+        for suffix in (" APP", " BL"):
+            if name.endswith(suffix):
+                return name[: -len(suffix)]
+        return name
 
     def _on_disconnected(self, reason):
         self._connected = False
@@ -388,6 +398,19 @@ class DeviceService(QObject):
         elif action == "restore_defaults":
             self._reload_all_parameters()
             self._load_config("default", announce=True)
+        elif action == "calibrate":
+            command = payload.get("command")
+            try:
+                data = codec.pack_calibration(command, payload.get("values") or {})
+            except (KeyError, TypeError, ValueError, OverflowError, struct.error) as error:
+                self._host(f"校准输入无效：{error}")
+                return
+            self._send_payload(
+                command, data,
+                f"校准 {payload.get('scope')} / {payload.get('operation')}",
+            )
+        elif action == "calibration_invalid":
+            self._host(f"校准输入无效：{payload.get('error')}")
 
     def _handle_control_action(self, action, payload):
         if action == "send_target":
@@ -418,17 +441,6 @@ class DeviceService(QObject):
             self._send_empty(CmdId.CMD_SET_ZERO_POS, "设置零点")
         elif action == "set_limit":
             self._send_empty(CmdId.CMD_SET_LIMIT_POS, "以当前位置设置极限位置")
-        elif action == "calibrate":
-            for protocol_id, value in (payload.get("params") or {}).items():
-                self._write_parameter(int(protocol_id), value)
-            command = payload.get("command")
-            if command is not None:
-                self._send_empty(
-                    command,
-                    f"校准 {payload.get('scope')} / {payload.get('operation')}",
-                )
-        elif action == "calibration_invalid":
-            self._host(f"校准参数无效：{payload.get('error')}")
 
     def _build_target_payload(self, channel, value):
         mode = self.control_page.get_mode()

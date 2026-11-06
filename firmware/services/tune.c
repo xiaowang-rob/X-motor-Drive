@@ -47,47 +47,9 @@ static void tune_pid_vel_cmd_apply(float vel) {
     motor_cmd_set(&cmd);
 }
 
-void tune_rl_start(float cur_limit) {
+void tune_start(eTuneType type, float cur_limit, float vel_limit) {
     g_tune.state = TUNE_RUNNING;
-    g_tune.type = TUNE_RL;
-    g_tune.TO_init = false;
-    g_tune.cur_limit = cur_limit;
-}
-
-void tune_psif_start(float cur_limit, float vel_limit) {
-    g_tune.state = TUNE_RUNNING;
-    g_tune.type = TUNE_Psif;
-    g_tune.TO_init = false;
-    g_tune.cur_limit = cur_limit;
-    g_tune.vel_limit = vel_limit;
-}
-
-void tune_mech_start(float cur_limit, float vel_limit) {
-    g_tune.state = TUNE_RUNNING;
-    g_tune.type = TUNE_MECH;
-    g_tune.TO_init = false;
-    g_tune.cur_limit = cur_limit;
-    g_tune.vel_limit = vel_limit;
-}
-
-void tune_obs_start(float cur_limit) {
-    g_tune.state = TUNE_RUNNING;
-    g_tune.type = TUNE_OBS;
-    g_tune.TO_init = false;
-    g_tune.cur_limit = cur_limit;
-}
-
-void tune_pid_start(float cur_limit, float vel_limit) {
-    g_tune.state = TUNE_RUNNING;
-    g_tune.type = TUNE_PID;
-    g_tune.TO_init = false;
-    g_tune.cur_limit = cur_limit;
-    g_tune.vel_limit = vel_limit;
-}
-
-void tune_mit_start(float cur_limit, float vel_limit) {
-    g_tune.state = TUNE_RUNNING;
-    g_tune.type = TUNE_MIT;
+    g_tune.type = type;
     g_tune.TO_init = false;
     g_tune.cur_limit = cur_limit;
     g_tune.vel_limit = vel_limit;
@@ -294,7 +256,7 @@ bool tune_obs_update(tXFocMotor *motor, eObsList obs, tParameter *p, float ts) {
                     },
                 .align_ticks = EC_ALIGN_MS / 1000.0f / ts,
                 .timeout_ticks = (uint32_t)(60.0f / ts),
-                .delta_e = EC_OPEN_LOOP_OMEGA * ts,
+                .delta_e = g_tune.vel_limit * ts,
                 .sample_step_e = EC_SAMPLE_STEP_E,
                 .travel_pos = EC_TRAVEL_POS,
                 .pole_pairs_expected = p->motor_polepairs,

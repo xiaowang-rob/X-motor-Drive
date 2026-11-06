@@ -55,33 +55,43 @@ commands:
   - id_name: CMD_RL_TUNNING
     id: "0xE1"
     comment: RL校准
-    request: []
-    response: feedback
+    request:
+      - { name: tune_current, type: FLD_F32, size: 4, offset: 0 }
+    response: none
   - id_name: CMD_PSIF_TUNNING
     id: "0xE2"
     comment: Psif校准
-    request: []
-    response: feedback
+    request:
+      - { name: tune_vel, type: FLD_F32, size: 4, offset: 0 }
+    response: none
   - id_name: CMD_MECH_TUNNING
     id: "0xE3"
     comment: 机械参数校准
-    request: []
-    response: feedback
+    request:
+      - { name: tune_current, type: FLD_F32, size: 4, offset: 0 }
+      - { name: tune_vel, type: FLD_F32, size: 4, offset: 4 }
+    response: none
   - id_name: CMD_OBS_TUNNING
     id: "0xE4"
     comment: 观测器校准
-    request: []
-    response: feedback
+    request:
+      - { name: tune_current, type: FLD_F32, size: 4, offset: 0 }
+      - { name: tune_vel, type: FLD_F32, size: 4, offset: 4 }
+    response: none
   - id_name: CMD_PID_TUNNING
     id: "0xE5"
     comment: PID参数校准
-    request: []
-    response: feedback
+    request:
+      - { name: tune_current, type: FLD_F32, size: 4, offset: 0 }
+      - { name: tune_vel, type: FLD_F32, size: 4, offset: 4 }
+    response: none
   - id_name: CMD_MIT_TUNNING
     id: "0xE6"
     comment: MIT参数校准
-    request: []
-    response: feedback
+    request:
+      - { name: tune_current, type: FLD_F32, size: 4, offset: 0 }
+      - { name: tune_vel, type: FLD_F32, size: 4, offset: 4 }
+    response: none
   - id_name: CMD_PARAM_RELOAD
     id: "0xC4"
     comment: 参数重置；特殊 ID 见 parameter.yaml

@@ -1,26 +1,28 @@
-"""校准卡片：n 个协议参数 + n 个校准指令按钮 + help 说明弹窗。"""
+"""校准卡片：独立电流/速度输入、校准指令按钮与 help 说明弹窗。"""
+
 from dataclasses import dataclass
+import math
 
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QHBoxLayout
-from qfluentwidgets import FluentIcon as FIF, MessageBox
+from qfluentwidgets import BodyLabel, LineEdit, FluentIcon as FIF, MessageBox
 
-from protocol import PARAMETERS
-from app.parameter_input import ParameterInput, VAL_TYPE_TO_UI
 from app.ui_components import PlainCard, icon_action, preview_button
 
 
 @dataclass(frozen=True)
 class CalibrationSpec:
-    """一组校准配置；参数和指令都由 protocol 中的常量引用。"""
+    """一组校准配置；输入仅供本次命令使用，不参与参数读写。"""
+
     scope: str
-    fields: tuple = ()
+    with_inputs: bool = False
     actions: tuple = ()
     help_text: str = ""
 
 
 class CalibrationCard(PlainCard):
-    """固定高度的校准卡片，参数与指令处于同一行，help 按钮始终可用。"""
+    """输入框与指令处于同一行，help 按钮始终可用。"""
+
     action_requested = pyqtSignal(str, object)
 
     def __init__(self, spec: CalibrationSpec, parent=None):
@@ -35,21 +37,22 @@ class CalibrationCard(PlainCard):
         self.help_button.clicked.connect(self._show_help)
         row.addWidget(self.help_button)
 
-        for param_id in spec.fields:
-            meta = PARAMETERS[param_id]
-            parameter = ParameterInput(
-                meta.name,
-                f"{spec.scope}/{meta.name}",
-                protocol_id=meta.id,
-                data_type=VAL_TYPE_TO_UI[meta.val_type],
-                unit=meta.unit,
-                options=meta.options,
-                default=meta.default,
-                label_width=120,
-            )
-            row.addWidget(parameter, 1)
-            self.parameters[meta.name] = parameter
-            self.fields[meta.name] = parameter.editor
+        self.inputs = {}
+        if spec.with_inputs:
+            for key, name, unit, default in (
+                ("tune_current", "校准电流", "A", "0"),
+                ("tune_vel", "校准速度", "rad/s", "0"),
+            ):
+                label = BodyLabel(f"{name}（{unit}）")
+                editor = LineEdit()
+                editor.setText(default)
+                editor.setFixedHeight(32)
+                editor.setMinimumWidth(80)
+                editor.setAccessibleName(label.text())
+                label.setBuddy(editor)
+                row.addWidget(label)
+                row.addWidget(editor, 1)
+                self.inputs[key] = editor
 
         for command, text in spec.actions:
             button = preview_button(text)
@@ -62,8 +65,21 @@ class CalibrationCard(PlainCard):
         self.content.addLayout(row)
 
     def _emit_action(self, button):
+        command = button.property("calibrationCommand")
+        values = {}
         try:
-            params = {p.protocol_id: p.value() for p in self.parameters.values()}
+            for key, editor in self.inputs.items():
+                try:
+                    value = float(editor.text().strip())
+                except ValueError:
+                    raise ValueError(
+                        f"{editor.accessibleName()}请输入有效数值"
+                    ) from None
+                if not math.isfinite(value) or abs(value) > 3.4028234663852886e38:
+                    raise ValueError(
+                        f"{editor.accessibleName()}超出 float32 有限数范围"
+                    )
+                values[key] = value
         except (TypeError, ValueError) as error:
             self.action_requested.emit(
                 "calibration_invalid",
@@ -75,9 +91,9 @@ class CalibrationCard(PlainCard):
             "calibrate",
             {
                 "scope": self.spec.scope,
-                "command": button.property("calibrationCommand"),
+                "command": command,
                 "operation": button.text(),
-                "params": params,
+                "values": values,
             },
         )
 

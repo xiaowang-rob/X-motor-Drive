@@ -13,8 +13,10 @@ static float pos_accumulate(tPosAcc *acc, float theta) {
     return (theta - acc->zero_angle) + acc->num_turns * XMATH_2PI;
 }
 
-#define ENCODER_PLL_KP 80.0f
-#define ENCODER_PLL_KI 2000.0f
+#define ENCODER_PLL_WN 300.0f  // 自然频率 决定跟踪带宽
+#define ENCODER_PLL_ZETA 0.707 // 阻尼比 越大超调越小响应越慢
+#define ENCODER_PLL_KP (2.0f * ENCODER_PLL_ZETA * ENCODER_PLL_WN)
+#define ENCODER_PLL_KI (ENCODER_PLL_WN * ENCODER_PLL_WN)
 #define ENCODER_PLL_INTEG_LIMIT 0.1745f // 积分限值  ±10°
 #define ENCODER_VEL_PHYS_LIMIT 1046.0f  // rad/s 物理上限（≈10k rpm）
 
@@ -77,11 +79,9 @@ void obs_loop_task(tObs *obs) {
 
         break;
     case OBS_INT_ENC:
-        // TODO:内置编码器
-        break;
     case OBS_ENC_SPI:
     case OBS_ENC_SINCOS:
-        // TODO:这里暂时只是外部编码器 后续可以改
+        // 内置/外部 SPI 与 sincos 共用同一个编码器周期任务
         encoder_task(&g_enc);
         obs->theta_r = g_enc.sample.angle_rad;
         break;
@@ -104,6 +104,7 @@ void obs_tim_task(tObs *obs, float ts, float *theta_r, float *theta_e,
     case OBS_NONE:
 
         break;
+    case OBS_INT_ENC:
     case OBS_ENC_SPI:
     case OBS_ENC_SINCOS: {
         // TODO:20khz pll跟随1khz角度变化 需要1khz的角度突变处理
@@ -111,9 +112,10 @@ void obs_tim_task(tObs *obs, float ts, float *theta_r, float *theta_e,
         pll_update(&obs->pll, *pos, ts);
 
         *theta_r = obs->pll.theta;
-        *theta_e = (*theta_r - obs->param->theta_offset) *
-                   obs->param->motor_polepairs *
-                   (obs->param->positive_dir ? 1 : -1);
+        *theta_e = obs->theta_r;
+        // *theta_e = (*theta_r - obs->param->theta_offset) *
+        //            obs->param->motor_polepairs *
+        //            (obs->param->positive_dir ? 1 : -1);
         *theta_e = xmath_normalize_angle_2pi(*theta_e);
         *vel = obs->pll.vel;
         break;
@@ -136,6 +138,7 @@ void obs_set_zero(tObs *obs) {
     case OBS_NONE:
 
         break;
+    case OBS_INT_ENC:
     case OBS_ENC_SPI:
     case OBS_ENC_SINCOS: {
         obs->pacc.zero_angle = obs->theta_r;

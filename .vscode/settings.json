@@ -1,5 +1,5 @@
 {
-    "cortex-debug.variableUseNaturalFormat": true,
+    "cortex-debug.variableUseNaturalFormat": false,
     "cmake.sourceDirectory": "${workspaceFolder}/firmware",
     "C_Cpp.errorSquiggles": "enabled",
     "python-envs.defaultEnvManager": "ms-python.python:system"

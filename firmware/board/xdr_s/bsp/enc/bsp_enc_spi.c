@@ -1,284 +1,446 @@
-// SPI 编码器专用驱动；芯片协议保持不变。
 
 #include "bsp_enc_spi.h"
-#include "bsp_mcu.h"
-#include "gpio.h"
-#include "spi.h"
-#include "xmath.h"
+#include "dma.h"
+#include "main.h"
 
-struct SpiEncDev {
-    struct {
-        GPIO_TypeDef *port;
-        uint32_t pin;
-    } cs;
-    eSpiEncList chip;
-    const tSpiEncChipOps *chip_ops;
-    float rad_per_lsb;
-    bool inited;
-};
+/* ======================== 硬件配置 ======================== */
 
-static const tSpiEncChipOps *enc_chip_ops(eSpiEncList chip);
-static bool spi_enc_open(void *handle);
-static bool enc_spi_close(void *handle);
-static bool spi_enc_read(void *handle, tEncSample *sample);
-static void spi_enc_abort(void *handle);
+#define ENC_SPI SPI1
 
-const tEncoderOps spi_enc_ops = {
-    .open = spi_enc_open,
-    .close = enc_spi_close,
-    .read = spi_enc_read,
-    .abort = spi_enc_abort,
-};
+#define ENC_SPI_RX_DMA DMA1
+#define ENC_SPI_RX_CHANNEL LL_DMA_CHANNEL_5
 
-static tSpiEncDev spi_enc_int = {
-    .cs = {.port = INTCS_GPIO_Port, .pin = INTCS_Pin},
-};
-static tSpiEncDev spi_enc_ext = {
-    .cs = {.port = EXTCS_GPIO_Port, .pin = EXTCS_Pin},
-};
+#define ENC_SPI_TX_DMA DMA1
+#define ENC_SPI_TX_CHANNEL LL_DMA_CHANNEL_6
 
-const tEncDevHandle INT_ENCHandle = {
-    .dev = &spi_enc_int,
-    .ops = &spi_enc_ops,
-};
+/*
+ * RX DMA 完成后，等待 SPI BSY 清零。
+ * 这是有限循环，不能在中断中无限等待。
+ * 实际等待时间需要结合 SPI 时钟和 MCU 主频验证。
+ */
+#define ENC_SPI_BSY_TIMEOUT 10000U
 
-const tEncDevHandle SPI_ENCHandle = {
-    .dev = &spi_enc_ext,
-    .ops = &spi_enc_ops,
-};
+/* ======================== 内部状态 ======================== */
 
-const tEncDevHandle *Get_INT_ENCHandle(void) {
-    spi_enc_int.chip = ENC_MT6816;
-    spi_enc_int.chip_ops = enc_chip_ops(ENC_MT6816);
-    return &INT_ENCHandle;
-}
-const tEncDevHandle *Get_SPI_ENCHandle(eSpiEncList chip) {
-    spi_enc_ext.chip = chip;
-    spi_enc_ext.chip_ops = enc_chip_ops(chip);
-    return &SPI_ENCHandle;
+typedef enum {
+    ENC_SPI_STATE_UNINIT = 0,
+    ENC_SPI_STATE_IDLE,
+    ENC_SPI_STATE_BUSY,
+} tEncSpiState;
+
+static struct {
+    tEncSpiState state;
+
+    GPIO_TypeDef *cs_port;
+    uint32_t cs_pin;
+
+    tBspEncSpiMode mode;
+    tBspEncSpiDataBits data_bits;
+
+    tBspEncSpiCallback callback;
+    void *context;
+} s_enc_spi;
+
+static inline void enc_spi_cs_low(void) {
+    LL_GPIO_ResetOutputPin(s_enc_spi.cs_port, s_enc_spi.cs_pin);
 }
 
-// 锁只保护同步事务，不在整个传输期间关中断；中断重入直接失败。
-static tSpiEncDev *s_owner;
-static bool enc_spi_prepare(const tSpiEncChipOps *ops);
-static void enc_spi_reset(void);
-static void enc_cs(tSpiEncDev *dev, bool active);
-
-static bool enc_valid_dev(const tSpiEncDev *dev) {
-    return dev == &spi_enc_int || dev == &spi_enc_ext;
+static inline void enc_spi_cs_high(void) {
+    LL_GPIO_SetOutputPin(s_enc_spi.cs_port, s_enc_spi.cs_pin);
 }
 
-static bool enc_spi_lock(tSpiEncDev *dev) {
-    uint32_t primask = __get_PRIMASK();
-    __disable_irq();
-    bool acquired = s_owner == NULL;
-    if (acquired)
-        s_owner = dev;
-    __set_PRIMASK(primask);
-    return acquired;
+/* ======================== DMA 配置 ======================== */
+
+static void enc_spi_dma_configure_width(tBspEncSpiDataBits data_bits) {
+    uint32_t periph_width;
+    uint32_t memory_width;
+
+    if (data_bits == BSP_ENC_SPI_DATA_8BIT) {
+        periph_width = LL_DMA_PDATAALIGN_BYTE;
+        memory_width = LL_DMA_MDATAALIGN_BYTE;
+    } else {
+        periph_width = LL_DMA_PDATAALIGN_HALFWORD;
+        memory_width = LL_DMA_MDATAALIGN_HALFWORD;
+    }
+
+    LL_DMA_SetPeriphSize(DMA1, LL_DMA_CHANNEL_5, periph_width);
+    LL_DMA_SetMemorySize(DMA1, LL_DMA_CHANNEL_5, memory_width);
+
+    LL_DMA_SetPeriphSize(DMA1, LL_DMA_CHANNEL_6, periph_width);
+    LL_DMA_SetMemorySize(DMA1, LL_DMA_CHANNEL_6, memory_width);
 }
 
-static void enc_spi_unlock(void) {
-    uint32_t primask = __get_PRIMASK();
-    __disable_irq();
-    s_owner = NULL;
-    __set_PRIMASK(primask);
+static void enc_spi_dma_stop(void) {
+    LL_SPI_DisableDMAReq_RX(ENC_SPI);
+    LL_SPI_DisableDMAReq_TX(ENC_SPI);
+
+    LL_DMA_DisableChannel(ENC_SPI_RX_DMA, ENC_SPI_RX_CHANNEL);
+    LL_DMA_DisableChannel(ENC_SPI_TX_DMA, ENC_SPI_TX_CHANNEL);
 }
 
-static void Mode_Switch_SPI(void) {
-    LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_SPI1);
-    const uint32_t pins[] = {LL_GPIO_PIN_5, LL_GPIO_PIN_6, LL_GPIO_PIN_7};
-    for (unsigned i = 0; i < 3; ++i) {
-        LL_GPIO_SetAFPin_0_7(GPIOA, pins[i], LL_GPIO_AF_5);
-        LL_GPIO_SetPinOutputType(GPIOA, pins[i], LL_GPIO_OUTPUT_PUSHPULL);
-        LL_GPIO_SetPinSpeed(GPIOA, pins[i], LL_GPIO_SPEED_FREQ_LOW);
-        LL_GPIO_SetPinMode(GPIOA, pins[i], LL_GPIO_MODE_ALTERNATE);
+static void enc_spi_dma_clear_flags(void) {
+    LL_DMA_ClearFlag_GI5(DMA1);
+    LL_DMA_ClearFlag_GI6(DMA1);
+}
+
+/* ======================== 错误标志处理 ======================== */
+
+static void enc_spi_clear_error_flags(void) {
+    bool was_enabled = LL_SPI_IsEnabled(ENC_SPI);
+
+    if (LL_SPI_IsActiveFlag_OVR(ENC_SPI)) {
+        LL_SPI_ClearFlag_OVR(ENC_SPI);
+    }
+
+    if (LL_SPI_IsActiveFlag_MODF(ENC_SPI)) {
+        LL_SPI_ClearFlag_MODF(ENC_SPI);
+    }
+
+    if (LL_SPI_IsActiveFlag_CRCERR(ENC_SPI)) {
+        LL_SPI_ClearFlag_CRCERR(ENC_SPI);
+    }
+
+    if (LL_SPI_IsActiveFlag_FRE(ENC_SPI)) {
+        LL_SPI_ClearFlag_FRE(ENC_SPI);
+    }
+
+    if (was_enabled && !LL_SPI_IsEnabled(ENC_SPI)) {
+        LL_SPI_Enable(ENC_SPI);
     }
 }
 
-static const tSpiEncChipOps *enc_chip_ops(eSpiEncList chip) {
-    switch (chip) {
-    case ENC_MT6816:
-        return &spi_mt6816_ops;
-    case ENC_MT6835:
-        return &spi_mt6835_ops;
-    case ENC_AS5047:
-        return &spi_as5047_ops;
-    default:
-        return NULL;
-    }
-}
+/* ======================== 传输收尾 ======================== */
 
-static bool spi_enc_open(void *handle) {
-    tSpiEncDev *dev = (tSpiEncDev *)handle;
-    if (!enc_valid_dev(dev) || !enc_spi_lock(dev))
-        return false;
+static void enc_spi_finish(tBspEncSpiResult result) {
+    tBspEncSpiCallback callback;
+    void *context;
 
-    dev->inited = false;
-    dev->chip_ops = NULL;
-
-    bool ok = enc_spi_prepare(dev->chip_ops);
-    if (ok) {
-
-        dev->inited = true;
-        dev->rad_per_lsb = XMATH_2PI / (float)dev->chip_ops->resolution;
-    }
-    enc_spi_unlock();
-    return ok;
-}
-static bool enc_spi_close(void *handle) {
-    tSpiEncDev *dev = handle;
-    if (!enc_valid_dev(dev) || !enc_spi_lock(dev))
-        return false;
-    enc_spi_reset();
-    dev->inited = false;
-    dev->chip_ops = NULL;
-    enc_spi_unlock();
-    return true;
-}
-
-static bool spi_enc_read(void *handle, tEncSample *sample) {
-    tSpiEncDev *dev = handle;
-    if (!enc_valid_dev(dev) || !sample || !enc_spi_lock(dev))
-        return false;
-
-    bool ok = dev->inited && dev->chip_ops != NULL &&
-              enc_spi_prepare(dev->chip_ops) &&
-              dev->chip_ops->read(dev, &sample->raw);
-    if (ok) {
-
-        sample->angle_rad = sample->raw * dev->rad_per_lsb;
-        sample->ts_ms = bsp_time_ms();
-        sample->angle_kind = BSP_ANGLE_MECHANICAL;
-    }
-
-    enc_spi_unlock();
-    return ok;
-}
-
-static void spi_enc_abort(void *handle) {
-    tSpiEncDev *dev = handle;
-    if (!enc_valid_dev(dev) || !enc_spi_lock(dev))
+    if (s_enc_spi.state != ENC_SPI_STATE_BUSY) {
         return;
-    enc_spi_reset();
-    enc_spi_unlock();
+    }
+
+    enc_spi_dma_stop();
+
+    /*
+     * 正常完成时，RX DMA TC 表示最后一个数据已进入接收缓冲区。
+     * 仍需确认 SPI BSY 清零，避免 CS 提前释放。
+     */
+    if (result == BSP_ENC_SPI_OK) {
+        uint32_t timeout = ENC_SPI_BSY_TIMEOUT;
+
+        while (LL_SPI_IsActiveFlag_BSY(ENC_SPI) && timeout > 0U) {
+            timeout--;
+        }
+
+        if (LL_SPI_IsActiveFlag_BSY(ENC_SPI)) {
+            result = BSP_ENC_SPI_ERR_SPI;
+        }
+    }
+
+    enc_spi_clear_error_flags();
+    enc_spi_dma_clear_flags();
+
+    enc_spi_cs_high();
+
+    callback = s_enc_spi.callback;
+    context = s_enc_spi.context;
+
+    s_enc_spi.state = ENC_SPI_STATE_IDLE;
+
+    if (callback != NULL) {
+        callback(result, context);
+    }
 }
 
-static void enc_cs(tSpiEncDev *dev, bool active) {
-    if (active)
-        LL_GPIO_ResetOutputPin(dev->cs.port, dev->cs.pin);
-    else
-        LL_GPIO_SetOutputPin(dev->cs.port, dev->cs.pin);
-}
+/* ======================== 对外接口 ======================== */
 
-static void enc_spi_reset(void) {
-    // SPI1 专用于这两路编码器；错误恢复时停止时钟并释放全部 CS。
+bool bsp_enc_spi_init(const tBspEncSpiConfig *config) {
+    LL_SPI_InitTypeDef SPI_InitStruct = {0};
+    LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    /* 参数检查 */
+    if (config == NULL || config->cs_port == NULL || config->cs_pin == 0U) {
+        return false;
+    }
+
+    if (config->mode > BSP_ENC_SPI_MODE_3) {
+        return false;
+    }
+
+    if (config->data_bits != BSP_ENC_SPI_DATA_8BIT &&
+        config->data_bits != BSP_ENC_SPI_DATA_16BIT) {
+        return false;
+    }
+
+    if (s_enc_spi.state == ENC_SPI_STATE_BUSY) {
+        return false;
+    }
+
+    /* 保存配置 */
+    s_enc_spi.state = ENC_SPI_STATE_UNINIT;
+
+    s_enc_spi.cs_port = config->cs_port;
+    s_enc_spi.cs_pin = config->cs_pin;
+    s_enc_spi.mode = config->mode;
+    s_enc_spi.data_bits = config->data_bits;
+    s_enc_spi.callback = config->callback;
+    s_enc_spi.context = config->context;
+
+    /* ==================== 时钟使能 ==================== */
+
+    LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_SPI1);
+
+    LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA);
+
+    /* ==================== CS GPIO 初始化 ==================== */
+
+    enc_spi_cs_high();
+
+    /* ==================== SPI GPIO 初始化 ==================== */
+
+    /*
+     * PA5 -> SPI1_SCK
+     * PA6 -> SPI1_MISO
+     * PA7 -> SPI1_MOSI
+     */
+
+    GPIO_InitStruct.Pin = LL_GPIO_PIN_5;
+    GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
+    GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+    GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+    GPIO_InitStruct.Alternate = LL_GPIO_AF_5;
+    LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = LL_GPIO_PIN_6;
+    LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = LL_GPIO_PIN_7;
+    LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    /* ==================== DMA 初始化 ==================== */
+
+    /* SPI1 RX: DMA1 Channel 5 */
+
+    LL_DMA_SetPeriphRequest(DMA1, LL_DMA_CHANNEL_5, LL_DMAMUX_REQ_SPI1_RX);
+
+    LL_DMA_SetDataTransferDirection(
+        DMA1, LL_DMA_CHANNEL_5, LL_DMA_DIRECTION_PERIPH_TO_MEMORY);
+
+    LL_DMA_SetChannelPriorityLevel(DMA1, LL_DMA_CHANNEL_5, LL_DMA_PRIORITY_LOW);
+
+    LL_DMA_SetMode(DMA1, LL_DMA_CHANNEL_5, LL_DMA_MODE_NORMAL);
+
+    LL_DMA_SetPeriphIncMode(DMA1, LL_DMA_CHANNEL_5, LL_DMA_PERIPH_NOINCREMENT);
+
+    LL_DMA_SetMemoryIncMode(DMA1, LL_DMA_CHANNEL_5, LL_DMA_MEMORY_INCREMENT);
+
+    /* SPI1 TX: DMA1 Channel 6 */
+
+    LL_DMA_SetPeriphRequest(DMA1, LL_DMA_CHANNEL_6, LL_DMAMUX_REQ_SPI1_TX);
+
+    LL_DMA_SetDataTransferDirection(
+        DMA1, LL_DMA_CHANNEL_6, LL_DMA_DIRECTION_MEMORY_TO_PERIPH);
+
+    LL_DMA_SetChannelPriorityLevel(DMA1, LL_DMA_CHANNEL_6, LL_DMA_PRIORITY_LOW);
+
+    LL_DMA_SetMode(DMA1, LL_DMA_CHANNEL_6, LL_DMA_MODE_NORMAL);
+
+    LL_DMA_SetPeriphIncMode(DMA1, LL_DMA_CHANNEL_6, LL_DMA_PERIPH_NOINCREMENT);
+
+    LL_DMA_SetMemoryIncMode(DMA1, LL_DMA_CHANNEL_6, LL_DMA_MEMORY_INCREMENT);
+
+    /* 根据 SPI 数据位宽配置 DMA */
+    enc_spi_dma_configure_width(config->data_bits);
+
+    /* ==================== SPI 参数初始化 ==================== */
+
+    SPI_InitStruct.TransferDirection = LL_SPI_FULL_DUPLEX;
+    SPI_InitStruct.Mode = LL_SPI_MODE_MASTER;
+
+    SPI_InitStruct.DataWidth = (config->data_bits == BSP_ENC_SPI_DATA_8BIT)
+                                   ? LL_SPI_DATAWIDTH_8BIT
+                                   : LL_SPI_DATAWIDTH_16BIT;
+
+    switch (config->mode) {
+
+    case BSP_ENC_SPI_MODE_0:
+        SPI_InitStruct.ClockPolarity = LL_SPI_POLARITY_LOW;
+        SPI_InitStruct.ClockPhase = LL_SPI_PHASE_1EDGE;
+        break;
+
+    case BSP_ENC_SPI_MODE_1:
+        SPI_InitStruct.ClockPolarity = LL_SPI_POLARITY_LOW;
+        SPI_InitStruct.ClockPhase = LL_SPI_PHASE_2EDGE;
+        break;
+
+    case BSP_ENC_SPI_MODE_2:
+        SPI_InitStruct.ClockPolarity = LL_SPI_POLARITY_HIGH;
+        SPI_InitStruct.ClockPhase = LL_SPI_PHASE_1EDGE;
+        break;
+
+    case BSP_ENC_SPI_MODE_3:
+        SPI_InitStruct.ClockPolarity = LL_SPI_POLARITY_HIGH;
+        SPI_InitStruct.ClockPhase = LL_SPI_PHASE_2EDGE;
+        break;
+
+    default:
+        return false;
+    }
+
+    SPI_InitStruct.NSS = LL_SPI_NSS_SOFT;
+    SPI_InitStruct.BaudRate = LL_SPI_BAUDRATEPRESCALER_DIV32;
+    SPI_InitStruct.BitOrder = LL_SPI_MSB_FIRST;
+    SPI_InitStruct.CRCCalculation = LL_SPI_CRCCALCULATION_DISABLE;
+    SPI_InitStruct.CRCPoly = 7U;
+
+    /* SPI 必须处于禁用状态 */
     LL_SPI_Disable(SPI1);
-    enc_cs(&spi_enc_int, false);
-    enc_cs(&spi_enc_ext, false);
-    // 按 8bit 阈值清空，避免 16bit 模式残留单字节时 RXNE 不置位。
-    LL_SPI_SetRxFIFOThreshold(SPI1, LL_SPI_RX_FIFO_TH_QUARTER);
-    // SPI FIFO 最多 4 字节，使用有界清空，避免异常状态下死循环。
-    for (uint8_t i = 0U; i < 4U && LL_SPI_IsActiveFlag_RXNE(SPI1); ++i)
-        (void)LL_SPI_ReceiveData8(SPI1);
-    LL_SPI_ClearFlag_OVR(SPI1);
-    if (LL_SPI_IsActiveFlag_MODF(SPI1))
-        LL_SPI_ClearFlag_MODF(SPI1);
-    if (LL_SPI_IsActiveFlag_CRCERR(SPI1))
-        LL_SPI_ClearFlag_CRCERR(SPI1);
-}
 
-static bool enc_spi_prepare(const tSpiEncChipOps *ops) {
-    if (LL_SPI_IsActiveFlag_BSY(SPI1)) {
-        enc_spi_reset();
+    if (LL_SPI_Init(SPI1, &SPI_InitStruct) != SUCCESS) {
         return false;
     }
-    enc_spi_reset();
-    LL_SPI_SetMode(SPI1, LL_SPI_MODE_MASTER);
-    LL_SPI_SetTransferDirection(SPI1, LL_SPI_FULL_DUPLEX);
-    LL_SPI_SetNSSMode(SPI1, LL_SPI_NSS_SOFT);
-    LL_SPI_SetBaudRatePrescaler(SPI1, LL_SPI_BAUDRATEPRESCALER_DIV32);
-    LL_SPI_SetTransferBitOrder(SPI1, LL_SPI_MSB_FIRST);
+
     LL_SPI_SetStandard(SPI1, LL_SPI_PROTOCOL_MOTOROLA);
-    LL_SPI_DisableCRC(SPI1);
     LL_SPI_DisableNSSPulseMgt(SPI1);
-    LL_SPI_SetClockPolarity(
-        SPI1, ops->cpol ? LL_SPI_POLARITY_HIGH : LL_SPI_POLARITY_LOW);
-    LL_SPI_SetClockPhase(SPI1,
-                         ops->cpha ? LL_SPI_PHASE_2EDGE : LL_SPI_PHASE_1EDGE);
-    LL_SPI_SetDataWidth(SPI1,
-                        ops->data_bits == 16U ? LL_SPI_DATAWIDTH_16BIT
-                                              : LL_SPI_DATAWIDTH_8BIT);
-    LL_SPI_SetRxFIFOThreshold(SPI1,
-                              ops->data_bits == 16U
-                                  ? LL_SPI_RX_FIFO_TH_HALF
-                                  : LL_SPI_RX_FIFO_TH_QUARTER);
+
+    /* RX FIFO 阈值 */
+    if (config->data_bits == BSP_ENC_SPI_DATA_8BIT) {
+        LL_SPI_SetRxFIFOThreshold(SPI1, LL_SPI_RX_FIFO_TH_QUARTER);
+    } else {
+        LL_SPI_SetRxFIFOThreshold(SPI1, LL_SPI_RX_FIFO_TH_HALF);
+    }
+
+    /* ==================== NVIC 初始化 ==================== */
+
+    NVIC_SetPriority(SPI1_IRQn,
+                     NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 1, 1));
+
+    NVIC_EnableIRQ(SPI1_IRQn);
+
+    /* ==================== DMA 中断配置 ==================== */
+
+    LL_DMA_EnableIT_TC(DMA1, LL_DMA_CHANNEL_5);
+    LL_DMA_EnableIT_TE(DMA1, LL_DMA_CHANNEL_5);
+
+    LL_DMA_EnableIT_TC(DMA1, LL_DMA_CHANNEL_6);
+    LL_DMA_EnableIT_TE(DMA1, LL_DMA_CHANNEL_6);
+
+    /* SPI 错误中断 */
+    LL_SPI_EnableIT_ERR(SPI1);
+
+    /* 清理状态 */
+    enc_spi_dma_stop();
+    enc_spi_dma_clear_flags();
+    enc_spi_clear_error_flags();
+
+    /* CS 默认不选中 */
+    enc_spi_cs_high();
+
+    /* 启动 SPI */
     LL_SPI_Enable(SPI1);
+
+    s_enc_spi.state = ENC_SPI_STATE_IDLE;
+
     return true;
 }
 
-// 同时使用毫秒期限和轮询次数上限，SysTick 被屏蔽时也不会无限等待。
-#define ENC_TIMEOUT_MS 2U
-#define ENC_POLL_LIMIT 100000U
-
-static bool enc_spi_wait(uint32_t (*flag)(const SPI_TypeDef *), bool set) {
-    uint32_t start = bsp_time_ms();
-    for (uint32_t i = 0U; i < ENC_POLL_LIMIT; ++i) {
-        if (LL_SPI_IsActiveFlag_OVR(SPI1) || LL_SPI_IsActiveFlag_MODF(SPI1) ||
-            LL_SPI_IsActiveFlag_FRE(SPI1))
-            return false;
-        if ((flag(SPI1) != 0U) == set)
-            return true;
-        if ((uint32_t)(bsp_time_ms() - start) >= ENC_TIMEOUT_MS)
-            return false;
-    }
-    return false;
-}
-
-static void enc_cs_gap(void) {
-    // 保证相邻命令帧间存在 CS 高电平间隔，覆盖 AS5047 的最小间隔。
-    // Cortex-M4 每个 NOP 至少一周期；当前 170MHz 下至少约 0.75us。
-    for (volatile uint32_t i = 0U; i < 128U; ++i)
-        __NOP();
-}
-
-bool enc_spi_transfer(tSpiEncDev *dev, const uint8_t *tx, uint8_t *rx,
-                      uint16_t len) {
-    if (!enc_valid_dev(dev) || s_owner != dev || !dev->inited ||
-        !dev->chip_ops || !tx || !rx || len == 0U)
+bool bsp_enc_spi_start(const void *tx_buf, void *rx_buf, uint16_t frame_count) {
+    if (s_enc_spi.state == ENC_SPI_STATE_UNINIT) {
         return false;
-    bool wide = dev->chip_ops->data_bits == 16U;
-    if (wide && (len & 1U) != 0U)
-        return false;
-
-    enc_cs_gap();
-    enc_cs(dev, true);
-    enc_cs_gap();
-    for (uint16_t i = 0U; i < len; i = (uint16_t)(i + (wide ? 2U : 1U))) {
-        if (!enc_spi_wait(LL_SPI_IsActiveFlag_TXE, true))
-            goto fail;
-        if (wide)
-            LL_SPI_TransmitData16(
-                SPI1, (uint16_t)(tx[i] | ((uint16_t)tx[i + 1U] << 8)));
-        else
-            LL_SPI_TransmitData8(SPI1, tx[i]);
-        if (!enc_spi_wait(LL_SPI_IsActiveFlag_RXNE, true))
-            goto fail;
-        if (wide) {
-            uint16_t word = LL_SPI_ReceiveData16(SPI1);
-            rx[i] = (uint8_t)word;
-            rx[i + 1U] = (uint8_t)(word >> 8);
-        } else
-            rx[i] = LL_SPI_ReceiveData8(SPI1);
     }
-    if (!enc_spi_wait(LL_SPI_IsActiveFlag_TXE, true) ||
-        !enc_spi_wait(LL_SPI_IsActiveFlag_BSY, false))
-        goto fail;
-    enc_cs_gap();
-    enc_cs(dev, false);
+
+    if (tx_buf == NULL || rx_buf == NULL || frame_count == 0U) {
+        return false;
+    }
+
+    if (s_enc_spi.state == ENC_SPI_STATE_BUSY) {
+        return false;
+    }
+
+    /* 确保 SPI 已经空闲 */
+    if (LL_SPI_IsActiveFlag_BSY(ENC_SPI)) {
+        return false;
+    }
+
+    enc_spi_dma_stop();
+    enc_spi_dma_clear_flags();
+    enc_spi_clear_error_flags();
+
+    /* RX DMA：SPI -> 内存 */
+    LL_DMA_ConfigAddresses(DMA1,
+                           LL_DMA_CHANNEL_5,
+                           (uint32_t)&ENC_SPI->DR,
+                           (uint32_t)rx_buf,
+                           LL_DMA_DIRECTION_PERIPH_TO_MEMORY);
+
+    LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_5, frame_count);
+
+    /* TX DMA：内存 -> SPI */
+    LL_DMA_ConfigAddresses(DMA1,
+                           LL_DMA_CHANNEL_6,
+                           (uint32_t)tx_buf,
+                           (uint32_t)&ENC_SPI->DR,
+                           LL_DMA_DIRECTION_MEMORY_TO_PERIPH);
+
+    LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_6, frame_count);
+
+    s_enc_spi.state = ENC_SPI_STATE_BUSY;
+
+    /* CS 拉低，开始一次完整事务 */
+    enc_spi_cs_low();
+
+    /*
+     * 先开启 RX，再开启 TX，避免首个接收数据丢失。
+     */
+    LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_5);
+    LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_6);
+
+    LL_SPI_EnableDMAReq_RX(ENC_SPI);
+    LL_SPI_EnableDMAReq_TX(ENC_SPI);
+
     return true;
+}
 
-fail:
-    enc_spi_reset();
-    return false;
+bool bsp_enc_spi_is_busy(void) {
+    return (s_enc_spi.state == ENC_SPI_STATE_BUSY);
+}
+
+/* ======================== DMA 中断入口 ======================== */
+
+void bsp_enc_spi_dma_rx_irq(void) {
+    if (LL_DMA_IsActiveFlag_TE5(DMA1)) {
+        LL_DMA_ClearFlag_GI5(DMA1);
+        enc_spi_finish(BSP_ENC_SPI_ERR_DMA);
+        return;
+    }
+
+    if (LL_DMA_IsActiveFlag_TC5(DMA1)) {
+        LL_DMA_ClearFlag_TC5(DMA1);
+        enc_spi_finish(BSP_ENC_SPI_OK);
+    }
+}
+
+void bsp_enc_spi_dma_tx_irq(void) {
+    if (LL_DMA_IsActiveFlag_TE6(DMA1)) {
+        LL_DMA_ClearFlag_GI6(DMA1);
+        enc_spi_finish(BSP_ENC_SPI_ERR_DMA);
+        return;
+    }
+
+    if (LL_DMA_IsActiveFlag_TC6(DMA1)) {
+        LL_DMA_ClearFlag_TC6(DMA1);
+    }
+}
+
+/* ======================== SPI 中断入口 ======================== */
+
+void bsp_enc_spi_spi_irq(void) {
+    if (LL_SPI_IsActiveFlag_OVR(ENC_SPI) || LL_SPI_IsActiveFlag_MODF(ENC_SPI) ||
+        LL_SPI_IsActiveFlag_CRCERR(ENC_SPI) ||
+        LL_SPI_IsActiveFlag_FRE(ENC_SPI)) {
+
+        enc_spi_clear_error_flags();
+        enc_spi_finish(BSP_ENC_SPI_ERR_SPI);
+    }
 }
