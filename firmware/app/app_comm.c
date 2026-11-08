@@ -532,7 +532,7 @@ bool comm_main_init(tParameter *param) {
     return bus_start(&g_bus_can, param->can_id);
 }
 
-void comm_process(void) {
+void comm_loop_task(void) {
     if (g_bus_can.dstate == DEV_RUN_ERROR)
         pm_handle_fault(FAULT_BUSCOM_RUN);
 

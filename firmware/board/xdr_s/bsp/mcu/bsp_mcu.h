@@ -32,20 +32,34 @@ void bsp_critical_exit(uint32_t primask);
 
 #if __DEBUG_TIME
 typedef struct {
-    uint32_t us;
-    uint32_t us_last;
+    uint32_t task_us;
+    uint32_t t_us;
+    uint32_t start_us;
+    uint32_t max_task_us;
+    uint32_t max_t_us;
 } tTimeSample; // us时间样本
 
 #define TIME_INIT() bsp_time_init();
 #define CREATE_TIME_SAMPLE(sample) tTimeSample sample;
 #define TIME_SAMPLE_START(sample)                                              \
     {                                                                          \
-        sample.us_last = bsp_time_us();                                        \
+        uint32_t new = bsp_time_us();                                          \
+        if (new > sample.start_us) {                                           \
+            sample.t_us = new - sample.start_us;                               \
+            sample.start_us = new;                                             \
+        } else {                                                               \
+            sample.start_us = new;                                             \
+        }                                                                      \
     }
 #define TIME_SAMPLE_STOP(sample)                                               \
     {                                                                          \
-        sample.us = bsp_time_us() - sample.us_last;                            \
-        sample.us_last = bsp_time_us();                                        \
+        uint32_t new = bsp_time_us();                                          \
+        if (new > sample.start_us) {                                           \
+            sample.task_us = new - sample.start_us;                            \
+            sample.max_task_us = sample.max_task_us > sample.task_us           \
+                                     ? sample.max_task_us                      \
+                                     : sample.task_us;                         \
+        }                                                                      \
     }
 
 #else

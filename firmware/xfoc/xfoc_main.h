@@ -6,11 +6,9 @@
 #include "cmd_list.h"
 #include "data_list.h"
 #include "parameter_list.h"
-#include "slot_con.h"
 
 #include "control.h"
 #include "filter.h"
-#include "obs.h"
 #include "svpwm.h"
 #include "trajectory.h"
 
@@ -51,13 +49,27 @@ typedef struct {
 
 } tCmdValue;
 
+// 位置记录
+typedef struct {
+    int32_t num_turns; // 圈数累积
+
+    float last_angle; // 上一个机械角度
+    float zero_angle; // 位置机械零点
+    float max_pos;    // 位置机械最大值
+    float min_pos;    // 位置机械最小值
+
+} tPosAcc;
+
 // 主要核心
 typedef struct {
     eMotorState state; // 状态
 
+    bool enc_on; // 有感
+    bool obs_on; // 无感
+
     tParameter *param;                     // 参数
+    tPosAcc pacc;                          // 位置累积
     tCtrl ctrl;                            // 控制器
-    tObs obs;                              // 观测器
     tSvpwm svpwm;                          // 调制器
     tFirstOrderLagFilter cf_u, cf_v, cf_w; // 电流滤波器
     tTraj traj;                            // 内置轨迹规划器
@@ -110,14 +122,15 @@ void motor_disable(void);
 void motor_handle_fault(void);
 bool motor_cmd_cfg(tCmdCfg *cfg);
 bool motor_cmd_set(tCmdValue *cmd);
-bool motor_set_pos_zero(void);
-bool motor_set_pos_limit(void);
+void motor_set_pos_zero(void);
+void motor_set_pos_limit(void);
 
-void motor_mainloop_tasks(void);
-void obs_foc_task(float ts);
-void traj_task(float ts);
-void vl_pid_mit_task(float ts);
-void field_weakening_task(float ts);
-void pl_pid_task(float ts);
+void motor_loop_task(void);
+
+void motor_foc_tim_task(float ts);
+void motor_traj_tim_task(float ts);
+void motor_vl_pid_mit_tim_task(float ts);
+void motor_field_weakening_tim_task(float ts);
+void motor_pl_pid_tim_task(float ts);
 
 #endif

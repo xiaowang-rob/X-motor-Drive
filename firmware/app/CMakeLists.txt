@@ -12,4 +12,4 @@ target_include_directories(app PUBLIC
     "${SERVICES_DIR}/abs"
     "${SERVICES_DIR}/utils"
 )
-target_link_libraries(app PUBLIC protocol xfoc bsp PRIVATE board_headers)
+target_link_libraries(app PUBLIC protocol xfoc bsp xcrc PRIVATE board_headers)

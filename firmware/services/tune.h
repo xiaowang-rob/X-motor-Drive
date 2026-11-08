@@ -4,7 +4,7 @@
 #include "tune_alg.h"
 
 #include "control.h"
-#include "obs.h"
+#include "enc_manager.h"
 #include "obsdata.h"
 #include "parameter_list.h"
 #include "xfoc_main.h"

@@ -22,6 +22,7 @@ static const uint8_t TEMP_TABLE[256] = {
 typedef struct MCU_ADC_DEVICE {
     volatile uint16_t cur_adc_buf[CUR_ADC_SEQ_LEN];
     volatile uint16_t vt_adc_buf[VT_ADC_SEQ_LEN];
+    TIM_TypeDef *inst;
 } tMcuAdcDev;
 static tMcuAdcDev mcu_adc;
 
@@ -54,7 +55,8 @@ static bool vt_open(volatile uint16_t *adc_buf) {
     if (!adc_enable(VT_ADC))
         return false;
     LL_DMA_DisableChannel(VT_ADC_DMA, VT_ADC_DMA_CH);
-    LL_DMA_SetMode(VT_ADC_DMA, VT_ADC_DMA_CH, LL_DMA_MODE_NORMAL);
+    // 必须是循环模式：普通模式传完一轮就关闭通道，之后 TIM2 再触发也不会更新缓冲区
+    LL_DMA_SetMode(VT_ADC_DMA, VT_ADC_DMA_CH, LL_DMA_MODE_CIRCULAR);
     LL_DMA_SetPeriphAddress(
         VT_ADC_DMA,
         VT_ADC_DMA_CH,
@@ -92,7 +94,7 @@ static bool sample_open(void *handle) {
     if (!handle)
         return false;
     tMcuAdcDev *dev = (tMcuAdcDev *)handle;
-
+    dev->inst = VT_ADC_TIM;
     if (__get_IPSR() != 0U || LL_ADC_IsEnabled(CUR_ADC))
         return false;
     if (!vt_open(dev->vt_adc_buf) || !current_open(dev->cur_adc_buf))

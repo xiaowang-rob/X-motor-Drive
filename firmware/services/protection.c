@@ -55,7 +55,7 @@ void pm_handle_fault(eFault fault) {
 }
 
 // 保护服务主循环
-void pro_manager_main_loop(tXFocMotor *motor) {
+void pm_loop_task(tXFocMotor *motor) {
 
     if (pro_manager.fault != FAULT_NONE)
         return;

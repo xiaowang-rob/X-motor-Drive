@@ -2,7 +2,6 @@
 #define __SMO_H
 
 #include "parameter_list.h"
-#include "pll.h"
 
 // ========== 配置宏 ==========
 #define SMO_USE_CURRENT_OBSERVER 1 // 0=直接用反馈电流测试，1=启用完整电流观测器
@@ -54,7 +53,6 @@ typedef struct {
     float vel_elec; // 电角速度 [rad/s]
 
     // === PLL 状态 ===
-    tPLL pll;
 
     // === 内部缓存 ===
     float k_sl_curr;

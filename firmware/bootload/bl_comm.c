@@ -18,14 +18,15 @@ bool bl_comm_init(void) {
     s_uart_pending = false;
     s_usb_pending = false;
     s_usb_reply_len = 0;
-    return uart_start(&g_uart, UART_PACKET_HEAD, UART_PACKET_TAIL) &&
-           usb_start(&g_usb);
+    return uart_start(&g_uart) && usb_start(&g_usb);
 }
 
 void bl_comm_poll(void) {
     if (s_uart_pending && uart_send(&g_uart, &s_uart_reply))
         s_uart_pending = false;
-    if (s_usb_pending && usb_send(&g_usb, s_usb_reply, s_usb_reply_len))
+    if (s_usb_pending && s_usb_reply_len >= 2U &&
+        usb_send(&g_usb, s_usb_reply[0], s_usb_reply + 1U,
+                 (uint16_t)(s_usb_reply_len - 1U)))
         s_usb_pending = false;
 
     tUart_Frame frame;

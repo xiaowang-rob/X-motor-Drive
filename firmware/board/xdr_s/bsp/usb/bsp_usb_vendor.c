@@ -1,7 +1,7 @@
 /* Vendor Bulk transport; command + data messages. No heap allocation. */
 #include "bsp_usb_vendor.h"
+#include "main.h"
 #include "xdr_usbd_vendor_if.h"
-#include <string.h>
 
 #define USB_RING_SIZE 8192U
 #define USB_RING_MASK (USB_RING_SIZE - 1U)
@@ -238,6 +238,7 @@ void bsp_usb_vendor_get_stats(tUsbVendorStats *out) {
 }
 
 static bool bsp_usb_vendor_open(void *handle) {
+    LL_GPIO_SetOutputPin(USBCS_GPIO_Port, USBCS_Pin);
     return handle ==
            &g_uart_usb; /* Enumeration is started by MX_USB_Device_Init. */
 }

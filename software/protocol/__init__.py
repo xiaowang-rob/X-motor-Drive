@@ -33,12 +33,12 @@ class Pidx:
     PARAM_QCLKP = 17  # q轴电流环Kp
     PARAM_QCLKI = 18  # q轴电流环Ki
     PARAM_CFALPHA = 19  # 电流滤波系数
-    PARAM_ROTOR_OBS = 20  # 转子观测器
-    PARAM_ABS_POS_OBS = 21  # 绝对位置观测器
-    PARAM_THETA_OFFSET = 22  # 角度偏移
-    PARAM_POSITIVE_DIR = 23  # 方向反转
-    PARAM_THETA_SOURCE = 24  # 角度源
-    PARAM_VEL_SOURCE = 25  # 速度源
+    PARAM_SENSORLESS = 20  # 无感观测
+    PARAM_ROTOR_ENC = 21  # 转子编码器
+    PARAM_ABS_POS_ENC = 22  # 绝对位置编码器
+    PARAM_THETA_OFFSET = 23  # 角度偏移
+    PARAM_POSITIVE_DIR = 24  # 方向反转
+    PARAM_THETA_SOURCE = 25  # 角度源
     PARAM_HFI_SMO_THRESHOLD = 26  # HFI/SMO切换阈值
     PARAM_HALL_TABLE_0 = 27  # HALL编码器表0
     PARAM_HALL_TABLE_1 = 28  # HALL编码器表1
@@ -170,28 +170,27 @@ class eMotorList:
 
 MotorList = eMotorList
 
-class eObsList:
-    OBS_NONE = 0  # 无观测
-    OBS_INT_ENC = 1  # 内置编码器
-    OBS_ENC_HALL = 2  # 霍尔编码器
-    OBS_ENC_SPI = 3  # SPI编码器
-    OBS_ENC_ABI = 4  # ABI编码器
-    OBS_ENC_SINCOS = 5  # 正余弦编码器
-    OBS_HFI_SMO = 6  # HFI+SMO观测器
+class eSensorlessList:
+    SENSORLESS_NONE = 0  # 禁用
+    SENSORLESS_HFISMO = 1  # HFI+SMO
 
-ObsList = eObsList
+SensorlessList = eSensorlessList
+
+class eEncList:
+    ENC_NONE = 0  # 禁用
+    ENC_INT = 1  # 内置编码器
+    ENC_HALL = 2  # HALL编码器
+    ENC_SPI = 3  # SPI编码器
+    ENC_ABI = 4  # ABI编码器
+    ENC_SINCOS = 5  # SIN/COS编码器
+
+EncList = eEncList
 
 class eThetaSource:
     THETA_PLL = 0  # PLL
     THETA_RAW = 1  # 原始角度
 
 ThetaSource = eThetaSource
-
-class eVelSource:
-    VEL_PLL = 0  # PLL
-    VEL_FDM = 1  # 差分速度
-
-VelSource = eVelSource
 
 class eSpiEncList:
     ENC_MT6816 = 0  # MT6816
@@ -250,22 +249,23 @@ class eFault:
     FAULT_NONE = 0  # NONE
     FAULT_OBS_INIT = 1  # 观测器初始化失败
     FAULT_BUSCOM_INIT = 2  # 总线通信初始化失败
-    FAULT_RS_IMBALANCE = 3  # 相电阻不平衡
-    FAULT_RL_TUNE = 4  # 电阻电感整定失败
-    FAULT_PSIF_TUNE = 5  # 磁链整定失败
-    FAULT_OBS_TUNE = 6  # 观测器校准失败
-    FAULT_POLE_PAIR_MISMATCH = 7  # 极对数不匹配
-    FAULT_MOTOR_LOCK = 8  # 电机堵转
-    FAULT_MECH_PARAM_FAIL = 9  # 机械参数校准失败
-    FAULT_OVERVOLTAGE = 10  # 过电压
-    FAULT_UNDERVOLTAGE = 11  # 低电压
-    FAULT_OVERCURRENT = 12  # 过电流
-    FAULT_OVERTEMP = 13  # 过温
-    FAULT_OVERSPEED = 14  # 超速
-    FAULT_POSITION_LIMIT = 15  # 位置超限
-    FAULT_BUSCOM_RUN = 16  # 总线通讯异常
-    FAULT_OBS_RUN = 17  # 观测器运行异常
-    FAULT_INVALID_INPUT = 18  # 非法输入
+    FAULT_ENCODER_INIT = 3  # 编码器初始化失败
+    FAULT_RS_IMBALANCE = 4  # 相电阻不平衡
+    FAULT_RL_TUNE = 5  # 电阻电感整定失败
+    FAULT_PSIF_TUNE = 6  # 磁链整定失败
+    FAULT_OBS_TUNE = 7  # 观测器校准失败
+    FAULT_POLE_PAIR_MISMATCH = 8  # 极对数不匹配
+    FAULT_MOTOR_LOCK = 9  # 电机堵转
+    FAULT_MECH_PARAM_FAIL = 10  # 机械参数校准失败
+    FAULT_OVERVOLTAGE = 11  # 过电压
+    FAULT_UNDERVOLTAGE = 12  # 低电压
+    FAULT_OVERCURRENT = 13  # 过电流
+    FAULT_OVERTEMP = 14  # 过温
+    FAULT_OVERSPEED = 15  # 超速
+    FAULT_POSITION_LIMIT = 16  # 位置超限
+    FAULT_BUSCOM_RUN = 17  # 总线通讯异常
+    FAULT_OBS_RUN = 18  # 观测器运行异常
+    FAULT_INVALID_INPUT = 19  # 非法输入
 
 Fault = eFault
 
@@ -301,12 +301,12 @@ PARAMETERS = {
     17: ProtocolField(17, 'PARAM_QCLKP', 'qclkp', 'q轴电流环Kp', 'A/V', 'FLD_F32', 0.0, None),
     18: ProtocolField(18, 'PARAM_QCLKI', 'qclki', 'q轴电流环Ki', 'A/(V·s)', 'FLD_F32', 0.0, None),
     19: ProtocolField(19, 'PARAM_CFALPHA', 'cfalpha', '电流滤波系数', '0~1', 'FLD_F32', 0.5, None),
-    20: ProtocolField(20, 'PARAM_ROTOR_OBS', 'rotor_obs', '转子观测器', '', 'FLD_U8', 0, [('无观测', 0), ('内置编码器', 1), ('霍尔编码器', 2), ('SPI编码器', 3), ('ABI编码器', 4), ('正余弦编码器', 5), ('HFI+SMO观测器', 6)]),
-    21: ProtocolField(21, 'PARAM_ABS_POS_OBS', 'abs_pos_obs', '绝对位置观测器', '', 'FLD_U8', 0, [('无观测', 0), ('内置编码器', 1), ('霍尔编码器', 2), ('SPI编码器', 3), ('ABI编码器', 4), ('正余弦编码器', 5), ('HFI+SMO观测器', 6)]),
-    22: ProtocolField(22, 'PARAM_THETA_OFFSET', 'theta_offset', '角度偏移', 'rad', 'FLD_F32', 0.0, None),
-    23: ProtocolField(23, 'PARAM_POSITIVE_DIR', 'positive_dir', '方向反转', '', 'FLD_BOOL', False, None),
-    24: ProtocolField(24, 'PARAM_THETA_SOURCE', 'theta_source', '角度源', '', 'FLD_U8', 0, [('PLL', 0), ('原始角度', 1)]),
-    25: ProtocolField(25, 'PARAM_VEL_SOURCE', 'vel_source', '速度源', '', 'FLD_U8', 0, [('PLL', 0), ('差分速度', 1)]),
+    20: ProtocolField(20, 'PARAM_SENSORLESS', 'sensorless', '无感观测', '', 'FLD_U8', 0, [('禁用', 0), ('HFI+SMO', 1)]),
+    21: ProtocolField(21, 'PARAM_ROTOR_ENC', 'rotor_enc', '转子编码器', '', 'FLD_U8', 0, [('禁用', 0), ('内置编码器', 1), ('HALL编码器', 2), ('SPI编码器', 3), ('ABI编码器', 4), ('SIN/COS编码器', 5)]),
+    22: ProtocolField(22, 'PARAM_ABS_POS_ENC', 'abs_pos_enc', '绝对位置编码器', '', 'FLD_U8', 0, [('禁用', 0), ('内置编码器', 1), ('HALL编码器', 2), ('SPI编码器', 3), ('ABI编码器', 4), ('SIN/COS编码器', 5)]),
+    23: ProtocolField(23, 'PARAM_THETA_OFFSET', 'theta_offset', '角度偏移', 'rad', 'FLD_F32', 0.0, None),
+    24: ProtocolField(24, 'PARAM_POSITIVE_DIR', 'positive_dir', '方向反转', '', 'FLD_BOOL', False, None),
+    25: ProtocolField(25, 'PARAM_THETA_SOURCE', 'theta_source', '角度源', '', 'FLD_U8', 0, [('PLL', 0), ('原始角度', 1)]),
     26: ProtocolField(26, 'PARAM_HFI_SMO_THRESHOLD', 'hfi_smo_threshold', 'HFI/SMO切换阈值', 'rad/s', 'FLD_F32', 0.0, None),
     27: ProtocolField(27, 'PARAM_HALL_TABLE_0', 'hall_table_0', 'HALL编码器表0', '', 'FLD_U8', 255, None),
     28: ProtocolField(28, 'PARAM_HALL_TABLE_1', 'hall_table_1', 'HALL编码器表1', '', 'FLD_U8', 255, None),
@@ -376,7 +376,7 @@ OBSDATA = {
     16: ProtocolField(16, 'DATA_POSITION', 'position', '位置', 'rad', 'FLD_F32', 0.0, None),
     17: ProtocolField(17, 'DATA_POSITION_REF', 'position_ref', '位置参考', 'rad', 'FLD_F32', 0.0, None),
     18: ProtocolField(18, 'DATA_MOTOR_STATE', 'motor_state', '电机状态', '', 'FLD_U8', 0, [('INIT', 0), ('IDLE', 1), ('TUNING', 2), ('FAULT', 3), ('开环模式', 4), ('电流模式', 5), ('PID速度模式', 6), ('PID位置模式', 7), ('MIT模式', 8)]),
-    19: ProtocolField(19, 'DATA_FAULT', 'fault', '故障', '', 'FLD_U8', 0, [('NONE', 0), ('观测器初始化失败', 1), ('总线通信初始化失败', 2), ('相电阻不平衡', 3), ('电阻电感整定失败', 4), ('磁链整定失败', 5), ('观测器校准失败', 6), ('极对数不匹配', 7), ('电机堵转', 8), ('机械参数校准失败', 9), ('过电压', 10), ('低电压', 11), ('过电流', 12), ('过温', 13), ('超速', 14), ('位置超限', 15), ('总线通讯异常', 16), ('观测器运行异常', 17), ('非法输入', 18)]),
+    19: ProtocolField(19, 'DATA_FAULT', 'fault', '故障', '', 'FLD_U8', 0, [('NONE', 0), ('观测器初始化失败', 1), ('总线通信初始化失败', 2), ('编码器初始化失败', 3), ('相电阻不平衡', 4), ('电阻电感整定失败', 5), ('磁链整定失败', 6), ('观测器校准失败', 7), ('极对数不匹配', 8), ('电机堵转', 9), ('机械参数校准失败', 10), ('过电压', 11), ('低电压', 12), ('过电流', 13), ('过温', 14), ('超速', 15), ('位置超限', 16), ('总线通讯异常', 17), ('观测器运行异常', 18), ('非法输入', 19)]),
     20: ProtocolField(20, 'DATA_VBUS', 'vbus', '母线电压', 'V', 'FLD_F32', 0.0, None),
     21: ProtocolField(21, 'DATA_DRIVER_TEMP', 'driver_temp', '驱动温度', '°C', 'FLD_F32', 0.0, None),
     22: ProtocolField(22, 'DATA_MOTOR_TEMP', 'motor_temp', '电机温度', '°C', 'FLD_F32', 0.0, None),

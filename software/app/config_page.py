@@ -45,12 +45,12 @@ OBSERVER_PAGES = (
     (
         "通用",
         (
-            Pidx.PARAM_ROTOR_OBS,
-            Pidx.PARAM_ABS_POS_OBS,
+            Pidx.PARAM_SENSORLESS,
+            Pidx.PARAM_ROTOR_ENC,
+            Pidx.PARAM_ABS_POS_ENC,
             Pidx.PARAM_THETA_OFFSET,
             Pidx.PARAM_POSITIVE_DIR,
             Pidx.PARAM_THETA_SOURCE,
-            Pidx.PARAM_VEL_SOURCE,
         ),
     ),
     ("无感观测器", (Pidx.PARAM_HFI_SMO_THRESHOLD,)),

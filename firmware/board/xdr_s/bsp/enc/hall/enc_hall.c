@@ -2,13 +2,14 @@
 
 #include "bsp_enc_tim.h"
 #include "bsp_mcu.h"
-#include "tim.h"
+#include "main.h"
+#include "xmath.h"
 
-static bool hall_enc_init(void *handle);
-static bool hall_enc_open(void *handle);
-static bool hall_enc_close(void *handle);
-static bool hall_enc_read(void *handle, tEncSample *sample);
-static void hall_enc_irq(void *handle);
+static bool hall_enc_init(void *dev, void *cfg);
+static bool hall_enc_open(void *dev);
+static bool hall_enc_close(void *dev);
+static bool hall_enc_read(void *dev, tEncSample *sample);
+static void hall_enc_irq(void *dev);
 
 static const tEncoderOps enc_hall_ops = {
     .init = hall_enc_init,
@@ -17,22 +18,12 @@ static const tEncoderOps enc_hall_ops = {
     .read = hall_enc_read,
 };
 
-// TODO:后续由参数配置
-typedef struct HALL_ENCODER_CONFIG {
+typedef struct HALL_ENCODER_DEVICE {
     uint8_t
-        sequence[6]; // 电角度正向 Hall 状态序列，必须为1..6的合法单比特相邻环
+        sequence[8]; // 电角度正向 Hall 状态序列，必须为1..6的合法单比特相邻环
     uint16_t prescaler; // 捕获时基 PSC，不是 PWM 分频
     uint8_t filter;
-} tHallEncCfg;
 
-static tHallEncCfg hall_cfg = {
-    // 默认 120° 相序环；实际板级接线不同时必须按参数校准。
-    .sequence = {1, 3, 2, 6, 4, 5},
-    .prescaler = 0,
-    .filter = 0,
-};
-
-typedef struct HALL_ENCODER_DEVICE {
     volatile bool s_open, s_error, s_overflow;
     volatile uint8_t s_sector;
     volatile int8_t s_direction;
@@ -46,33 +37,40 @@ static const tEncDevHandle s_hall_handle = {
     .dev = &hall_enc,
 };
 
-const tEncDevHandle *enc_hall_handle(void) { return &s_hall_handle; }
+const tEncDevHandle *Get_EncHallHandle(void) { return &s_hall_handle; }
 
 static uint8_t hall_state(void) {
     return ((GPIOA->IDR >> 6U) & 3U) | ((GPIOB->IDR & 1U) << 2U);
 }
 
-static int sector(uint8_t state) {
-    for (unsigned i = 0; i < 6; ++i)
-        if (hall_cfg.sequence[i] == state)
+static int sector(tHallEncDev *dev, uint8_t state) {
+    for (unsigned i = 0; i < 8; ++i)
+        if (dev->sequence[i] == state)
             return (int)i;
     return -1;
 }
 
-static bool hall_enc_init(void *handle) {
-    (void)handle;
+static bool hall_enc_init(void *dev, void *cfg) {
+    if (!dev || !cfg)
+        return false;
+    tHallEncDev *inst = (tHallEncDev *)dev;
+    tHallEncCfg *_cfg = (tHallEncCfg *)cfg;
+    memcpy(inst->sequence, _cfg->sequence, 8);
+    inst->prescaler = _cfg->prescaler;
+    inst->filter = (uint8_t)(_cfg->filter * 225 + 0.5f);
     return true;
 }
 
-static bool hall_enc_open(void *handle) {
-    if (!handle)
+// TODO:换成8个成员
+static bool hall_enc_open(void *dev) {
+    if (!dev)
         return false;
-    tHallEncDev *inst = (tHallEncDev *)handle;
+    tHallEncDev *inst = (tHallEncDev *)dev;
 
     uint8_t seen = 0;
     for (unsigned i = 0; i < 6; ++i) {
-        unsigned state = hall_cfg.sequence[i];
-        unsigned delta = state ^ hall_cfg.sequence[(i + 1U) % 6U];
+        unsigned state = inst->sequence[i];
+        unsigned delta = state ^ inst->sequence[(i + 1U) % 6U];
         if (state == 0U || state > 6U || (seen & (1U << state)) ||
             delta == 0U || (delta & (delta - 1U)))
             return false;
@@ -80,18 +78,18 @@ static bool hall_enc_open(void *handle) {
     }
 
     bsp_tim_enc_init();
-    int initial = sector(hall_state());
+    int initial = sector(inst, hall_state());
     if (initial < 0)
         return false;
     const tTimEncConfig cfg = {
-        .psc = hall_cfg.prescaler,
+        .psc = inst->prescaler,
         .arr = 0xffffU,
         // TI1S: CH1/2/3 XOR；TI1F_ED 对任意 Hall 边沿产生触发。
         .cr2 = TIM_CR2_TI1S,
         // CC1S=TRC：捕获 TI1F_ED 的触发脉冲，与硬件复位共用事件。
         // IC1F 配置 TI1 输入滤波；实际毛刺抑制效果需要在板上验证。
         .ccmr1 =
-            TIM_CCMR1_CC1S | ((uint32_t)hall_cfg.filter << TIM_CCMR1_IC1F_Pos),
+            TIM_CCMR1_CC1S | ((uint32_t)inst->filter << TIM_CCMR1_IC1F_Pos),
         // TS=TI1F_ED(100)，SMS=Reset(100)：捕获旧计数并硬件清零。
         .smcr = (4U << TIM_SMCR_TS_Pos) | (4U << TIM_SMCR_SMS_Pos),
         // TI1F_ED 已将 XOR 的双边沿转换为脉冲；TRC 只捕获脉冲上升沿。
@@ -111,10 +109,10 @@ static bool hall_enc_open(void *handle) {
     return true;
 }
 
-static void hall_enc_irq(void *handle) {
-    if (!handle)
+static void hall_enc_irq(void *dev) {
+    if (!dev)
         return;
-    tHallEncDev *inst = (tHallEncDev *)handle;
+    tHallEncDev *inst = (tHallEncDev *)dev;
 
     uint32_t status = bsp_tim_enc_status();
     bsp_tim_enc_clear_status(status &
@@ -127,7 +125,7 @@ static void hall_enc_irq(void *handle) {
         inst->s_error = true; // ISR 来不及，禁止继续输出可信角度
     if (status & TIM_SR_CC1IF) {
         uint32_t captured = bsp_tim_enc_capture(1U);
-        int next = sector(hall_state());
+        int next = sector(inst, hall_state());
         if (next < 0) {
             inst->s_error = true;
             return;
@@ -145,38 +143,35 @@ static void hall_enc_irq(void *handle) {
     }
 }
 
-static bool hall_enc_read(void *handle, tEncSample *sample) {
-    if (!handle || !sample)
+static bool hall_enc_read(void *dev, tEncSample *sample) {
+    if (!dev || !sample)
         return false;
-    tHallEncDev *inst = (tHallEncDev *)handle;
+    tHallEncDev *inst = (tHallEncDev *)dev;
 
     if (!inst->s_open)
         return false;
     uint32_t saved = __get_PRIMASK();
     __disable_irq();
-    int now = sector(hall_state());
+    int now = sector(inst, hall_state());
     bool error = inst->s_error || now < 0;
-    tEncSample next = {
-        .raw = hall_cfg.sequence[inst->s_sector],
-        .resolution = 6U,
-        .angle_rad = (inst->s_sector + 0.5f) * (6.28318530718f / 6.0f),
-        .angle_kind = BSP_ANGLE_ELECTRICAL,
-        .referenced = true,
-        .interval_ticks = inst->s_overflow ? 0U : inst->s_interval,
-        .direction = inst->s_direction,
-        .ts_us = inst->s_timestamp,
-    };
-    __set_PRIMASK(saved);
     if (error)
         return false;
-    *sample = next;
+    sample->raw = inst->sequence[inst->s_sector];
+    sample->angle_rad = (inst->s_sector + 0.5f) * (XMATH_2PI / 6.0f);
+    sample->angle_kind = BSP_ANGLE_ELECTRICAL;
+    sample->interval_ticks = inst->s_overflow ? 0U : inst->s_interval;
+    sample->direction = inst->s_direction;
+    sample->ts_us = inst->s_timestamp;
+
+    __set_PRIMASK(saved);
+
     return true;
 }
 
-static bool hall_enc_close(void *handle) {
-    if (!handle)
+static bool hall_enc_close(void *dev) {
+    if (!dev)
         return false;
-    tHallEncDev *inst = (tHallEncDev *)handle;
+    tHallEncDev *inst = (tHallEncDev *)dev;
 
     inst->s_open = false;
     bsp_tim_enc_stop();

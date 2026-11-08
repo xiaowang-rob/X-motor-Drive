@@ -231,20 +231,20 @@ bool tune_mech_update(tParameter *p, float ts, float iq, float vel) {
 }
 
 // 观测器参数辨识
-bool tune_obs_update(tXFocMotor *motor, eObsList obs, tParameter *p, float ts) {
-    switch (obs) {
-    case OBS_NONE:
+bool tune_obs_update(tXFocMotor *motor, eEncList enc, tParameter *p, float ts) {
+    switch (enc) {
+    case ENC_NONE:
 
         break;
-    case OBS_ENC_HALL:
+    case ENC_HALL:
 
         break;
-    case OBS_ENC_ABI:
+    case ENC_ABI:
 
         break;
-    case OBS_INT_ENC:
-    case OBS_ENC_SPI:
-    case OBS_ENC_SINCOS:
+    case ENC_INT:
+    case ENC_SPI:
+    case ENC_SINCOS:
         if (!g_tune.TO_init) {
             tEncCal_cfg enc_cal_cfg = {
                 .adapt =
@@ -286,8 +286,6 @@ bool tune_obs_update(tXFocMotor *motor, eObsList obs, tParameter *p, float ts) {
                 g_tune.state = TUNE_FAILED;
             }
         }
-        break;
-    case OBS_HFI_SMO:
         break;
     }
     return false;

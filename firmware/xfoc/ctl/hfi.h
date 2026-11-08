@@ -3,11 +3,9 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "pll.h"
 
 // ================= 数据结构 =================
-typedef struct
-{
+typedef struct {
 
     // 注入状态
     short inj_signal; // 当前注入极性 (+1/-1)
@@ -43,7 +41,8 @@ extern tHFI_Handle g_hfi;
 
 // ================= 函数声明 =================
 void hfi_init(float pll_kp, float pll_ki);
-void hfi_step(float ialpha, float ibeta, float *u_alpha_h, float *u_beta_h, float ts);
+void hfi_step(float ialpha, float ibeta, float *u_alpha_h, float *u_beta_h,
+              float ts);
 void hfi_detect_initial_position(float id, float *ualpha, float *ubeta);
 
 void hfi_reset_initial_position(void);

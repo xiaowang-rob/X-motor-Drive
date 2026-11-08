@@ -9,7 +9,7 @@
 
 bool bl_main_init(void) {
 
-    if (!param_init(&g_storage)) {
+    if (!param_init()) {
         bl_status_set(BL_STATUS_ERROR);
         return false;
     }

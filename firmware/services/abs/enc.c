@@ -5,9 +5,31 @@
 // 型号、外设与 CS 引脚等板级事实不在本层出现。
 // ============================================================
 
-#include "encoder.h"
+#include "enc.h"
+#include "string.h"
 
-bool encoder_init(tEncoder *enc, const tEncDevHandle *handle) {
+static tAbiCfg abi_cfg = {
+    .enc_counts_per_rev = 16384,
+    .filter = 0.1f,
+    .index_falling = false,
+};
+
+static tHallEncCfg hall_cfg = {
+    // 默认 120° 相序环；实际板级接线不同时必须按参数校准。
+    .sequence = {0},
+    .prescaler = 0,
+    .filter = 0,
+};
+
+static tSinCosEncCfg sincos_cfg = {
+    .frequency_hz = 1000,
+    .sin_offset = 1.2f,
+    .cos_offset = 0.0f,
+    .sin_gain = 1.0f,
+    .cos_gain = 1.0f,
+};
+
+bool enc_init(tEncoder *enc, const tEncDevHandle *handle) {
     if (!enc || !handle)
         return false;
 
@@ -18,11 +40,10 @@ bool encoder_init(tEncoder *enc, const tEncDevHandle *handle) {
     memset(&enc->sample, 0U, sizeof(enc->sample));
     enc->valid_counter = 0U;
 
-    if (enc->handle->ops->init &&
-        !enc->handle->ops->init(enc->handle->dev)) {
-        enc->dstate = DEV_RUN_ERROR;
-        return false;
-    }
+    // if (!enc->handle->ops->init(enc->handle->dev))
+    // {
+    //     return false;
+    // }
 
     if (!enc->handle->ops->open(enc->handle->dev)) {
         enc->dstate = DEV_RUN_ERROR;
@@ -33,7 +54,7 @@ bool encoder_init(tEncoder *enc, const tEncDevHandle *handle) {
     return true;
 }
 
-void encoder_task(tEncoder *enc) {
+void enc_task(tEncoder *enc) {
     if (!enc)
         return;
 

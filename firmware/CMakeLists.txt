@@ -33,8 +33,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(ARM_MATH_ROOT "${BOARD_DIR}/Middlewares/ST/ARM/DSP")
 set(CMSIS_INCLUDE_DIR "${BOARD_DIR}/Drivers/CMSIS/Include")
 add_subdirectory("${FW_ROOT}/protocol" "${CMAKE_BINARY_DIR}/protocol")
+# math 里的 xcrc 供 APP 和 BL 共用；xfoc 仅 APP 需要。
+add_subdirectory("${FW_ROOT}/math" "${CMAKE_BINARY_DIR}/xmath")
 if(FW_TYPE STREQUAL "app")
-    add_subdirectory("${FW_ROOT}/math" "${CMAKE_BINARY_DIR}/xmath")
     add_subdirectory("${FW_ROOT}/xfoc" "${CMAKE_BINARY_DIR}/xfoc")
 endif()
 

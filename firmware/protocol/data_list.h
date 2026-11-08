@@ -48,22 +48,23 @@ typedef enum
     FAULT_NONE = 0, /* NONE */
     FAULT_OBS_INIT = 1, /* 观测器初始化失败 */
     FAULT_BUSCOM_INIT = 2, /* 总线通信初始化失败 */
-    FAULT_RS_IMBALANCE = 3, /* 相电阻不平衡 */
-    FAULT_RL_TUNE = 4, /* 电阻电感整定失败 */
-    FAULT_PSIF_TUNE = 5, /* 磁链整定失败 */
-    FAULT_OBS_TUNE = 6, /* 观测器校准失败 */
-    FAULT_POLE_PAIR_MISMATCH = 7, /* 极对数不匹配 */
-    FAULT_MOTOR_LOCK = 8, /* 电机堵转 */
-    FAULT_MECH_PARAM_FAIL = 9, /* 机械参数校准失败 */
-    FAULT_OVERVOLTAGE = 10, /* 过电压 */
-    FAULT_UNDERVOLTAGE = 11, /* 低电压 */
-    FAULT_OVERCURRENT = 12, /* 过电流 */
-    FAULT_OVERTEMP = 13, /* 过温 */
-    FAULT_OVERSPEED = 14, /* 超速 */
-    FAULT_POSITION_LIMIT = 15, /* 位置超限 */
-    FAULT_BUSCOM_RUN = 16, /* 总线通讯异常 */
-    FAULT_OBS_RUN = 17, /* 观测器运行异常 */
-    FAULT_INVALID_INPUT = 18, /* 非法输入 */
+    FAULT_ENCODER_INIT = 3, /* 编码器初始化失败 */
+    FAULT_RS_IMBALANCE = 4, /* 相电阻不平衡 */
+    FAULT_RL_TUNE = 5, /* 电阻电感整定失败 */
+    FAULT_PSIF_TUNE = 6, /* 磁链整定失败 */
+    FAULT_OBS_TUNE = 7, /* 观测器校准失败 */
+    FAULT_POLE_PAIR_MISMATCH = 8, /* 极对数不匹配 */
+    FAULT_MOTOR_LOCK = 9, /* 电机堵转 */
+    FAULT_MECH_PARAM_FAIL = 10, /* 机械参数校准失败 */
+    FAULT_OVERVOLTAGE = 11, /* 过电压 */
+    FAULT_UNDERVOLTAGE = 12, /* 低电压 */
+    FAULT_OVERCURRENT = 13, /* 过电流 */
+    FAULT_OVERTEMP = 14, /* 过温 */
+    FAULT_OVERSPEED = 15, /* 超速 */
+    FAULT_POSITION_LIMIT = 16, /* 位置超限 */
+    FAULT_BUSCOM_RUN = 17, /* 总线通讯异常 */
+    FAULT_OBS_RUN = 18, /* 观测器运行异常 */
+    FAULT_INVALID_INPUT = 19, /* 非法输入 */
 } eFault;
 
 typedef struct

@@ -4,7 +4,6 @@
 #include "parameter_list.h"
 
 #include "bus_com.h"
-#include "encoder.h"
 #include "led.h"
 #include "pwm.h"
 #include "sample.h"
@@ -56,8 +55,5 @@ extern tLed g_led;
 
 // 装配并启动全板设备
 bool bsp_base_init(void);
-
-// 编码器初始化
-bool bsp_enc_init(eObsList enc, eSpiEncList spi_enc);
 
 #endif // __BSP_CFG_H

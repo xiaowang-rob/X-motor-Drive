@@ -11,6 +11,11 @@
 #define EMF_ALPHA 0.07f
 #define VEL_ALPHA 0.01f
 
+#define HFISMO_PLL_KP 80.0f
+#define HFISMO_PLL_KI 2000.0f
+#define HFISMO_PLL_INTEG_LIMIT 0.1745f // 积分限值  ±10°
+#define HFISMO_VEL_PHYS_LIMIT 2000.0f  // rad/s 物理上限（≈10k rpm）
+
 tFirstOrderLagFilter I_alpha_lpf;
 tFirstOrderLagFilter I_beta_lpf;
 tFirstOrderLagFilter emf_alpha_lpf;
@@ -65,13 +70,6 @@ static inline float _CalcAdaptiveGain(tSMO *p, float vel_abs, float v_alpha,
 #endif
 }
 
-static inline void smo_pll_init(tPLL *pll, float kp, float ki) {
-    pll->theta = 0.0f;
-    pll->vel = 0.0f;
-    pll->kp = kp;
-    pll->ki = ki;
-}
-
 void smo_init(tSMO *smo, tParameter *param, float ts) {
     smo->rs = param->motor_rs;
     smo->ld = param->motor_ld;
@@ -81,7 +79,7 @@ void smo_init(tSMO *smo, tParameter *param, float ts) {
     smo->cfg = SMO_DEFAULT_CFG;
     _SmoPrecompute(smo, ts);
     // PLL 初始化: Kp=200, Ki=10000  @ dt 约 20us(SMO_DTICK=4)
-    smo_pll_init(&smo->pll, 200.0f, 10000.0f);
+    // smo_pll_init(&smo->pll, 200.0f, 10000.0f);
     smo_reset(smo);
 
     // 滤波器初始化
@@ -98,8 +96,8 @@ void smo_reset(tSMO *smo) {
     smo->e_alpha_filt = smo->e_beta_filt = 0.0f;
     smo->theta_elec = smo->theta_prev = smo->vel_elec = 0.0f;
     smo->k_sl_curr = smo->cfg.k_sl_base;
-    smo->pll.theta = 0;
-    smo->pll.vel = 0;
+    // smo->pll.theta = 0;
+    // smo->pll.vel = 0;
 }
 
 void smo_set_config(tSMO *smo, tSMO_Config *cfg, float ts) {
@@ -168,9 +166,9 @@ void smo_main_loop(tSMO *smo, float v_alpha, float v_beta, float i_alpha,
         // PLL: 角度速度联合估计，无附加LPF
         float theta_obs =
             atan2f(smo->e_beta_filt, smo->e_alpha_filt); // [-PI, PI] rad
-        pll_update(&smo->pll, theta_obs, ts);
-        smo->theta_elec = smo->pll.theta; // 直接 rad
-        smo->vel_elec = smo->pll.vel;
+        // pll_update(&smo->pll, theta_obs, ts);
+        // smo->theta_elec = smo->pll.theta; // 直接 rad
+        // smo->vel_elec = smo->pll.vel;
     } else {
         smo->theta_elec = smo->theta_prev; // 保持上次值
         smo->vel_elec = 0;

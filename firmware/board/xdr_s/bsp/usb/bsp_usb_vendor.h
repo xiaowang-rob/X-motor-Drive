@@ -1,7 +1,6 @@
 #ifndef XDR_BSP_USB_VENDOR_H
 #define XDR_BSP_USB_VENDOR_H
 
-#include "uart_com.h"
 #include "usb_com.h"
 
 /* Native message ops: same handle, payload delivered without a UART wrapper.

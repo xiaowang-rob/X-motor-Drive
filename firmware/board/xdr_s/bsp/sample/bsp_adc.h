@@ -24,11 +24,11 @@
         CUR_ADC_TIM->CCR4 = tic;                                               \
     }
 
-#define SENSE_CUR_GAIN 100.0f          // 电流采样放大倍数
-#define ADC_T_SAMPLE_CUR (1 / 1000000) // 采样时间
-#define CURRENT_U_CH 0                 // 电流通道
-#define CURRENT_V_CH 1                 // 电流通道
-#define CURRENT_W_CH 2                 // 电流通道
+#define SENSE_CUR_GAIN 100.0f             // 电流采样放大倍数
+#define ADC_T_SAMPLE_CUR (1.0f / 1000000) // 采样时间
+#define CURRENT_U_CH 0                    // 电流通道
+#define CURRENT_V_CH 1                    // 电流通道
+#define CURRENT_W_CH 2                    // 电流通道
 
 #define VT_ADC ADC2
 #define VT_ADC_DMA DMA1

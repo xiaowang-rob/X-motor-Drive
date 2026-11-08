@@ -25,12 +25,12 @@ typedef enum
     PARAM_QCLKP = 0x11, /* q轴电流环Kp */
     PARAM_QCLKI = 0x12, /* q轴电流环Ki */
     PARAM_CFALPHA = 0x13, /* 电流滤波系数 */
-    PARAM_ROTOR_OBS = 0x14, /* 转子观测器 */
-    PARAM_ABS_POS_OBS = 0x15, /* 绝对位置观测器 */
-    PARAM_THETA_OFFSET = 0x16, /* 角度偏移 */
-    PARAM_POSITIVE_DIR = 0x17, /* 方向反转 */
-    PARAM_THETA_SOURCE = 0x18, /* 角度源 */
-    PARAM_VEL_SOURCE = 0x19, /* 速度源 */
+    PARAM_SENSORLESS = 0x14, /* 无感观测 */
+    PARAM_ROTOR_ENC = 0x15, /* 转子编码器 */
+    PARAM_ABS_POS_ENC = 0x16, /* 绝对位置编码器 */
+    PARAM_THETA_OFFSET = 0x17, /* 角度偏移 */
+    PARAM_POSITIVE_DIR = 0x18, /* 方向反转 */
+    PARAM_THETA_SOURCE = 0x19, /* 角度源 */
     PARAM_HFI_SMO_THRESHOLD = 0x1A, /* HFI/SMO切换阈值 */
     PARAM_HALL_TABLE_0 = 0x1B, /* HALL编码器表0 */
     PARAM_HALL_TABLE_1 = 0x1C, /* HALL编码器表1 */
@@ -89,26 +89,25 @@ typedef enum
 
 typedef enum
 {
-    OBS_NONE = 0, /* 无观测 */
-    OBS_INT_ENC = 1, /* 内置编码器 */
-    OBS_ENC_HALL = 2, /* 霍尔编码器 */
-    OBS_ENC_SPI = 3, /* SPI编码器 */
-    OBS_ENC_ABI = 4, /* ABI编码器 */
-    OBS_ENC_SINCOS = 5, /* 正余弦编码器 */
-    OBS_HFI_SMO = 6, /* HFI+SMO观测器 */
-} eObsList;
+    SENSORLESS_NONE = 0, /* 禁用 */
+    SENSORLESS_HFISMO = 1, /* HFI+SMO */
+} eSensorlessList;
+
+typedef enum
+{
+    ENC_NONE = 0, /* 禁用 */
+    ENC_INT = 1, /* 内置编码器 */
+    ENC_HALL = 2, /* HALL编码器 */
+    ENC_SPI = 3, /* SPI编码器 */
+    ENC_ABI = 4, /* ABI编码器 */
+    ENC_SINCOS = 5, /* SIN/COS编码器 */
+} eEncList;
 
 typedef enum
 {
     THETA_PLL = 0, /* PLL */
     THETA_RAW = 1, /* 原始角度 */
 } eThetaSource;
-
-typedef enum
-{
-    VEL_PLL = 0, /* PLL */
-    VEL_FDM = 1, /* 差分速度 */
-} eVelSource;
 
 typedef enum
 {
@@ -171,12 +170,12 @@ typedef struct
     float qclkp;
     float qclki;
     float cfalpha;
-    uint8_t rotor_obs;
-    uint8_t abs_pos_obs;
+    uint8_t sensorless;
+    uint8_t rotor_enc;
+    uint8_t abs_pos_enc;
     float theta_offset;
     bool positive_dir;
     uint8_t theta_source;
-    uint8_t vel_source;
     float hfi_smo_threshold;
     uint8_t hall_table_0;
     uint8_t hall_table_1;
@@ -248,12 +247,12 @@ typedef struct
     X(PARAM_QCLKP, qclkp, FLD_F32, 0.0f) \
     X(PARAM_QCLKI, qclki, FLD_F32, 0.0f) \
     X(PARAM_CFALPHA, cfalpha, FLD_F32, 0.5f) \
-    X(PARAM_ROTOR_OBS, rotor_obs, FLD_U8, 0u) \
-    X(PARAM_ABS_POS_OBS, abs_pos_obs, FLD_U8, 0u) \
+    X(PARAM_SENSORLESS, sensorless, FLD_U8, 0u) \
+    X(PARAM_ROTOR_ENC, rotor_enc, FLD_U8, 0u) \
+    X(PARAM_ABS_POS_ENC, abs_pos_enc, FLD_U8, 0u) \
     X(PARAM_THETA_OFFSET, theta_offset, FLD_F32, 0.0f) \
     X(PARAM_POSITIVE_DIR, positive_dir, FLD_BOOL, false) \
     X(PARAM_THETA_SOURCE, theta_source, FLD_U8, 0u) \
-    X(PARAM_VEL_SOURCE, vel_source, FLD_U8, 0u) \
     X(PARAM_HFI_SMO_THRESHOLD, hfi_smo_threshold, FLD_F32, 0.0f) \
     X(PARAM_HALL_TABLE_0, hall_table_0, FLD_U8, 255u) \
     X(PARAM_HALL_TABLE_1, hall_table_1, FLD_U8, 255u) \

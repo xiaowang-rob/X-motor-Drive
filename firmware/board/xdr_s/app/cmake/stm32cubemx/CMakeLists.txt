@@ -86,12 +86,20 @@ set(USB_Device_Library_Src
     # ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/ST/STM32_USB_Device_Library/Class/CustomHID/Src/usbd_customhid.c
 )
 
-# CMSIS-DSP 由 xmath/armmath 目标统一提供，不使用全局库搜索路径。
+# Link directories setup
+set(MX_LINK_DIRS
+
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/ST/ARM/DSP/Lib
+)
 # Project static libraries
-set(MX_LINK_LIBS
+set(MX_LINK_LIBS 
+ "-Wl,--start-group" 
+	:libarm_cortexM4lf_math.a
+ "-Wl,--end-group"
     STM32_Drivers
     ${TOOLCHAIN_LINK_LIBRARIES}
     USB_Device_Library
+	
 )
 # Interface library for includes and symbols
 add_library(stm32cubemx INTERFACE)
@@ -107,12 +115,22 @@ target_link_libraries(STM32_Drivers PUBLIC stm32cubemx)
 # Create USB_Device_Library static library
 add_library(USB_Device_Library OBJECT)
 target_sources(USB_Device_Library PRIVATE ${USB_Device_Library_Src})
-target_link_libraries(USB_Device_Library PUBLIC stm32cubemx PRIVATE board_headers)
+target_link_libraries(USB_Device_Library PUBLIC stm32cubemx board_headers)
 
-# main.c 与启动汇编仅加入板级固件，不进入 app/xfoc 库。
-target_sources(${FW_TARGET} PRIVATE ${MX_Application_Src})
+
+# Add STM32CubeMX generated application sources to the project
+# target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${MX_Application_Src})
+ target_sources(${FW_TARGET} PRIVATE ${MX_Application_Src})
+# Link directories setup
+# target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE ${MX_LINK_DIRS})
+target_link_directories(${FW_TARGET} PRIVATE ${MX_LINK_DIRS})
+# Add libraries to the project
+# target_link_libraries(${CMAKE_PROJECT_NAME} ${MX_LINK_LIBS})
 target_link_libraries(${FW_TARGET} PRIVATE ${MX_LINK_LIBS})
 
+# Add the map file to the list of files to be removed with 'clean' target
+# set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES ADDITIONAL_CLEAN_FILES ${CMAKE_PROJECT_NAME}.map)
+set_target_properties(${FW_TARGET} PROPERTIES ADDITIONAL_CLEAN_FILES ${FW_TARGET}.map)
 # Validate that STM32CubeMX code is compatible with C standard
 if((CMAKE_C_STANDARD EQUAL 90) OR (CMAKE_C_STANDARD EQUAL 99))
     message(ERROR "Generated code requires C11 or higher")

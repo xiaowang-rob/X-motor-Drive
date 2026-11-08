@@ -16,7 +16,7 @@ void pll_update(tPLL *pll, float theta, float dt) {
     if (!pll || dt <= 0.0f)
         return;
 
-    pll->theta_delta = xmath_normalize_angle_pi(theta - pll->theta);
+    pll->theta_delta = XANGLE_PI(theta - pll->theta);
 
     pll->integ += pll->theta_delta * dt;
     if (pll->integ > pll->integ_limit)
@@ -26,7 +26,7 @@ void pll_update(tPLL *pll, float theta, float dt) {
 
     float estimated_speed = pll->kp * pll->theta_delta + pll->ki * pll->integ;
     pll->theta += estimated_speed * dt;
-    pll->theta = xmath_normalize_angle_2pi(pll->theta);
+    pll->theta = XANGLE_2PI(pll->theta);
     pll->vel = (XFABSF(estimated_speed) < 0.05f) ? 0.0f : estimated_speed;
 
     // 超物理速度视为失锁，重锁到当前角度

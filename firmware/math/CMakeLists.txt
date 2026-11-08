@@ -12,6 +12,10 @@ set_target_properties(armmath PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${ARM_MATH_ROOT}/Inc;${CMSIS_INCLUDE_DIR}"
     INTERFACE_COMPILE_DEFINITIONS ARM_MATH_CM4
 )
-add_library(xmath STATIC xmath.c)
+# 纯 C 校验工具：无 CMSIS-DSP/HAL 依赖，APP 与 BL 共用。
+add_library(xcrc STATIC crc.c)
+target_include_directories(xcrc PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_library(xmath STATIC xmath.c filter.c)
 target_include_directories(xmath PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(xmath PUBLIC armmath m)

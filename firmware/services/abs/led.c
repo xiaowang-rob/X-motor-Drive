@@ -2,10 +2,10 @@
 
 extern uint32_t bsp_time_ms(void);
 
-#define LED_SHORT_MS 100
-#define LED_LONG_MS 300
-#define LED_GAP_MS 500
-#define RGB_STEP_MS 40
+#define LED_SHORT_MS 200
+#define LED_LONG_MS 500
+#define LED_GAP_MS 1000
+#define RGB_STEP_MS 80
 
 // 状态顺序与 eIndicator_state 一致；GPIO 使用闪烁次数，RGB 使用颜色。
 static const struct {

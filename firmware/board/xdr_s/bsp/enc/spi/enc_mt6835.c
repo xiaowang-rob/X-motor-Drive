@@ -28,10 +28,10 @@ typedef struct {
     volatile uint32_t error_count;
 } tMt6835Dev;
 
-static bool mt6835_init(void *handle);
-static bool mt6835_open(void *handle);
-static bool mt6835_read(void *handle, tEncSample *sample);
-static bool mt6835_close(void *handle);
+static bool mt6835_init(void *dev, void *cfg);
+static bool mt6835_open(void *dev);
+static bool mt6835_read(void *dev, tEncSample *sample);
+static bool mt6835_close(void *dev);
 
 static const tEncoderOps mt6835_ops = {
     .init = mt6835_init,
@@ -50,105 +50,104 @@ static const tEncDevHandle s_ext_handle = {
     .dev = &s_ext,
 };
 
-const tEncDevHandle *enc_mt6835_ext_handle(void) { return &s_ext_handle; }
+const tEncDevHandle *Get_EncMT6835Handle(void) { return &s_ext_handle; }
 
 static void mt6835_callback(tBspEncSpiResult result, void *context) {
-    tMt6835Dev *dev = context;
-    if (!dev || dev->phase != MT6835_PHASE_FRAME)
+    tMt6835Dev *inst = context;
+    if (!inst || inst->phase != MT6835_PHASE_FRAME)
         return;
 
-    dev->phase = MT6835_PHASE_IDLE;
+    inst->phase = MT6835_PHASE_IDLE;
 
-    if (result != BSP_ENC_SPI_OK || (dev->rx[4] & 0x02U) != 0U) {
-        dev->error_count++;
+    if (result != BSP_ENC_SPI_OK || (inst->rx[4] & 0x02U) != 0U) {
+        inst->error_count++;
         return;
     }
 
-    uint32_t angle = ((uint32_t)dev->rx[2] << 13) |
-                     ((uint32_t)dev->rx[3] << 5) | ((uint32_t)dev->rx[4] >> 3);
+    uint32_t angle = ((uint32_t)inst->rx[2] << 13) |
+                     ((uint32_t)inst->rx[3] << 5) |
+                     ((uint32_t)inst->rx[4] >> 3);
     uint16_t raw = (uint16_t)(angle >> 7);
 
     tEncSample sample = {
-        .raw = raw,
-        .resolution = MT6835_RESOLUTION,
         .ts_us = bsp_time_us(),
         .angle_rad = (float)raw * (XMATH_2PI / (float)MT6835_RESOLUTION),
         .angle_kind = BSP_ANGLE_MECHANICAL,
         .referenced = true,
     };
-    dev->latest = sample;
-    dev->latest_valid = true;
+    inst->latest = sample;
+    inst->latest_valid = true;
 }
 
-static bool mt6835_init(void *handle) {
-    tMt6835Dev *dev = handle;
-    if (!dev)
+static bool mt6835_init(void *dev, void *cfg) {
+    tMt6835Dev *inst = dev;
+    if (!inst)
         return false;
-    dev->initialized = false;
-    dev->phase = MT6835_PHASE_IDLE;
-    dev->latest_valid = false;
-    dev->error_count = 0;
+    inst->initialized = false;
+    inst->phase = MT6835_PHASE_IDLE;
+    inst->latest_valid = false;
+    inst->error_count = 0;
     return true;
 }
 
-static bool mt6835_open(void *handle) {
-    tMt6835Dev *dev = handle;
-    if (!dev)
+static bool mt6835_open(void *dev) {
+    tMt6835Dev *inst = dev;
+    if (!inst)
         return false;
 
     tBspEncSpiConfig config = {
-        .cs_port = dev->cs_port,
-        .cs_pin = dev->cs_pin,
+        .cs_port = inst->cs_port,
+        .cs_pin = inst->cs_pin,
         .mode = BSP_ENC_SPI_MODE_3,
         .data_bits = BSP_ENC_SPI_DATA_8BIT,
         .callback = mt6835_callback,
-        .context = dev,
+        .context = inst,
     };
     if (!bsp_enc_spi_init(&config))
         return false;
 
-    dev->initialized = true;
-    dev->phase = MT6835_PHASE_IDLE;
-    dev->latest_valid = false;
-    dev->error_count = 0;
+    inst->initialized = true;
+    inst->phase = MT6835_PHASE_IDLE;
+    inst->latest_valid = false;
+    inst->error_count = 0;
     return true;
 }
 
-static bool mt6835_read(void *handle, tEncSample *sample) {
-    tMt6835Dev *dev = handle;
-    if (!dev || !dev->initialized || !sample)
+static bool mt6835_read(void *dev, tEncSample *sample) {
+    tMt6835Dev *inst = dev;
+    if (!inst || !inst->initialized || !sample)
         return false;
 
-    if (dev->phase == MT6835_PHASE_IDLE && !bsp_enc_spi_is_busy()) {
-        dev->tx[0] = 0xA0U;
-        dev->tx[1] = 0x03U;
-        dev->tx[2] = 0x00U;
-        dev->tx[3] = 0x00U;
-        dev->tx[4] = 0x00U;
-        dev->rx[4] = 0U;
+    if (inst->phase == MT6835_PHASE_IDLE && !bsp_enc_spi_is_busy()) {
+        inst->tx[0] = 0xA0U;
+        inst->tx[1] = 0x03U;
+        inst->tx[2] = 0x00U;
+        inst->tx[3] = 0x00U;
+        inst->tx[4] = 0x00U;
+        inst->rx[4] = 0U;
 
-        dev->phase = MT6835_PHASE_FRAME;
-        if (!bsp_enc_spi_start(dev->tx, dev->rx, 5U)) {
-            dev->phase = MT6835_PHASE_IDLE;
-            dev->error_count++;
+        inst->phase = MT6835_PHASE_FRAME;
+        if (!bsp_enc_spi_start(inst->tx, inst->rx, 5U)) {
+            inst->phase = MT6835_PHASE_IDLE;
+            inst->error_count++;
         }
     }
 
     uint32_t primask = __get_PRIMASK();
     __disable_irq();
-    bool valid = dev->latest_valid;
+    bool valid = inst->latest_valid;
     if (valid)
-        *sample = dev->latest;
+        *sample = inst->latest;
     __set_PRIMASK(primask);
     return valid;
 }
 
-static bool mt6835_close(void *handle) {
-    tMt6835Dev *dev = handle;
-    if (!dev)
+static bool mt6835_close(void *dev) {
+    tMt6835Dev *inst = dev;
+    if (!inst)
         return false;
-    dev->initialized = false;
-    dev->phase = MT6835_PHASE_IDLE;
-    dev->latest_valid = false;
+    inst->initialized = false;
+    inst->phase = MT6835_PHASE_IDLE;
+    inst->latest_valid = false;
     return true;
 }

@@ -57,7 +57,7 @@ void pwm_register_callback(void (*up_cb)(void), void (*down_cb)(void)) {
     pwm_down_callback = down_cb;
     LL_TIM_ClearFlag_UPDATE(mcu_pwm.htim);
     LL_TIM_EnableIT_UPDATE(mcu_pwm.htim);
-}
+}                                                                                                                                                                                                                                                                                                      
 
 // ---------- 驱动接口（tGateOps） ----------
 

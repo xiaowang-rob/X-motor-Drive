@@ -6,6 +6,9 @@
 tSlotCon g_slotcon;
 
 CREATE_TIME_SAMPLE(high_s);
+uint32_t max_task_us;
+uint8_t max_task_ht;
+uint8_t max_task_mt;
 
 void slot_con_init(float f_con) {
     TIME_INIT();
@@ -25,7 +28,7 @@ void slot_con_init(float f_con) {
 
 // 在定时中断中调用
 void slot_con_update(void) {
-    TIME_SAMPLE_STOP(high_s);
+
     TIME_SAMPLE_START(high_s);
     for (uint8_t i = 0; i < FREQ_HIGH_LOOP; i++) {
         if (g_slotcon.base_tic == high_schedule[i].slot)
@@ -52,5 +55,11 @@ void slot_con_update(void) {
                 g_slotcon.medium_tic = 0;
             }
         }
+    }
+    TIME_SAMPLE_STOP(high_s);
+    if (max_task_us != high_s.max_task_us) {
+        max_task_us = high_s.max_task_us;
+        max_task_ht = g_slotcon.high_tic;
+        max_task_mt = g_slotcon.medium_tic;
     }
 }

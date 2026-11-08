@@ -31,10 +31,10 @@ typedef struct {
     volatile uint32_t error_count;
 } tMt6816Dev;
 
-static bool mt6816_init(void *handle);
-static bool mt6816_open(void *handle);
-static bool mt6816_read(void *handle, tEncSample *sample);
-static bool mt6816_close(void *handle);
+static bool mt6816_init(void *dev, void *cfg);
+static bool mt6816_open(void *dev);
+static bool mt6816_read(void *dev, tEncSample *sample);
+static bool mt6816_close(void *dev);
 
 static const tEncoderOps mt6816_ops = {
     .init = mt6816_init,
@@ -61,115 +61,113 @@ static const tEncDevHandle s_ext_handle = {
     .dev = &s_ext,
 };
 
-const tEncDevHandle *enc_mt6816_int_handle(void) { return &s_int_handle; }
-const tEncDevHandle *enc_mt6816_ext_handle(void) { return &s_ext_handle; }
+const tEncDevHandle *Get_EncIntHandle(void) { return &s_int_handle; }
+const tEncDevHandle *Get_EncMT6816Handle(void) { return &s_ext_handle; }
 
-static bool mt6816_start_high(tMt6816Dev *dev) {
-    dev->tx = MT6816_CMD_HIGH;
-    dev->phase = MT6816_PHASE_HIGH;
-    return bsp_enc_spi_start(&dev->tx, &dev->rx, 1U);
+static bool mt6816_start_high(tMt6816Dev *inst) {
+    inst->tx = MT6816_CMD_HIGH;
+    inst->phase = MT6816_PHASE_HIGH;
+    return bsp_enc_spi_start(&inst->tx, &inst->rx, 1U);
 }
 
 // DMA 完成中断：推进两帧协议并发布最近一次有效样本。
 static void mt6816_callback(tBspEncSpiResult result, void *context) {
-    tMt6816Dev *dev = context;
-    if (!dev || dev->phase == MT6816_PHASE_IDLE)
+    tMt6816Dev *inst = context;
+    if (!inst || inst->phase == MT6816_PHASE_IDLE)
         return;
 
     if (result != BSP_ENC_SPI_OK) {
-        dev->phase = MT6816_PHASE_IDLE;
-        dev->error_count++;
+        inst->phase = MT6816_PHASE_IDLE;
+        inst->error_count++;
         return;
     }
 
-    if (dev->phase == MT6816_PHASE_HIGH) {
-        dev->high = (uint8_t)(dev->rx & 0xFFU);
-        dev->tx = MT6816_CMD_LOW;
-        dev->phase = MT6816_PHASE_LOW;
-        if (!bsp_enc_spi_start(&dev->tx, &dev->rx, 1U)) {
-            dev->phase = MT6816_PHASE_IDLE;
-            dev->error_count++;
+    if (inst->phase == MT6816_PHASE_HIGH) {
+        inst->high = (uint8_t)(inst->rx & 0xFFU);
+        inst->tx = MT6816_CMD_LOW;
+        inst->phase = MT6816_PHASE_LOW;
+        if (!bsp_enc_spi_start(&inst->tx, &inst->rx, 1U)) {
+            inst->phase = MT6816_PHASE_IDLE;
+            inst->error_count++;
         }
         return;
     }
 
-    uint8_t low = (uint8_t)(dev->rx & 0xFFU);
-    uint16_t raw =
-        (uint16_t)(((uint16_t)dev->high << 6) | (((uint16_t)low & 0xFCU) >> 2));
+    uint8_t low = (uint8_t)(inst->rx & 0xFFU);
+    uint16_t raw = (uint16_t)(((uint16_t)inst->high << 6) |
+                              (((uint16_t)low & 0xFCU) >> 2));
     tEncSample sample = {
-        .raw = raw,
-        .resolution = MT6816_RESOLUTION,
         .ts_us = bsp_time_us(),
         .angle_rad = (float)raw * (XMATH_2PI / (float)MT6816_RESOLUTION),
         .angle_kind = BSP_ANGLE_MECHANICAL,
         .referenced = true,
     };
-    dev->latest = sample;
-    dev->latest_valid = true;
-    dev->phase = MT6816_PHASE_IDLE;
+    inst->latest = sample;
+    inst->latest_valid = true;
+    inst->phase = MT6816_PHASE_IDLE;
 }
 
-static bool mt6816_init(void *handle) {
-    tMt6816Dev *dev = handle;
-    if (!dev)
+static bool mt6816_init(void *dev, void *cfg) {
+    tMt6816Dev *inst = dev;
+    if (!inst)
         return false;
-    dev->initialized = false;
-    dev->phase = MT6816_PHASE_IDLE;
-    dev->latest_valid = false;
-    dev->error_count = 0;
+    inst->initialized = false;
+    inst->phase = MT6816_PHASE_IDLE;
+    inst->latest_valid = false;
+    inst->error_count = 0;
     return true;
 }
 
-static bool mt6816_open(void *handle) {
-    tMt6816Dev *dev = handle;
-    if (!dev)
+static bool mt6816_open(void *dev) {
+    tMt6816Dev *inst = dev;
+    if (!inst)
         return false;
 
     tBspEncSpiConfig config = {
-        .cs_port = dev->cs_port,
-        .cs_pin = dev->cs_pin,
+        .cs_port = inst->cs_port,
+        .cs_pin = inst->cs_pin,
         .mode = BSP_ENC_SPI_MODE_3,
         .data_bits = BSP_ENC_SPI_DATA_16BIT,
         .callback = mt6816_callback,
-        .context = dev,
+        .context = inst,
     };
     if (!bsp_enc_spi_init(&config))
         return false;
 
-    dev->initialized = true;
-    dev->phase = MT6816_PHASE_IDLE;
-    dev->latest_valid = false;
-    dev->error_count = 0;
+    inst->initialized = true;
+    inst->phase = MT6816_PHASE_IDLE;
+    inst->latest_valid = false;
+    inst->error_count = 0;
     return true;
 }
 
-static bool mt6816_read(void *handle, tEncSample *sample) {
-    tMt6816Dev *dev = handle;
-    if (!dev || !dev->initialized || !sample)
+static bool mt6816_read(void *dev, tEncSample *sample) {
+    tMt6816Dev *inst = dev;
+    if (!inst || !inst->initialized || !sample)
         return false;
 
-    if (dev->phase == MT6816_PHASE_IDLE && !bsp_enc_spi_is_busy()) {
-        if (!mt6816_start_high(dev)) {
-            dev->phase = MT6816_PHASE_IDLE;
-            dev->error_count++;
+    if (inst->phase == MT6816_PHASE_IDLE && !bsp_enc_spi_is_busy()) {
+        if (!mt6816_start_high(inst)) {
+            inst->phase = MT6816_PHASE_IDLE;
+            inst->error_count++;
         }
     }
 
     uint32_t primask = __get_PRIMASK();
     __disable_irq();
-    bool valid = dev->latest_valid;
+    bool valid = inst->latest_valid;
     if (valid)
-        *sample = dev->latest;
+        *sample = inst->latest;
     __set_PRIMASK(primask);
     return valid;
 }
 
-static bool mt6816_close(void *handle) {
-    tMt6816Dev *dev = handle;
-    if (!dev)
+static bool mt6816_close(void *dev) {
+    tMt6816Dev *inst = dev;
+    if (!inst)
         return false;
-    dev->initialized = false;
-    dev->phase = MT6816_PHASE_IDLE;
-    dev->latest_valid = false;
+    inst->initialized = false;
+    inst->phase = MT6816_PHASE_IDLE;
+    inst->latest_valid = false;
     return true;
 }

@@ -2,11 +2,21 @@
 
 #include "xmath.h"
 
-#include "encoder.h"
 #include "pwm.h"
 #include "sample.h"
 
 tXFocMotor motor;
+
+// 位置累积
+static float pos_accumulate(tPosAcc *acc, float theta) {
+    float angle_delta = theta - acc->last_angle;
+    if (angle_delta < -XMATH_PI)
+        acc->num_turns++;
+    else if (angle_delta > XMATH_PI)
+        acc->num_turns--;
+    acc->last_angle = theta;
+    return (theta - acc->zero_angle) + acc->num_turns * XMATH_2PI;
+}
 
 void current_filter_init(float cfalpha) {
     filter_first_order_lag_init(&motor.cf_u, cfalpha, 0);
@@ -23,9 +33,10 @@ void motor_init(tParameter *param, float t_hl, float t_ml, float t_ll) {
     motor.fb.udc = sample_get_vbus(&g_sample);
     motor.fb.vmax = motor.fb.udc * XMATH_INSQRT3;
 
-    // 使能栅极驱动
+    // 功率级默认关闭：初始化阶段不上电/不使能，避免 24V 上电瞬间的
+    // PWM 开关噪声干扰 USB 枚举；改由 motor_cmd_cfg() 收到配置命令后使能。
     pwm_power_on(&g_pwm, true);
-    pwm_enable(&g_pwm, true);
+    pwm_enable(&g_pwm, false);
     // 初始化svpwm
     svpwm_init(&motor.svpwm, &g_pwm, motor.fb.udc);
 
@@ -37,9 +48,9 @@ void motor_init(tParameter *param, float t_hl, float t_ml, float t_ll) {
     ctrl_mit_init(&motor.ctrl, motor.param);
 
     // 初始化观测器
-    if (!obs_init(&motor.obs, motor.param)) {
-        // TODO:观测器换位置
-        return;
+    if (motor.param->sensorless != SENSORLESS_NONE) {
+        // TODO:初始化无感算法
+        motor.obs_on = true;
     }
 
     // 初始化 内置轨迹规划
@@ -112,6 +123,11 @@ bool motor_cmd_cfg(tCmdCfg *cfg) {
     default:
         return false;
     }
+    // 使能前先写入 50% 零矢量，避免 CCR=0 时三相下桥全通的过渡状态
+    pwm_set_compare(&g_pwm,
+                    g_pwm.cfg.pwm_arr / 2,
+                    g_pwm.cfg.pwm_arr / 2,
+                    g_pwm.cfg.pwm_arr / 2);
     pwm_power_on(&g_pwm, true);
     pwm_enable(&g_pwm, true);
     return true;
@@ -161,20 +177,19 @@ bool motor_cmd_set(tCmdValue *cmd) {
     return true;
 }
 
-// 设置零点
-bool motor_set_pos_zero(void) {
-    if (motor.state != MOTOR_IDLE) {
-        return false;
-    }
-    obs_set_zero(&motor.obs);
+void motor_set_pos_zero(void) {
+    motor.pacc.zero_angle = motor.fb.theta_rotor;
+    motor.pacc.num_turns = 0;
+    motor.pacc.last_angle = motor.fb.theta_rotor;
 }
-// 设置限位
-bool motor_set_pos_limit(void) {
-    if (motor.state != MOTOR_IDLE) {
-        return false;
-    }
-    obs_set_pos_limit(&motor.obs);
+
+void motor_set_pos_limit(void) {
+    if (motor.fb.pos > 0)
+        motor.pacc.max_pos = motor.fb.pos;
+    else
+        motor.pacc.min_pos = motor.fb.pos;
 }
+
 // // 整定辅助函数 内环参数更新
 // void tune_cl_param_update(float alpha, float beta)
 // {
@@ -216,9 +231,7 @@ static inline void current_process(uint8_t sec, float is_in[3],
 }
 
 // 核心主循环任务
-void motor_mainloop_tasks(void) {
-    obs_loop_task(&motor.obs); // 观测器任务
-
+void motor_loop_task(void) {
     //  更新电流采集和读取电流值、电压值、温度值
     sample_update(&g_sample, !motor.cfg.cur_enable);
     sample_get_current(&g_sample, motor.fb.ims);
@@ -228,24 +241,18 @@ void motor_mainloop_tasks(void) {
 }
 
 // 时间槽高频任务
-void obs_foc_task(float ts) {
+void motor_foc_tim_task(float ts) {
 
     // 观测器运行
-    obs_tim_task(&motor.obs,
-                 ts,
-                 &motor.fb.theta_rotor,
-                 &motor.fb.theta_elec,
-                 &motor.fb.vel,
-                 &motor.fb.pos);
+    motor.fb.pos = pos_accumulate(&motor.pacc, motor.fb.theta_rotor);
     if (motor.state == MOTOR_OPENLOOP) {
         motor.ref.theta_elec += motor.ref.vel_elec * ts;
-        motor.ref.theta_elec = xmath_normalize_angle_2pi(motor.ref.theta_elec);
+        motor.ref.theta_elec = XANGLE_2PI(motor.ref.theta_elec);
     } else {
         motor.ref.theta_elec = motor.fb.theta_elec;
     }
     // 预计算sin cos
-    xmath_sin_cos_rad_f32(
-        motor.ref.theta_elec, &motor.fb.sin_e, &motor.fb.cos_e);
+    XSIN_COS(motor.ref.theta_elec, &motor.fb.sin_e, &motor.fb.cos_e);
 
     // 电流处理
     current_process(motor.svpwm.sector, motor.fb.ims, motor.fb.is);
@@ -288,7 +295,7 @@ void obs_foc_task(float ts) {
 }
 
 // 运行轨迹规划器
-void traj_task(float ts) {
+void motor_traj_tim_task(float ts) {
     // 电流模式 整定 其他状态不需要轨迹规划
     if (motor.state <= MOTOR_CURRENT_MODE)
         return;
@@ -308,7 +315,7 @@ void traj_task(float ts) {
 }
 
 // 跑pid速度环/mit
-void vl_pid_mit_task(float ts) {
+void motor_vl_pid_mit_tim_task(float ts) {
     if (motor.state == MOTOR_PID_SPEED) { // 速度环pid控制 或 位置环
         motor.ref.iq = pid_vl_update(&motor.ctrl, motor.ref.vel, motor.fb.vel);
     } else if (motor.state == MOTOR_PID_POSITION) {
@@ -330,7 +337,7 @@ void vl_pid_mit_task(float ts) {
     }
 }
 // 弱磁控制
-void field_weakening_task(float ts) {
+void motor_field_weakening_tim_task(float ts) {
     if (motor.state == MOTOR_PID_SPEED) {
         float vout;
         arm_sqrt_f32((motor.fb.ud * motor.fb.ud + motor.fb.uq * motor.fb.uq),
@@ -345,7 +352,7 @@ void field_weakening_task(float ts) {
 }
 
 // pid位置环
-void pl_pid_task(float ts) {
+void motor_pl_pid_tim_task(float ts) {
     if (motor.state == MOTOR_PID_POSITION &&
         motor.ctrl.pos_pvc == POS_PID_PVC) { // 位置环pid pvc控制
         motor.ref.vel = pid_pl_update(&motor.ctrl, motor.ref.pos, motor.fb.pos);

@@ -2,7 +2,7 @@
 
 #include "led.h"
 
-void status_feedback_main_loop(eMotorState cstate) {
+void status_fb_loop_task(eMotorState cstate) {
     eIndicator_state state = INDICATOR_STATE_IDLE;
     switch (cstate) {
     case MOTOR_IDLE:

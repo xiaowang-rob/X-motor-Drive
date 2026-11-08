@@ -5,14 +5,13 @@
 // （原来直接 __enable_irq() 会无条件开中断，在 ISR 中调用即出错）
 #if defined(__ARM_ARCH)
 #include "cmsis_compiler.h"
-#define MP_ENTER()                    \
-    uint32_t mp_primask = __get_PRIMASK(); \
+#define MP_ENTER()                                                             \
+    uint32_t mp_primask = __get_PRIMASK();                                     \
     __disable_irq()
-#define MP_EXIT()                    \
-    do                               \
-    {                                \
-        if (mp_primask == 0U)        \
-            __enable_irq();          \
+#define MP_EXIT()                                                              \
+    do {                                                                       \
+        if (mp_primask == 0U)                                                  \
+            __enable_irq();                                                    \
     } while (0)
 #else
 #define MP_ENTER() ((void)0)
@@ -20,14 +19,13 @@
 #endif
 
 // ==================== 初始化（传入外部静态数组） ====================
-void mp_init(tMemPool *mp, uint8_t *buf, uint8_t data_size, uint8_t pool_block_count)
-{
+void mp_init(tMemPool *mp, uint8_t *buf, uint8_t data_size,
+             uint8_t pool_block_count) {
     mp->block_count = pool_block_count;
     mp->block_size = sizeof(tBlock) + data_size; // 每块大小 = 指针域 + 数据域
 
     // 将外部静态数组 buf 划分为 pool_block_count 个块，串成单向链表
-    for (uint16_t i = 0; i < pool_block_count - 1; i++)
-    {
+    for (uint16_t i = 0; i < pool_block_count - 1; i++) {
         // 计算当前块和下一块的物理起始地址
         tBlock *current = (tBlock *)(buf + i * mp->block_size);
         tBlock *next = (tBlock *)(buf + (i + 1) * mp->block_size);
@@ -42,13 +40,11 @@ void mp_init(tMemPool *mp, uint8_t *buf, uint8_t data_size, uint8_t pool_block_c
 }
 
 // ==================== 分配（中断安全） ====================
-void *mp_alloc(tMemPool *mp)
-{
+void *mp_alloc(tMemPool *mp) {
     void *ptr = NULL;
     MP_ENTER();
 
-    if (mp->free_list != NULL)
-    {
+    if (mp->free_list != NULL) {
         tBlock *block = mp->free_list;
         mp->free_list = block->next; // 头指针后移
         ptr = (void *)block->data;   // 返回数据区首地址（紧跟在 next 后面）
@@ -59,8 +55,7 @@ void *mp_alloc(tMemPool *mp)
 }
 
 // ==================== 释放（中断安全） ====================
-void mp_free(tMemPool *mp, void *ptr)
-{
+void mp_free(tMemPool *mp, void *ptr) {
     if (ptr == NULL)
         return;
 

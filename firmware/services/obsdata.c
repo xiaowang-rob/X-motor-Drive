@@ -3,7 +3,7 @@
 #include "xfoc_main.h"
 
 const tObsData g_data = {
-    .current_u = &motor.fb.is[0],
+    .current_u = &motor.fb.ims[0],
     .current_v = &motor.fb.is[1],
     .current_w = &motor.fb.is[2],
     .voltage_q = &motor.fb.uq,

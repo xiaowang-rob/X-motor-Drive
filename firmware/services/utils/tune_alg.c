@@ -268,7 +268,7 @@ eTuneOneState tune_rl_update(tTune_rl_ctx *c, float id, float iq, float ud,
         float h = c->duty2 * XSIN(c->cfg.omega_dt * c->dft_cnt);
         float da = c->duty2 + (c->uidx == 0 ? h : 0), db = c->uidx == 1 ? h : 0;
         c->cmd.duty = hypotf(da, db);
-        c->cmd.theta_e = xmath_normalize_angle_2pi(atan2f(db, da));
+        c->cmd.theta_e = XANGLE_2PI(atan2f(db, da));
     }
 stop:
     if (c->state != TO_RUNNING)
@@ -342,7 +342,7 @@ eTuneOneState enc_cal_update(tEncCal_ctx *c, float pos, float id) {
         }
         if (c->step <= 2)
             c->theta_e_acc += (c->step == 1 ? 1 : -1) * c->cfg.delta_e;
-        c->cmd.theta_e = xmath_normalize_angle_2pi(c->theta_e_acc);
+        c->cmd.theta_e = XANGLE_2PI(c->theta_e_acc);
     }
     if (c->step == 3) {
         float kf, bf, mf, kb, bb, mb;
@@ -357,7 +357,7 @@ eTuneOneState enc_cal_update(tEncCal_ctx *c, float pos, float id) {
             c->state = TO_DATA_IMBALANCE;
             goto stop;
         }
-        float delta = xmath_normalize_angle_pi(bb - bf);
+        float delta = XANGLE_PI(bb - bf);
         if (fabsf(delta) > 0.5f) {
             c->state = TO_DATA_IMBALANCE;
             goto stop;
@@ -368,8 +368,8 @@ eTuneOneState enc_cal_update(tEncCal_ctx *c, float pos, float id) {
         // 用已知整数斜率校正每条拟合截距，降低斜率误差造成的零偏。
         bf = c->ls_fwd.mean_y - k * c->ls_fwd.mean_x;
         bb = c->ls_bwd.mean_y - k * c->ls_bwd.mean_x;
-        float b = bf + 0.5f * xmath_normalize_angle_pi(bb - bf);
-        c->out.theta_offset = xmath_normalize_angle_2pi(c->pos_origin - b / k);
+        float b = bf + 0.5f * XANGLE_PI(bb - bf);
+        c->out.theta_offset = XANGLE_2PI(c->pos_origin - b / k);
         c->state = TO_DONE;
     }
 stop:

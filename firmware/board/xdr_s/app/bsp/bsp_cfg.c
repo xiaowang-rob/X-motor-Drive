@@ -15,7 +15,6 @@
 
 // ---- 板级驱动出口（仅本层 include） ----
 #include "bsp_bus.h"
-#include "bsp_enc.h"
 #include "bsp_flash.h"
 #include "bsp_led.h"
 
@@ -65,7 +64,7 @@ static uint8_t s_usb_rxq[USB_RX_SLOT_COUNT * (USB_RX_PAYLOAD_SIZE + 2U)];
 static const tUsbBuffer s_usb_buf = {
     .rx_storage = s_usb_rxq,
     .rx_slot_count = USB_RX_SLOT_COUNT,
-    .rx_payload_size = USB_RX_DATA_SIZE,
+    .rx_payload_size = USB_RX_PAYLOAD_SIZE,
 };
 
 tBusDriver g_bus_can;
@@ -74,7 +73,6 @@ tStorage g_param_storage;
 tStorage g_log_storage;
 tUartDriver g_uart;
 tUsbDriver g_usb;
-tEncoder g_enc;
 tPwmDrv g_pwm;
 tSample g_sample;
 
@@ -107,16 +105,4 @@ bool bsp_base_init(void) {
         return false;
 
     return true;
-}
-
-// 外接编码器初始化
-bool bsp_enc_init(eObsList enc, eSpiEncList spi_enc) {
-    if (enc == OBS_NONE)
-        return true;
-
-    const tEncDevHandle *handle = bsp_enc_get_handle(enc, spi_enc);
-    if (!handle)
-        return false;
-
-    return encoder_init(&g_enc, handle);
 }

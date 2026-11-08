@@ -97,6 +97,7 @@ int main(void) {
     /* Initialize all configured peripherals */
     MX_GPIO_Init();
     MX_DMA_Init();
+    //   MX_SPI1_Init();
     MX_ADC2_Init();
     MX_TIM1_Init();
     MX_USART2_UART_Init();
@@ -144,7 +145,7 @@ void SystemClock_Config(void) {
     }
 
     LL_RCC_PLL_ConfigDomain_SYS(
-        LL_RCC_PLLSOURCE_HSE, LL_RCC_PLLM_DIV_5, 68, LL_RCC_PLLR_DIV_2);
+        LL_RCC_PLLSOURCE_HSE, LL_RCC_PLLM_DIV_2, 85, LL_RCC_PLLR_DIV_2);
     LL_RCC_PLL_EnableDomain_SYS();
     LL_RCC_PLL_Enable();
     /* Wait till PLL is ready */
