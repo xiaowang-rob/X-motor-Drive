@@ -42,7 +42,6 @@
                 "${workspaceFolder}/firmware/services",
                 "${workspaceFolder}/firmware/services/abs",
                 "${workspaceFolder}/firmware/services/utils",
-                "${workspaceFolder}/firmware/xfoc/abs",
                 "${workspaceFolder}/firmware/xfoc",
                 "${workspaceFolder}/firmware/xfoc/ctl",
                 "${workspaceFolder}/firmware/board/xdr_s/bsp",
