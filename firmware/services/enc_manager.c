@@ -74,19 +74,19 @@ void em_loop_task(void) {
     g_encm.theta_r = g_enc.sample.angle_rad;
 }
 
-void em_tim_task(tMotorCtrl *motor, float ts) {
+void em_tim_task(float ts,float *th_e,float *th_r,float *vel) {
     if (!g_encm.enc_active)
         return;
     pll_update(&g_encm.pll, g_encm.theta_r, ts);
     if (g_param.theta_source == THETA_PLL)
-        motor->fb.theta_rotor = g_encm.pll.theta;
+        *th_r = g_encm.pll.theta;
     else
-        motor->fb.theta_rotor = g_encm.theta_r;
+        *th_r = g_encm.theta_r;
 
-    motor->fb.theta_elec = (motor->fb.theta_rotor - g_param.theta_offset) *
+    *th_e = (*th_r - g_param.theta_offset) *
                            g_param.motor_polepairs *
                            (g_param.positive_dir ? 1 : -1);
 
-    motor->fb.theta_elec = XANGLE_2PI(motor->fb.theta_elec);
-    motor->fb.vel = g_encm.pll.vel;
+    *th_e = XANGLE_2PI(*th_e);
+    *vel = g_encm.pll.vel;
 }

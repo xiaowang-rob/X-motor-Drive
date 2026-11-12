@@ -60,8 +60,9 @@ typedef struct {
 } tPosAcc;
 
 typedef struct {
-    void (*pwm_enable)(bool en);
-    void (*pwm_out)(float Du, float Dv, float Dw);
+    float (*theta_process)(float ts,float *th_e,float *th_r,float *vel);     //处理角度信息
+    void (*pwm_enable)(bool en);//pwm 使能
+    void (*pwm_out)(float Du, float Dv, float Dw);//pwm 输出
 } tMotorOps;
 // 主要核心
 typedef struct {
@@ -73,6 +74,7 @@ typedef struct {
 
     tParameter *param; // 参数
     tPosAcc pacc;      // 位置累积
+    
     tCtrl ctrl;        // 控制器
     tTraj traj;        // 内置轨迹规划器
 

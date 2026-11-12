@@ -192,6 +192,14 @@ void motor_set_pos_limit(void) {
 // 核心主循环任务
 void motor_loop_task(void) {}
 
+#define ENCODER_PLL_WN 300.0f  // 自然频率 决定跟踪带宽
+#define ENCODER_PLL_ZETA 0.707 // 阻尼比 越大超调越小响应越慢
+#define ENCODER_PLL_KP (2.0f * ENCODER_PLL_ZETA * ENCODER_PLL_WN)
+#define ENCODER_PLL_KI (ENCODER_PLL_WN * ENCODER_PLL_WN)
+#define ENCODER_PLL_INTEG_LIMIT 0.1745f // 积分限值  ±10°
+#define ENCODER_VEL_PHYS_LIMIT 1046.0f  // rad/s 物理上限（≈10k rpm）
+
+
 // 时间槽高频任务
 void motor_foc_tim_task(float ts) {
 
@@ -212,7 +220,11 @@ void motor_foc_tim_task(float ts) {
                    &g_motor.fb.id,
                    &g_motor.fb.iq);
 
-    // 位置、角度更新
+    
+    // 角度、速度、位置更新
+    g_motor.fb.theta_rotor = g_motor.ops->get_theta_r();
+    g_motor.fb.theta_elec = g_motor.ops->get_theta_e();
+    g_motor.fb.vel =g_motor.ops->get_vel();
     g_motor.fb.pos = pos_accumulate(&g_motor.pacc, g_motor.fb.theta_rotor);
     if (g_motor.state == MOTOR_OPENLOOP) {
         g_motor.ref.theta_elec += g_motor.ref.vel_elec * ts;
@@ -256,7 +268,7 @@ void motor_foc_tim_task(float ts) {
                  &g_motor.ref.dutyV,
                  &g_motor.ref.dutyW);
 
-    g_motor.ops.pwm_out(
+    g_motor.ops->pwm_out(
         g_motor.ref.dutyU, g_motor.ref.dutyV, g_motor.ref.dutyW);
 }
 
