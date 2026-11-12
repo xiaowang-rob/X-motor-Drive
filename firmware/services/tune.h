@@ -5,9 +5,9 @@
 
 #include "control.h"
 #include "enc_manager.h"
+#include "motor_ctrl.h"
 #include "obsdata.h"
 #include "parameter_list.h"
-#include "xfoc_main.h"
 
 // 整定参数配置
 #define RL_DUTY_MAX 0.5f             // 留出同幅值 HFI 叠加所需调制余量

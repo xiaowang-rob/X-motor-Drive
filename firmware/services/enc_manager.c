@@ -74,7 +74,7 @@ void em_loop_task(void) {
     g_encm.theta_r = g_enc.sample.angle_rad;
 }
 
-void em_tim_task(tXFocMotor *motor, float ts) {
+void em_tim_task(tMotorCtrl *motor, float ts) {
     if (!g_encm.enc_active)
         return;
     pll_update(&g_encm.pll, g_encm.theta_r, ts);

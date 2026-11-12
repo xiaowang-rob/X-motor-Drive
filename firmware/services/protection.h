@@ -20,6 +20,6 @@ extern tProtectionManager pro_manager;
 void pro_manager_init(tParameter *param);
 void pro_manager_reset(void);
 void pm_handle_fault(eFault fault);
-void pm_loop_task(tXFocMotor *motor);
+void pm_loop_task(tMotorCtrl *motor);
 
 #endif // __PROTECTION_H

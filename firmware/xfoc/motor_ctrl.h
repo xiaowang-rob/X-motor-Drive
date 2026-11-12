@@ -1,5 +1,5 @@
-#ifndef __XFOC_MAIN_H
-#define __XFOC_MAIN_H
+#ifndef __MOTOR_CTRL_H
+#define __MOTOR_CTRL_H
 
 #include <stdbool.h>
 
@@ -8,7 +8,6 @@
 #include "parameter_list.h"
 
 #include "control.h"
-#include "filter.h"
 #include "svpwm.h"
 #include "trajectory.h"
 
@@ -60,64 +59,66 @@ typedef struct {
 
 } tPosAcc;
 
+typedef struct {
+    void (*pwm_enable)(bool en);
+    void (*pwm_out)(float Du, float Dv, float Dw);
+} tMotorOps;
 // 主要核心
 typedef struct {
+    const tMotorOps *ops;
     eMotorState state; // 状态
 
     bool enc_on; // 有感
     bool obs_on; // 无感
 
-    tParameter *param;                     // 参数
-    tPosAcc pacc;                          // 位置累积
-    tCtrl ctrl;                            // 控制器
-    tSvpwm svpwm;                          // 调制器
-    tFirstOrderLagFilter cf_u, cf_v, cf_w; // 电流滤波器
-    tTraj traj;                            // 内置轨迹规划器
+    tParameter *param; // 参数
+    tPosAcc pacc;      // 位置累积
+    tCtrl ctrl;        // 控制器
+    tTraj traj;        // 内置轨迹规划器
+
     struct {
-        volatile bool cur_enable;  // 电流使能标记
+        volatile bool cur_enable;  // 电流闭环使能标记
         volatile bool ol_vel_ctrl; // 开启开环速度控制
         volatile bool tau_ctrl;    // 开启力矩控制
         volatile bool fw_ctrl;     // 弱磁控制
         volatile bool pvt_ctrl;    // 开启pvt模式
     } cfg;
     struct {
-        float vel;        // 速度 (rad/s)
-        float pos;        // 位置 (rad)
-        float tau_ff;     // 转矩前馈
-        float theta_elec; // 电角度rad
-        float vel_elec;   // 电角速度 rad/s
-        float duty;       // 占空比
-        float iq, id;
-        float tau; // 转矩 N/m
+        float vel;                 // 速度 (rad/s)
+        float pos;                 // 位置 (rad)
+        float tau_ff;              // 转矩前馈
+        float theta_elec;          // 电角度rad
+        float sin_e, cos_e;        // 电角度 sin cos
+        float vel_elec;            // 电角速度 rad/s
+        uint8_t sec;               // 扇区
+        float id, iq;              // dq电流
+        float tau;                 // 转矩 N/m
+        float dutyd, dutyq;        // qd 占空比
+        float dutya, dutyb;        // ab 占空比
+        float dutyU, dutyV, dutyW; // 三相占空比输出
     } ref;
 
     struct {
-        float udc, vmax, temp; // 母线电压 V  最大相电压 驱动温度 C
-        float motor_temp;      // 电机温度 C，由电机温度采样链路更新
+        float motor_temp; // 电机温度 C，由电机温度采样链路更新
 
         float ims[3];        // 三相原始电流（未滤波） A
         float is[3];         // 三相电流 A
         float ialpha, ibeta; // ab电流 A
         float iq, id;        // dq电流 A
-        float ud, uq;        // qd电压 V
-        float ualpha, ubeta; // foc 输出电压 V
+        float tau;           // 转矩 N/m
 
-        float tau; // 转矩 N/m
-
-        float theta_rotor;  // 转子角度
-        float theta_elec;   // 电角度 rad
-        float sin_e, cos_e; // 电角度 sin cos
-
-        float vel; // 转速 rad/s
-        float pos; // 位置 rad
+        float theta_rotor; // 转子角度
+        float theta_elec;  // 电角度 rad
+        float vel;         // 转速 rad/s
+        float pos;         // 位置 rad
     } fb;
-} tXFocMotor;
 
-extern tXFocMotor motor;
+} tMotorCtrl;
+
+extern tMotorCtrl g_motor;
 
 void motor_init(tParameter *param, float t_hl, float t_ml, float t_ll);
 void motor_reset(void);
-void current_filter_init(float cfalpha);
 void motor_disable(void);
 void motor_handle_fault(void);
 bool motor_cmd_cfg(tCmdCfg *cfg);

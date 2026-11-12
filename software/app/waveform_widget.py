@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import QVBoxLayout, QWidget
 
 logger = logging.getLogger("Wave")
 
-CHANNEL_COUNT = 5
+CHANNEL_COUNT = 3
 # 通道配色唯一来源：控制页的色条与曲线笔色都引用这里。
 CHANNEL_COLORS = ("#58cfc2", "#f5ae50", "#e77fa3", "#9cce70", "#b59af7")
 DEFAULT_CHANNEL_COLORS = CHANNEL_COLORS
@@ -26,7 +26,7 @@ DEFAULT_VIEW_SECONDS = 3.0
 
 
 class WaveformWidget(QWidget):
-    """波形显示控件 - 支持 5 通道实时波形绘制。"""
+    """波形显示控件 - 支持 3 通道实时波形绘制。"""
 
     auto_x_state_changed = pyqtSignal(bool)
     auto_y_state_changed = pyqtSignal(bool)
@@ -250,6 +250,26 @@ class WaveformWidget(QWidget):
         self.wave_data[row][head] = value
         self._heads[row] = (head + 1) % self.max_points
 
+    def align_row(self, row):
+        """把该通道对齐到当前最长通道的时间轴，空缺段用 NaN 占位。
+
+        中途开启的通道因此不会从 X=0 重新起跑；旧数据紧贴最新位置，
+        前面的空白由绘制时的 connect="finite" 跳过，不画成假线。
+        """
+        if not 0 <= row < CHANNEL_COUNT:
+            return
+        target = max(self._counts)
+        if target <= self._counts[row]:
+            return
+        existing = self._channel_view(row)
+        old_length = 0 if existing is None else len(existing)
+        self.wave_data[row].fill(np.nan)
+        if old_length:
+            self.wave_data[row][target - old_length:target] = existing
+        self._heads[row] = 0
+        self._counts[row] = target
+        self._dirty_channels.add(row)
+
     def _channel_view(self, row):
         """返回该通道按时间顺序排列的缓冲快照（最旧 → 最新）。
 
@@ -298,9 +318,16 @@ class WaveformWidget(QWidget):
                 self.value_labels[row].setVisible(False)
                 continue
 
-            last_x = len(y_data) - 1
+            x_data = self._x_axis[: len(y_data)]
+            # connect="finite"：对齐用的 NaN 前导不画线，曲线从首个有效点开始。
+            self.curves[row].setData(x_data, y_data, connect="finite")
+            valid = np.nonzero(np.isfinite(y_data))[0]
+            if valid.size == 0:
+                self.value_labels[row].setVisible(False)
+                continue
+
+            last_x = int(valid[-1])
             last_y = float(y_data[last_x])
-            self.curves[row].setData(self._x_axis[: len(y_data)], y_data)
             self.value_labels[row].setText(f"{last_y:.3f}")
             self.value_labels[row].setPos(last_x + 8, last_y)
             self.value_labels[row].setVisible(True)

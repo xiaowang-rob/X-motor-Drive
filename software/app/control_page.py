@@ -27,28 +27,41 @@ from qfluentwidgets.components.navigation import SegmentedWidget
 
 from protocol import Didx, OBSDATA, eMotorState
 from app.ui_components import ContentPage, SectionCard, icon_action, preview_button
-from app.waveform_widget import CHANNEL_COLORS, WaveformWidget
+from app.waveform_widget import CHANNEL_COLORS, CHANNEL_COUNT, WaveformWidget
 
-# 示波可选信号：直接改这个元组即可；下拉名称来自 protocol 的 OBSDATA。
+# 每个通道一份独立的可选信号表：三组互不影响，按需在各自组内增删。
+# 元组顺序对应界面从上到下的通道顺序；下拉名称来自 protocol 的 OBSDATA。
 WAVE_CHANNELS = (
-    Didx.DATA_CURRENT_U,
-    Didx.DATA_CURRENT_V,
-    Didx.DATA_CURRENT_W,
-    Didx.DATA_VOLTAGE_Q,
-    Didx.DATA_VOLTAGE_D,
-    Didx.DATA_CURRENT_Q,
-    Didx.DATA_CURRENT_D,
-    Didx.DATA_CURRENT_Q_REF,
-    Didx.DATA_VELOCITY,
-    Didx.DATA_VELOCITY_REF,
-    Didx.DATA_THETA_ELEC,
-    Didx.DATA_THETA_MECH,
-    Didx.DATA_POSITION,
-    Didx.DATA_POSITION_REF,
+    (  # 通道 1：相电流与 dq 电流
+        Didx.DATA_CURRENT_U,
+        Didx.DATA_CURRENT_D,
+        Didx.DATA_CURRENT_D_REF,
+        Didx.DATA_VOLTAGE_D,
+    ),
+    (  # 通道 2：电压与角度
+        Didx.DATA_CURRENT_V,
+        Didx.DATA_CURRENT_Q,
+        Didx.DATA_CURRENT_Q_REF,
+        Didx.DATA_VOLTAGE_Q,
+    ),
+    (  # 通道 3：速度与位置
+        Didx.DATA_CURRENT_W,
+        Didx.DATA_THETA_ELEC,
+        Didx.DATA_THETA_MECH,
+        Didx.DATA_VELOCITY,
+        Didx.DATA_VELOCITY_REF,
+        Didx.DATA_POSITION,
+        Didx.DATA_POSITION_REF,
+    ),
 )
 
-# 通道行数只由 WAVE_CHANNEL_COUNT 决定；WAVE_CHANNELS 只决定每行下拉的可选项。
-WAVE_CHANNEL_COUNT = 5
+# 通道行数由波形控件决定；WAVE_CHANNELS 必须为每个通道各给一份可选列表。
+WAVE_CHANNEL_COUNT = CHANNEL_COUNT
+if len(WAVE_CHANNELS) != WAVE_CHANNEL_COUNT:
+    raise ValueError(
+        "WAVE_CHANNELS 需要 "
+        f"{WAVE_CHANNEL_COUNT} 组（每通道一组），当前 {len(WAVE_CHANNELS)} 组"
+    )
 
 # 控制模式来自 obsdata 的 eMotorState；顺序即左侧下拉和右侧顶部导航的顺序。
 MODE_PAGE_MODES = (
@@ -244,7 +257,7 @@ class ControlPage(ContentPage):
             combo.setMinimumWidth(0)
             combo.setFixedHeight(32)
             combo.addItem("未选择", userData=None)
-            for candidate in WAVE_CHANNELS:
+            for candidate in WAVE_CHANNELS[index - 1]:
                 meta = OBSDATA[candidate]
                 combo.addItem(meta.name, userData=candidate)
             combo.setAccessibleName(f"通道 {index} 信号")
@@ -287,11 +300,21 @@ class ControlPage(ContentPage):
         self.wave_canvas.set_auto_x_scale(True)
         self.wave_canvas.set_auto_y_scale(True)
         self.channel_card.content.addWidget(HorizontalSeparator())
+        # 三个全局按钮竖排：开始、暂停、清空。
+        self.wave_start_all_button = PushButton("一键开始")
+        self.wave_pause_all_button = PushButton("一键暂停")
         self.wave_clear_button = PushButton("清空")
-        self.wave_clear_button.setFixedHeight(32)
-        self.channel_card.content.addWidget(self.wave_clear_button)
+        for button in (
+            self.wave_start_all_button,
+            self.wave_pause_all_button,
+            self.wave_clear_button,
+        ):
+            button.setFixedHeight(32)
+            self.channel_card.content.addWidget(button)
         row.addWidget(self.channel_card)
         content.addLayout(row, 1)
+        self.wave_start_all_button.clicked.connect(self._start_all_waves)
+        self.wave_pause_all_button.clicked.connect(self._pause_all_waves)
         self.wave_clear_button.clicked.connect(self._clear_wave)
         # 每行是否在采样；按钮图标与订阅都以此为准。
         # 必须在连接信号之前就绪：构造期若触发 currentIndexChanged 也要能安全处理。
@@ -603,15 +626,33 @@ class ControlPage(ContentPage):
             self.action_requested.emit("wave_stop", None)
 
     def _toggle_wave_row(self, row):
-        """单行启停：选择框选好即可直接开采样，图标同步切换。"""
+        """单行启停：暂停只停止写入，已采集的波形与读数保留。"""
         if self.wave_ch[row].currentData() is None:
             return
         self._wave_rows[row] = not self._wave_rows[row]
-        if not self._wave_rows[row]:
-            # 停止该行时清掉它的曲线与读数，避免留下冻结的旧波形。
-            self.wave_canvas.clear_row(row)
-            self.wave_values[row].setText("--")
-            self._latest_values[row] = None
+        if self._wave_rows[row]:
+            # 与正在显示的通道共用同一条时间轴，避免从 0 重新起跑。
+            self.wave_canvas.align_row(row)
+        self._sync_wave_buttons()
+        self._resubscribe()
+
+    def _start_all_waves(self):
+        """一键开始：所有已选信号的通道同时采样。"""
+        if not any(combo.currentData() is not None for combo in self.wave_ch):
+            return
+        for index, combo in enumerate(self.wave_ch):
+            if combo.currentData() is None or self._wave_rows[index]:
+                continue
+            self._wave_rows[index] = True
+            self.wave_canvas.align_row(index)
+        self._sync_wave_buttons()
+        self._resubscribe()
+
+    def _pause_all_waves(self):
+        """一键暂停：停止写入但保留已采集的波形。"""
+        if not any(self._wave_rows):
+            return
+        self._wave_rows = [False] * WAVE_CHANNEL_COUNT
         self._sync_wave_buttons()
         self._resubscribe()
 
@@ -626,6 +667,7 @@ class ControlPage(ContentPage):
             self.wave_values[row].setText("--")
         else:
             self._wave_rows[row] = True
+            self.wave_canvas.align_row(row)
         self._sync_wave_buttons()
         self._resubscribe()
 

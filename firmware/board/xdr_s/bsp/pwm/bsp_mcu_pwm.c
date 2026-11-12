@@ -57,7 +57,7 @@ void pwm_register_callback(void (*up_cb)(void), void (*down_cb)(void)) {
     pwm_down_callback = down_cb;
     LL_TIM_ClearFlag_UPDATE(mcu_pwm.htim);
     LL_TIM_EnableIT_UPDATE(mcu_pwm.htim);
-}                                                                                                                                                                                                                                                                                                      
+}
 
 // ---------- 驱动接口（tGateOps） ----------
 
@@ -106,6 +106,9 @@ static void mcu_pwm_set_compare(void *handle, uint16_t ticA, uint16_t ticB,
     inst->htim->CCR3 = ticA; // 与上方 GATE_PWM_CH_U=CH3 对应
     inst->htim->CCR2 = ticB;
     inst->htim->CCR1 = ticC;
+    // inst->htim->CCR3 = ticA; // 与上方 GATE_PWM_CH_U=CH3 对应
+    // inst->htim->CCR2 = 0;
+    // inst->htim->CCR1 = 0;
 }
 
 // ---- 驱动出口 ----

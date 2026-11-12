@@ -30,6 +30,11 @@ void app_main_init(void) {
     // 初始化slot槽服务
     slot_con_init(F_PWM);
 
+    g_motor.fb.udc = sample_get_vbus(&g_sample);
+    g_motor.fb.vmax = g_motor.fb.udc * XMATH_INSQRT3;
+
+        pwm_power_on(&g_pwm, false);
+        
     app_main_config();
 }
 
@@ -44,6 +49,7 @@ void app_main_config(void) {
     // 编码器初始化
     if (!em_init(&g_param))
         pm_handle_fault(FAULT_ENCODER_INIT);
+
     // 电机算法初始化
     motor_init(&g_param, g_slotcon.t_high, g_slotcon.t_med, g_slotcon.t_low);
     // 将solt槽任务注册到pwm下溢中断 以 启动solt槽任务
@@ -54,15 +60,21 @@ void app_main_start(void) {
 
     while (1) {
         em_loop_task();
+        //  更新电流采集和读取电流值、电压值、温度值
+        sample_update(&g_sample, g_motor.state < MOTOR_OPENLOOP);
+        sample_get_current(&g_sample, g_motor.fb.ims);
+        g_motor.fb.udc = sample_get_vbus(&g_sample);
+        g_motor.fb.vmax = g_motor.fb.udc * XMATH_INSQRT3;
+        g_motor.fb.temp = sample_get_temperature(&g_sample);
         motor_loop_task();
         comm_loop_task();
-        pm_loop_task(&motor);
-        status_fb_loop_task(motor.state);
+        pm_loop_task(&g_motor);
+        status_fb_loop_task(g_motor.state);
     }
 }
 
 void enc_foc_task(float ts) {
-    em_tim_task(&motor, ts);
+    em_tim_task(&g_motor, ts);
     motor_foc_tim_task(ts);
 }
 

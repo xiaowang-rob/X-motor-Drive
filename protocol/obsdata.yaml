@@ -26,31 +26,25 @@ fields:
       default: 0.0,
     }
   - {
-      field: voltage_q,
-      name: Q轴电压,
-      id_name: DATA_VOLTAGE_Q,
-      unit: V,
+      field: current_alpha,
+      name: α轴电流,
+      id_name: DATA_CURRENT_ALPHA,
+      unit: A,
       val_type: FLD_F32,
       default: 0.0,
     }
-  - {
-      field: voltage_d,
-      name: D轴电压,
-      id_name: DATA_VOLTAGE_D,
-      unit: V,
-      val_type: FLD_F32,
-      default: 0.0,
-    }
-  - field: current_alpha
-    name: α轴电流
-    id_name: DATA_CURRENT_ALPHA
-    unit: A
-    val_type: FLD_F32
-    default: 0.0
   - {
       field: current_beta,
       name: β轴电流,
       id_name: DATA_CURRENT_BETA,
+      unit: A,
+      val_type: FLD_F32,
+      default: 0.0,
+    }
+  - {
+      field: current_d,
+      name: D轴电流,
+      id_name: DATA_CURRENT_D,
       unit: A,
       val_type: FLD_F32,
       default: 0.0,
@@ -64,25 +58,21 @@ fields:
       default: 0.0,
     }
   - {
-      field: current_d,
-      name: D轴电流,
-      id_name: DATA_CURRENT_D,
+      field: current_d_ref,
+      name: D轴电流参考,
+      id_name: DATA_CURRENT_D_REF,
       unit: A,
       val_type: FLD_F32,
       default: 0.0,
     }
-  - field: current_q_ref
-    name: Q轴电流参考
-    id_name: DATA_CURRENT_Q_REF
-    unit: A
-    val_type: FLD_F32
-    default: 0.0
-  - field: current_d_ref
-    name: D轴电流参考
-    id_name: DATA_CURRENT_D_REF
-    unit: A
-    val_type: FLD_F32
-    default: 0.0
+  - {
+      field: current_q_ref,
+      name: Q轴电流参考,
+      id_name: DATA_CURRENT_Q_REF,
+      unit: A,
+      val_type: FLD_F32,
+      default: 0.0,
+    }
   - {
       field: velocity,
       name: 速度,
@@ -91,12 +81,14 @@ fields:
       val_type: FLD_F32,
       default: 0.0,
     }
-  - field: velocity_ref
-    name: 速度参考
-    id_name: DATA_VELOCITY_REF
-    unit: rad/s
-    val_type: FLD_F32
-    default: 0.0
+  - {
+      field: velocity_ref,
+      name: 速度参考,
+      id_name: DATA_VELOCITY_REF,
+      unit: rad/s,
+      val_type: FLD_F32,
+      default: 0.0,
+    }
   - {
       field: theta_elec,
       name: 电角度,
@@ -121,12 +113,14 @@ fields:
       val_type: FLD_F32,
       default: 0.0,
     }
-  - field: position_ref
-    name: 位置参考
-    id_name: DATA_POSITION_REF
-    unit: rad
-    val_type: FLD_F32
-    default: 0.0
+  - {
+      field: position_ref,
+      name: 位置参考,
+      id_name: DATA_POSITION_REF,
+      unit: rad,
+      val_type: FLD_F32,
+      default: 0.0,
+    }
   - field: motor_state
     name: 电机状态
     id_name: DATA_MOTOR_STATE
@@ -137,15 +131,20 @@ fields:
       enum_name: eMotorState
       comment: 电机状态
       items:
-        - { id_name: MOTOR_INIT, comment: INIT }
-        - { id_name: MOTOR_IDLE, comment: IDLE }
-        - { id_name: MOTOR_TUNING, comment: TUNING }
-        - { id_name: MOTOR_FAULT, comment: FAULT }
-        - { id_name: MOTOR_OPENLOOP, comment: 开环模式 }
-        - { id_name: MOTOR_CURRENT_MODE, comment: 电流模式 }
-        - { id_name: MOTOR_PID_SPEED, comment: PID速度模式 }
-        - { id_name: MOTOR_PID_POSITION, comment: PID位置模式 }
-        - { id_name: MOTOR_MIT_MODE, comment: MIT模式 }
+        - id_name: MOTOR_IDLE
+          comment: IDLE
+        - id_name: MOTOR_FAULT
+          comment: FAULT
+        - id_name: MOTOR_OPENLOOP
+          comment: 开环模式
+        - id_name: MOTOR_CURRENT_MODE
+          comment: 电流模式
+        - id_name: MOTOR_PID_SPEED
+          comment: PID速度模式
+        - id_name: MOTOR_PID_POSITION
+          comment: PID位置模式
+        - id_name: MOTOR_MIT_MODE
+          comment: MIT模式
   - field: fault
     name: 故障
     id_name: DATA_FAULT

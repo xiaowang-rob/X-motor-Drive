@@ -94,27 +94,25 @@ class Didx:
     DATA_CURRENT_U = 1  # U相电流
     DATA_CURRENT_V = 2  # V相电流
     DATA_CURRENT_W = 3  # W相电流
-    DATA_VOLTAGE_Q = 4  # Q轴电压
-    DATA_VOLTAGE_D = 5  # D轴电压
-    DATA_CURRENT_ALPHA = 6  # α轴电流
-    DATA_CURRENT_BETA = 7  # β轴电流
-    DATA_CURRENT_Q = 8  # Q轴电流
-    DATA_CURRENT_D = 9  # D轴电流
-    DATA_CURRENT_Q_REF = 10  # Q轴电流参考
-    DATA_CURRENT_D_REF = 11  # D轴电流参考
-    DATA_VELOCITY = 12  # 速度
-    DATA_VELOCITY_REF = 13  # 速度参考
-    DATA_THETA_ELEC = 14  # 电角度
-    DATA_THETA_MECH = 15  # 机械角度
-    DATA_POSITION = 16  # 位置
-    DATA_POSITION_REF = 17  # 位置参考
-    DATA_MOTOR_STATE = 18  # 电机状态
-    DATA_FAULT = 19  # 故障
-    DATA_VBUS = 20  # 母线电压
-    DATA_DRIVER_TEMP = 21  # 驱动温度
-    DATA_MOTOR_TEMP = 22  # 电机温度
-    NUM_OF_DATA = 23  # DATA总数
-DATA_NUM = 23
+    DATA_CURRENT_ALPHA = 4  # α轴电流
+    DATA_CURRENT_BETA = 5  # β轴电流
+    DATA_CURRENT_D = 6  # D轴电流
+    DATA_CURRENT_Q = 7  # Q轴电流
+    DATA_CURRENT_D_REF = 8  # D轴电流参考
+    DATA_CURRENT_Q_REF = 9  # Q轴电流参考
+    DATA_VELOCITY = 10  # 速度
+    DATA_VELOCITY_REF = 11  # 速度参考
+    DATA_THETA_ELEC = 12  # 电角度
+    DATA_THETA_MECH = 13  # 机械角度
+    DATA_POSITION = 14  # 位置
+    DATA_POSITION_REF = 15  # 位置参考
+    DATA_MOTOR_STATE = 16  # 电机状态
+    DATA_FAULT = 17  # 故障
+    DATA_VBUS = 18  # 母线电压
+    DATA_DRIVER_TEMP = 19  # 驱动温度
+    DATA_MOTOR_TEMP = 20  # 电机温度
+    NUM_OF_DATA = 21  # DATA总数
+DATA_NUM = 21
 
 class CmdId:
     CMD_CONNECT = 240  # 连接状态
@@ -233,15 +231,13 @@ class eCanMode:
 CanMode = eCanMode
 
 class eMotorState:
-    MOTOR_INIT = 0  # INIT
-    MOTOR_IDLE = 1  # IDLE
-    MOTOR_TUNING = 2  # TUNING
-    MOTOR_FAULT = 3  # FAULT
-    MOTOR_OPENLOOP = 4  # 开环模式
-    MOTOR_CURRENT_MODE = 5  # 电流模式
-    MOTOR_PID_SPEED = 6  # PID速度模式
-    MOTOR_PID_POSITION = 7  # PID位置模式
-    MOTOR_MIT_MODE = 8  # MIT模式
+    MOTOR_IDLE = 0  # IDLE
+    MOTOR_FAULT = 1  # FAULT
+    MOTOR_OPENLOOP = 2  # 开环模式
+    MOTOR_CURRENT_MODE = 3  # 电流模式
+    MOTOR_PID_SPEED = 4  # PID速度模式
+    MOTOR_PID_POSITION = 5  # PID位置模式
+    MOTOR_MIT_MODE = 6  # MIT模式
 
 MotorState = eMotorState
 
@@ -361,25 +357,23 @@ OBSDATA = {
     1: ProtocolField(1, 'DATA_CURRENT_U', 'current_u', 'U相电流', 'A', 'FLD_F32', 0.0, None),
     2: ProtocolField(2, 'DATA_CURRENT_V', 'current_v', 'V相电流', 'A', 'FLD_F32', 0.0, None),
     3: ProtocolField(3, 'DATA_CURRENT_W', 'current_w', 'W相电流', 'A', 'FLD_F32', 0.0, None),
-    4: ProtocolField(4, 'DATA_VOLTAGE_Q', 'voltage_q', 'Q轴电压', 'V', 'FLD_F32', 0.0, None),
-    5: ProtocolField(5, 'DATA_VOLTAGE_D', 'voltage_d', 'D轴电压', 'V', 'FLD_F32', 0.0, None),
-    6: ProtocolField(6, 'DATA_CURRENT_ALPHA', 'current_alpha', 'α轴电流', 'A', 'FLD_F32', 0.0, None),
-    7: ProtocolField(7, 'DATA_CURRENT_BETA', 'current_beta', 'β轴电流', 'A', 'FLD_F32', 0.0, None),
-    8: ProtocolField(8, 'DATA_CURRENT_Q', 'current_q', 'Q轴电流', 'A', 'FLD_F32', 0.0, None),
-    9: ProtocolField(9, 'DATA_CURRENT_D', 'current_d', 'D轴电流', 'A', 'FLD_F32', 0.0, None),
-    10: ProtocolField(10, 'DATA_CURRENT_Q_REF', 'current_q_ref', 'Q轴电流参考', 'A', 'FLD_F32', 0.0, None),
-    11: ProtocolField(11, 'DATA_CURRENT_D_REF', 'current_d_ref', 'D轴电流参考', 'A', 'FLD_F32', 0.0, None),
-    12: ProtocolField(12, 'DATA_VELOCITY', 'velocity', '速度', 'rad/s', 'FLD_F32', 0.0, None),
-    13: ProtocolField(13, 'DATA_VELOCITY_REF', 'velocity_ref', '速度参考', 'rad/s', 'FLD_F32', 0.0, None),
-    14: ProtocolField(14, 'DATA_THETA_ELEC', 'theta_elec', '电角度', 'rad', 'FLD_F32', 0.0, None),
-    15: ProtocolField(15, 'DATA_THETA_MECH', 'theta_mech', '机械角度', 'rad', 'FLD_F32', 0.0, None),
-    16: ProtocolField(16, 'DATA_POSITION', 'position', '位置', 'rad', 'FLD_F32', 0.0, None),
-    17: ProtocolField(17, 'DATA_POSITION_REF', 'position_ref', '位置参考', 'rad', 'FLD_F32', 0.0, None),
-    18: ProtocolField(18, 'DATA_MOTOR_STATE', 'motor_state', '电机状态', '', 'FLD_U8', 0, [('INIT', 0), ('IDLE', 1), ('TUNING', 2), ('FAULT', 3), ('开环模式', 4), ('电流模式', 5), ('PID速度模式', 6), ('PID位置模式', 7), ('MIT模式', 8)]),
-    19: ProtocolField(19, 'DATA_FAULT', 'fault', '故障', '', 'FLD_U8', 0, [('NONE', 0), ('观测器初始化失败', 1), ('总线通信初始化失败', 2), ('编码器初始化失败', 3), ('相电阻不平衡', 4), ('电阻电感整定失败', 5), ('磁链整定失败', 6), ('观测器校准失败', 7), ('极对数不匹配', 8), ('电机堵转', 9), ('机械参数校准失败', 10), ('过电压', 11), ('低电压', 12), ('过电流', 13), ('过温', 14), ('超速', 15), ('位置超限', 16), ('总线通讯异常', 17), ('观测器运行异常', 18), ('非法输入', 19)]),
-    20: ProtocolField(20, 'DATA_VBUS', 'vbus', '母线电压', 'V', 'FLD_F32', 0.0, None),
-    21: ProtocolField(21, 'DATA_DRIVER_TEMP', 'driver_temp', '驱动温度', '°C', 'FLD_F32', 0.0, None),
-    22: ProtocolField(22, 'DATA_MOTOR_TEMP', 'motor_temp', '电机温度', '°C', 'FLD_F32', 0.0, None),
+    4: ProtocolField(4, 'DATA_CURRENT_ALPHA', 'current_alpha', 'α轴电流', 'A', 'FLD_F32', 0.0, None),
+    5: ProtocolField(5, 'DATA_CURRENT_BETA', 'current_beta', 'β轴电流', 'A', 'FLD_F32', 0.0, None),
+    6: ProtocolField(6, 'DATA_CURRENT_D', 'current_d', 'D轴电流', 'A', 'FLD_F32', 0.0, None),
+    7: ProtocolField(7, 'DATA_CURRENT_Q', 'current_q', 'Q轴电流', 'A', 'FLD_F32', 0.0, None),
+    8: ProtocolField(8, 'DATA_CURRENT_D_REF', 'current_d_ref', 'D轴电流参考', 'A', 'FLD_F32', 0.0, None),
+    9: ProtocolField(9, 'DATA_CURRENT_Q_REF', 'current_q_ref', 'Q轴电流参考', 'A', 'FLD_F32', 0.0, None),
+    10: ProtocolField(10, 'DATA_VELOCITY', 'velocity', '速度', 'rad/s', 'FLD_F32', 0.0, None),
+    11: ProtocolField(11, 'DATA_VELOCITY_REF', 'velocity_ref', '速度参考', 'rad/s', 'FLD_F32', 0.0, None),
+    12: ProtocolField(12, 'DATA_THETA_ELEC', 'theta_elec', '电角度', 'rad', 'FLD_F32', 0.0, None),
+    13: ProtocolField(13, 'DATA_THETA_MECH', 'theta_mech', '机械角度', 'rad', 'FLD_F32', 0.0, None),
+    14: ProtocolField(14, 'DATA_POSITION', 'position', '位置', 'rad', 'FLD_F32', 0.0, None),
+    15: ProtocolField(15, 'DATA_POSITION_REF', 'position_ref', '位置参考', 'rad', 'FLD_F32', 0.0, None),
+    16: ProtocolField(16, 'DATA_MOTOR_STATE', 'motor_state', '电机状态', '', 'FLD_U8', 0, [('IDLE', 0), ('FAULT', 1), ('开环模式', 2), ('电流模式', 3), ('PID速度模式', 4), ('PID位置模式', 5), ('MIT模式', 6)]),
+    17: ProtocolField(17, 'DATA_FAULT', 'fault', '故障', '', 'FLD_U8', 0, [('NONE', 0), ('观测器初始化失败', 1), ('总线通信初始化失败', 2), ('编码器初始化失败', 3), ('相电阻不平衡', 4), ('电阻电感整定失败', 5), ('磁链整定失败', 6), ('观测器校准失败', 7), ('极对数不匹配', 8), ('电机堵转', 9), ('机械参数校准失败', 10), ('过电压', 11), ('低电压', 12), ('过电流', 13), ('过温', 14), ('超速', 15), ('位置超限', 16), ('总线通讯异常', 17), ('观测器运行异常', 18), ('非法输入', 19)]),
+    18: ProtocolField(18, 'DATA_VBUS', 'vbus', '母线电压', 'V', 'FLD_F32', 0.0, None),
+    19: ProtocolField(19, 'DATA_DRIVER_TEMP', 'driver_temp', '驱动温度', '°C', 'FLD_F32', 0.0, None),
+    20: ProtocolField(20, 'DATA_MOTOR_TEMP', 'motor_temp', '电机温度', '°C', 'FLD_F32', 0.0, None),
 }
 OBS_BY_NAME = {field.id_name: field for field in OBSDATA.values()}
 

@@ -43,6 +43,8 @@ void pro_manager_reset(void) {
 // 错误处理
 void pm_handle_fault(eFault fault) {
 
+    if (pro_manager.fault != FAULT_NONE)
+        return;
     pro_manager.fault = fault;
     motor_handle_fault();
     //   B错误处理--日志模块还得优化
@@ -55,7 +57,7 @@ void pm_handle_fault(eFault fault) {
 }
 
 // 保护服务主循环
-void pm_loop_task(tXFocMotor *motor) {
+void pm_loop_task(tMotorCtrl *motor) {
 
     if (pro_manager.fault != FAULT_NONE)
         return;
@@ -87,16 +89,16 @@ void pm_loop_task(tXFocMotor *motor) {
     // 使能之后保护
     if (motor->cfg.cur_enable) {
         // 2.电压异常
-        // if (_tolerance_check(motor->fb.udc,
-        //                      pro_manager.max_voltage,
-        //                      pro_manager.min_voltage)) {
-        //     if (motor->fb.udc > pro_manager.max_voltage) {
-        //         pm_handle_fault(FAULT_OVERVOLTAGE);
-        //     }
-        //     if (motor->fb.udc < pro_manager.min_voltage) {
-        //         pm_handle_fault(FAULT_UNDERVOLTAGE);
-        //     }
-        // }
+        if (_tolerance_check(motor->fb.udc,
+                             pro_manager.max_voltage,
+                             pro_manager.min_voltage)) {
+            if (motor->fb.udc > pro_manager.max_voltage) {
+                pm_handle_fault(FAULT_OVERVOLTAGE);
+            }
+            if (motor->fb.udc < pro_manager.min_voltage) {
+                pm_handle_fault(FAULT_UNDERVOLTAGE);
+            }
+        }
 
         // 2 速度检测
         if (_tolerance_check(

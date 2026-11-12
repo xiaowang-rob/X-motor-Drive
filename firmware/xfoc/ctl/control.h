@@ -1,6 +1,7 @@
 #ifndef __CONTROL_H
 #define __CONTROL_H
 
+#include "filter.h"
 #include "xmath.h"
 
 #include "mit.h"
@@ -9,17 +10,19 @@
 #include "parameter_list.h"
 
 typedef struct {
-    uint8_t pos_pvc; // pvc控制
+    tFirstOrderLagFilter cf_u, cf_v, cf_w; // 电流滤波器
     tPI PI_iq;
     tPI PI_id;
     tPI PI_fw, PI_vel;
+    uint8_t pos_pvc; // pvc控制
     tPID PID_pos;
     tMIT mit;
 } tCtrl;
 
-void ctrl_foc_init(tCtrl *con, tParameter *param, float t_cl, float vmax);
+void ctrl_foc_init(tCtrl *con, tParameter *param, float alpha, float t_cl);
 void ctrl_pid_init(tCtrl *con, tParameter *param, float t_ml, float t_ll);
 void ctrl_mit_init(tCtrl *con, tParameter *param);
+void current_process(tCtrl *con, uint8_t sec, float is_in[3], float is_out[3]);
 void ctrl_reset(tCtrl *con);
 
 // Clark 变换 (abc → αβ)(等幅值)
@@ -56,9 +59,9 @@ static inline void inv_park_transform(float d, float q, float sin_angle,
 }
 
 // foc电流内环更新 pi输出dq电压
-static inline void foc_cl_update(tCtrl *con, float iq_ref, float iq_fb,
-                                 float id_ref, float id_fb, float *uq,
-                                 float *ud) {
+static inline void foc_cl_update(tCtrl *con, float id_ref, float id_fb,
+                                 float iq_ref, float iq_fb, float *ud,
+                                 float *uq) {
     *uq = pi_update(&con->PI_iq, iq_ref, iq_fb);
     *ud = pi_update(&con->PI_id, id_ref, id_fb);
 }
@@ -69,9 +72,9 @@ static inline float pid_vl_update(tCtrl *con, float vel_ref, float vel_fb) {
 }
 
 // 弱磁控制 返回id
-static inline float field_weakening_update(tCtrl *con, float vout_ref,
-                                           float vout_fb) {
-    return pi_update(&con->PI_fw, vout_ref, vout_fb);
+static inline float field_weakening_update(tCtrl *con, float duty_ref,
+                                           float duty_fb) {
+    return pi_update(&con->PI_fw, duty_ref, duty_fb);
 }
 
 // pid位置环更新 pvc下返回vel pc下返回iq

@@ -6,6 +6,12 @@
 #define FW_VERSION_MINOR 0
 #define FW_VERSION_PATCH 0
 
+// 驱动
+typedef struct {
+    float vbus, temp; // 驱动电压温度
+
+} tDrive;
+
 void app_main_init(void);
 void app_main_config(void);
 void app_main_start(void);

@@ -18,5 +18,5 @@ typedef struct {
 
 bool em_init(tParameter *param);
 void em_loop_task(void);
-void em_tim_task(tXFocMotor *motor, float ts);
+void em_tim_task(tMotorCtrl *motor, float ts);
 #endif

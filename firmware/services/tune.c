@@ -110,6 +110,8 @@ void tune_RL_update(tParameter *p, tCtrl *con, float ts, float id, float iq,
         }
         break;
     case 1: // 内环pi参数写入
+        // TODO:电机控制改用占空比输出，这里kpki参数需要 /Vs 最大输出电压
+        // Vbus/g3
         p->motor_rs = g_tune.rl_ctx.out.rs;
         p->motor_ld = g_tune.rl_ctx.out.ldq[0];
         p->motor_lq = g_tune.rl_ctx.out.ldq[1];
@@ -145,7 +147,9 @@ void tune_RL_update(tParameter *p, tCtrl *con, float ts, float id, float iq,
 
         // 计算一阶低通滤波系数 alpha
         p->cfalpha = 1.0f - expf(-XMATH_2PI * f_filter / f_sw);
-        // 直接写入
+        // TODO: 直接写入参数中 结束参数校准之后会重新应用参数,弱磁kp ki
+        // 也要根据电流环定 参数kpki要 /Vmax
+
         current_filter_init(p->cfalpha);
         con->PI_id.kp = p->dclkp;
         con->PI_id.ki = p->dclki;
@@ -231,7 +235,7 @@ bool tune_mech_update(tParameter *p, float ts, float iq, float vel) {
 }
 
 // 观测器参数辨识
-bool tune_obs_update(tXFocMotor *motor, eEncList enc, tParameter *p, float ts) {
+bool tune_obs_update(tMotorCtrl *motor, eEncList enc, tParameter *p, float ts) {
     switch (enc) {
     case ENC_NONE:
 
@@ -295,7 +299,7 @@ bool tune_pid_update() { return false; }
 // mit参数自适应
 bool tune_mit_update() { return false; }
 
-eTuneState tune_mian_tim_task(tParameter *p, tXFocMotor *motor, float ts) {
+eTuneState tune_mian_tim_task(tParameter *p, tMotorCtrl *motor, float ts) {
     switch (g_tune.state) {
     case TUNE_IDLE:
         break;
