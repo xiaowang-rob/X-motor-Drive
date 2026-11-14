@@ -1,7 +1,9 @@
 
 #include "slot_con.h"
 
+#include "bsp_cfg.h"
 #include "bsp_mcu.h"
+#include "bsp_pwm.h"
 
 tSlotCon g_slotcon;
 
@@ -10,9 +12,10 @@ uint32_t max_task_us;
 uint8_t max_task_ht;
 uint8_t max_task_mt;
 
-void slot_con_init(float f_con) {
+void slot_con_init(void) {
     TIME_INIT();
 
+    float f_con = F_PWM;
     g_slotcon.base_tic = 0;
     g_slotcon.high_tic = 0;
     g_slotcon.medium_tic = 0;
@@ -62,4 +65,16 @@ void slot_con_update(void) {
         max_task_ht = g_slotcon.high_tic;
         max_task_mt = g_slotcon.medium_tic;
     }
+}
+
+void slot_con_start(bool start) {
+    if (!start)
+        pwm_register_callback(NULL, NULL);
+    else
+        pwm_register_callback(NULL, slot_con_update);
+}
+
+bool slot_con_reg_task(eSlotConType type, uint8_t slot, slot_task *task) {
+    // TODO:后续可以作为软件注册
+    return false;
 }

@@ -2,21 +2,7 @@
 
 #include "xmath.h"
 
-#include "pwm.h"
-#include "sample.h"
-
 tMotorCtrl g_motor;
-
-// 位置累积
-static float pos_accumulate(tPosAcc *acc, float theta) {
-    float angle_delta = theta - acc->last_angle;
-    if (angle_delta < -XMATH_PI)
-        acc->num_turns++;
-    else if (angle_delta > XMATH_PI)
-        acc->num_turns--;
-    acc->last_angle = theta;
-    return (theta - acc->zero_angle) + acc->num_turns * XMATH_2PI;
-}
 
 void motor_init(tParameter *param, tMotorOps *ops, float t_hl, float t_ml,
                 float t_ll) {
@@ -28,7 +14,7 @@ void motor_init(tParameter *param, tMotorOps *ops, float t_hl, float t_ml,
 
     memset(&g_motor.fb, 0, sizeof(g_motor.fb));
 
-    g_motor.ops->pwm_enable(false);
+    g_motor.ops->gate_drv_enable(false);
 
     // foc初始化
     ctrl_foc_init(&g_motor.ctrl, g_motor.param, param->cfalpha, t_hl);
@@ -64,14 +50,13 @@ void motor_reset(void) {
 
 // 失能 释放电机
 void motor_disable(void) {
-    pwm_enable(&g_pwm, false);
+    g_motor.ops->gate_drv_enable(false);
     motor_reset();
 }
 
 void motor_handle_fault(void) {
     motor_disable();
     g_motor.state = MOTOR_FAULT;
-    pwm_power_on(&g_pwm, false); // 直接电源隔断
 }
 
 bool motor_cmd_cfg(tCmdCfg *cfg) {
@@ -107,12 +92,8 @@ bool motor_cmd_cfg(tCmdCfg *cfg) {
         return false;
     }
     // 使能前先写入 50% 零矢量，避免 CCR=0 时三相下桥全通的过渡状态
-    pwm_set_compare(&g_pwm,
-                    g_pwm.cfg.pwm_arr / 2,
-                    g_pwm.cfg.pwm_arr / 2,
-                    g_pwm.cfg.pwm_arr / 2);
-    pwm_power_on(&g_pwm, true);
-    pwm_enable(&g_pwm, true);
+    g_motor.ops->gate_drv_out(0.5f, 0.5f, 0.5f);
+    g_motor.ops->gate_drv_enable(true);
     return true;
 }
 // 核心控制参数写入
@@ -160,19 +141,6 @@ bool motor_cmd_set(tCmdValue *cmd) {
     return true;
 }
 
-void motor_set_pos_zero(void) {
-    g_motor.pacc.zero_angle = g_motor.fb.theta_rotor;
-    g_motor.pacc.num_turns = 0;
-    g_motor.pacc.last_angle = g_motor.fb.theta_rotor;
-}
-
-void motor_set_pos_limit(void) {
-    if (g_motor.fb.pos > 0)
-        g_motor.pacc.max_pos = g_motor.fb.pos;
-    else
-        g_motor.pacc.min_pos = g_motor.fb.pos;
-}
-
 // // 整定辅助函数 内环参数更新
 // void tune_cl_param_update(float alpha, float beta)
 // {
@@ -189,20 +157,11 @@ void motor_set_pos_limit(void) {
 //     = wc_q * param->motor_rs;
 // }
 
-// 核心主循环任务
-void motor_loop_task(void) {}
-
-#define ENCODER_PLL_WN 300.0f  // 自然频率 决定跟踪带宽
-#define ENCODER_PLL_ZETA 0.707 // 阻尼比 越大超调越小响应越慢
-#define ENCODER_PLL_KP (2.0f * ENCODER_PLL_ZETA * ENCODER_PLL_WN)
-#define ENCODER_PLL_KI (ENCODER_PLL_WN * ENCODER_PLL_WN)
-#define ENCODER_PLL_INTEG_LIMIT 0.1745f // 积分限值  ±10°
-#define ENCODER_VEL_PHYS_LIMIT 1046.0f  // rad/s 物理上限（≈10k rpm）
-
-
 // 时间槽高频任务
 void motor_foc_tim_task(float ts) {
 
+    // 获取电流
+    g_motor.ops->get_current(g_motor.fb.ims);
     // 电流处理 采用上一个周期的电角度解算
     current_process(
         &g_motor.ctrl, g_motor.ref.sec, g_motor.fb.ims, g_motor.fb.is);
@@ -220,11 +179,9 @@ void motor_foc_tim_task(float ts) {
                    &g_motor.fb.id,
                    &g_motor.fb.iq);
 
-    
     // 角度、速度、位置更新
-    g_motor.fb.theta_rotor = g_motor.ops->get_theta_r();
-    g_motor.fb.theta_elec = g_motor.ops->get_theta_e();
-    g_motor.fb.vel =g_motor.ops->get_vel();
+    g_motor.ops->theta_process(
+        ts, &g_motor.fb.theta_elec, &g_motor.fb.theta_rotor, &g_motor.fb.vel);
     g_motor.fb.pos = pos_accumulate(&g_motor.pacc, g_motor.fb.theta_rotor);
     if (g_motor.state == MOTOR_OPENLOOP) {
         g_motor.ref.theta_elec += g_motor.ref.vel_elec * ts;
@@ -268,8 +225,11 @@ void motor_foc_tim_task(float ts) {
                  &g_motor.ref.dutyV,
                  &g_motor.ref.dutyW);
 
-    g_motor.ops->pwm_out(
+    // 输出
+    g_motor.ops->gate_drv_out(
         g_motor.ref.dutyU, g_motor.ref.dutyV, g_motor.ref.dutyW);
+    // 采样点重置
+    g_motor.ops->sp_calibration(g_motor.ref.sec);
 }
 
 // 运行轨迹规划器

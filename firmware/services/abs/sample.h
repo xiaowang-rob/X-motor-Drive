@@ -59,19 +59,4 @@ void sample_set_sample_point(tSample *s, uint32_t tic);
 // 更新 空闲时EMA电流零点跟随 使能时停止跟随
 void sample_update(tSample *s, bool motor_idle);
 
-// ---- 查询 ----
-static inline void sample_get_current(const tSample *s, float is[3]) {
-    if (!s)
-        return;
-    is[0] = s->cur[0];
-    is[1] = s->cur[1];
-    is[2] = s->cur[2];
-}
-static inline float sample_get_vbus(const tSample *s) {
-    return s ? s->vbus : 0.0f;
-}
-static inline float sample_get_temperature(const tSample *s) {
-    return s ? s->temperature : 0.0f;
-}
-
 #endif // __SAMPLE_H

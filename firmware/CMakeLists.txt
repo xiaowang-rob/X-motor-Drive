@@ -36,16 +36,16 @@ add_subdirectory("${FW_ROOT}/protocol" "${CMAKE_BINARY_DIR}/protocol")
 # math 里的 xcrc 供 APP 和 BL 共用；xfoc 仅 APP 需要。
 add_subdirectory("${FW_ROOT}/math" "${CMAKE_BINARY_DIR}/xmath")
 if(FW_TYPE STREQUAL "app")
-    add_subdirectory("${FW_ROOT}/xfoc" "${CMAKE_BINARY_DIR}/xfoc")
+    add_subdirectory("${FW_ROOT}/motor" "${CMAKE_BINARY_DIR}/motor")
 endif()
 
 # board 保留 Core/Src/main.c 和 startup，不创建第二个 main。
 add_subdirectory("${BOARD_DIR}" "${CMAKE_BINARY_DIR}/board")
 if(FW_TYPE STREQUAL "app")
     add_subdirectory("${FW_ROOT}/app" "${CMAKE_BINARY_DIR}/app")
-    # 迁移期仅提供头路径，不向 xfoc 引入服务实现。
-    target_link_libraries(xfoc PRIVATE board_headers)
-    target_link_libraries(${FW_TARGET} PRIVATE app bsp xfoc xmath)
+    # 迁移期仅提供头路径，不向 motor 引入服务实现。
+    target_link_libraries(motor PRIVATE board_headers)
+    target_link_libraries(${FW_TARGET} PRIVATE app bsp motor xmath)
 else()
     add_subdirectory("${FW_ROOT}/bootload" "${CMAKE_BINARY_DIR}/bootload")
     target_link_libraries(${FW_TARGET} PRIVATE bootload bsp)

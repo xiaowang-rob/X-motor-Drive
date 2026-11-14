@@ -2,5 +2,33 @@
     "cortex-debug.variableUseNaturalFormat": true,
     "cmake.sourceDirectory": "${workspaceFolder}/firmware",
     "C_Cpp.errorSquiggles": "enabled",
-    "python-envs.defaultEnvManager": "ms-python.python:system"
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    // ---------- 全局基础开关 ----------
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000,
+    "editor.formatOnSave": true,
+    // ---------- C / C++ ----------
+    "[c]": {
+        "editor.defaultFormatter": "ms-vscode.cpptools"
+    },
+    "[cpp]": {
+        "editor.defaultFormatter": "ms-vscode.cpptools"
+    },
+    "C_Cpp.formatting": "clangFormat",
+    "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: LLVM, IndentWidth: 4, ColumnLimit: 80, BinPackArguments: false }",
+    "C_Cpp.clang_format_style": "file",
+    // ---------- Python ----------
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter" // 或 "ms-python.autopep8"
+    },
+    "python.formatting.provider": "black", // 旧版兼容，部分配置仍依赖此项
+    // ---------- JSON ----------
+    "[json]": {
+        "editor.defaultFormatter": "vscode.json-language-features",
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true
+    },
+    "[jsonc]": {
+        "editor.defaultFormatter": "vscode.json-language-features"
+    },
 }

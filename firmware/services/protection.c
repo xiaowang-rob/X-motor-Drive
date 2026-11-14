@@ -1,7 +1,10 @@
 
 #include "protection.h"
+
 #include "bsp_cfg.h"
 #include "xmath.h"
+
+#include "gate_drv.h"
 
 tProtectionManager pro_manager;
 // 容忍度检测
@@ -65,7 +68,7 @@ void pm_loop_task(tMotorCtrl *motor) {
     // --- 错误监测
 
     // 过压
-    if (motor->fb.udc > pro_manager.max_voltage) {
+    if (g_gate_drv.Vbus > pro_manager.max_voltage) {
         pm_handle_fault(FAULT_OVERVOLTAGE);
     }
 
@@ -82,20 +85,20 @@ void pm_loop_task(tMotorCtrl *motor) {
 
     // 警告：
     // 1温度过高
-    if (motor->fb.temp > pro_manager.max_temp) {
+    if (g_gate_drv.Temp > pro_manager.max_temp) {
         pm_handle_fault(FAULT_OVERTEMP);
     }
 
     // 使能之后保护
     if (motor->cfg.cur_enable) {
         // 2.电压异常
-        if (_tolerance_check(motor->fb.udc,
+        if (_tolerance_check(g_gate_drv.Vbus,
                              pro_manager.max_voltage,
                              pro_manager.min_voltage)) {
-            if (motor->fb.udc > pro_manager.max_voltage) {
+            if (g_gate_drv.Vbus > pro_manager.max_voltage) {
                 pm_handle_fault(FAULT_OVERVOLTAGE);
             }
-            if (motor->fb.udc < pro_manager.min_voltage) {
+            if (g_gate_drv.Vbus < pro_manager.min_voltage) {
                 pm_handle_fault(FAULT_UNDERVOLTAGE);
             }
         }

@@ -13,7 +13,7 @@
 #include "app_main.h"
 #include "bsp_cfg.h"
 #include "bsp_mcu.h"
-#include "xfoc_main.h"
+#include "motor_ctrl.h"
 // ============================================================
 // cmd_process.c — 上下位机命令分发与 payload 编解码
 //

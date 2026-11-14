@@ -1,8 +1,8 @@
 #ifndef __PROTECTION_H
 #define __PROTECTION_H
 
+#include "motor_ctrl.h"
 #include "parameter_list.h"
-#include "xfoc_main.h"
 
 typedef struct {
     eFault fault; // 故障

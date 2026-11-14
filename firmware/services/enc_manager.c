@@ -1,5 +1,5 @@
 #include "enc_manager.h"
-#include "xfoc_main.h"
+#include "motor_ctrl.h"
 
 #include "enc_abi.h"
 #include "enc_as5047.h"
@@ -17,7 +17,16 @@
 
 tEncoder g_enc;
 tEncManager g_encm;
-
+// 位置累积
+static float pos_accumulate(tPosAcc *acc, float theta) {
+    float angle_delta = theta - acc->last_angle;
+    if (angle_delta < -XMATH_PI)
+        acc->num_turns++;
+    else if (angle_delta > XMATH_PI)
+        acc->num_turns--;
+    acc->last_angle = theta;
+    return (theta - acc->zero_angle) + acc->num_turns * XMATH_2PI;
+}
 // 外接编码器初始化
 bool em_init(tParameter *param) {
     const tEncDevHandle *handle;
@@ -74,7 +83,20 @@ void em_loop_task(void) {
     g_encm.theta_r = g_enc.sample.angle_rad;
 }
 
-void em_tim_task(float ts,float *th_e,float *th_r,float *vel) {
+void em_set_pos_zero(void) {
+    g_motor.pacc.zero_angle = g_motor.fb.theta_rotor;
+    g_motor.pacc.num_turns = 0;
+    g_motor.pacc.last_angle = g_motor.fb.theta_rotor;
+}
+
+void em_set_pos_limit(void) {
+    if (g_motor.fb.pos > 0)
+        g_motor.pacc.max_pos = g_motor.fb.pos;
+    else
+        g_motor.pacc.min_pos = g_motor.fb.pos;
+}
+
+void em_theta_process_task(float ts, float *th_e, float *th_r, float *vel) {
     if (!g_encm.enc_active)
         return;
     pll_update(&g_encm.pll, g_encm.theta_r, ts);
@@ -83,9 +105,8 @@ void em_tim_task(float ts,float *th_e,float *th_r,float *vel) {
     else
         *th_r = g_encm.theta_r;
 
-    *th_e = (*th_r - g_param.theta_offset) *
-                           g_param.motor_polepairs *
-                           (g_param.positive_dir ? 1 : -1);
+    *th_e = (*th_r - g_param.theta_offset) * g_param.motor_polepairs *
+            (g_param.positive_dir ? 1 : -1);
 
     *th_e = XANGLE_2PI(*th_e);
     *vel = g_encm.pll.vel;

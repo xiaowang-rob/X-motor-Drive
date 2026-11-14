@@ -8,9 +8,6 @@ void status_fb_loop_task(eMotorState cstate) {
     case MOTOR_IDLE:
         state = INDICATOR_STATE_IDLE;
         break;
-    case MOTOR_TUNING:
-        state = INDICATOR_STATE_RUNNING1;
-        break;
     case MOTOR_OPENLOOP:
     case MOTOR_CURRENT_MODE:
     case MOTOR_PID_SPEED:

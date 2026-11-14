@@ -48,21 +48,13 @@ typedef struct {
 
 } tCmdValue;
 
-// 位置记录
 typedef struct {
-    int32_t num_turns; // 圈数累积
-
-    float last_angle; // 上一个机械角度
-    float zero_angle; // 位置机械零点
-    float max_pos;    // 位置机械最大值
-    float min_pos;    // 位置机械最小值
-
-} tPosAcc;
-
-typedef struct {
-    float (*theta_process)(float ts,float *th_e,float *th_r,float *vel);     //处理角度信息
-    void (*pwm_enable)(bool en);//pwm 使能
-    void (*pwm_out)(float Du, float Dv, float Dw);//pwm 输出
+    void (*theta_process)(float ts, float *th_e, float *th_r,
+                          float *vel);                  // 处理角度信息
+    void (*get_current)(float is[3]);                   // 获取采集电流
+    void (*gate_drv_enable)(bool en);                   // 栅极驱动 使能
+    void (*gate_drv_out)(float Du, float Dv, float Dw); // 栅极驱动 输出
+    void (*sp_calibration)(uint8_t sec);                // 校准采样点
 } tMotorOps;
 // 主要核心
 typedef struct {
@@ -73,10 +65,9 @@ typedef struct {
     bool obs_on; // 无感
 
     tParameter *param; // 参数
-    tPosAcc pacc;      // 位置累积
-    
-    tCtrl ctrl;        // 控制器
-    tTraj traj;        // 内置轨迹规划器
+
+    tCtrl ctrl; // 控制器
+    tTraj traj; // 内置轨迹规划器
 
     struct {
         volatile bool cur_enable;  // 电流闭环使能标记
@@ -119,7 +110,8 @@ typedef struct {
 
 extern tMotorCtrl g_motor;
 
-void motor_init(tParameter *param, float t_hl, float t_ml, float t_ll);
+void motor_init(tParameter *param, tMotorOps *ops, float t_hl, float t_ml,
+                float t_ll);
 void motor_reset(void);
 void motor_disable(void);
 void motor_handle_fault(void);
@@ -127,8 +119,6 @@ bool motor_cmd_cfg(tCmdCfg *cfg);
 bool motor_cmd_set(tCmdValue *cmd);
 void motor_set_pos_zero(void);
 void motor_set_pos_limit(void);
-
-void motor_loop_task(void);
 
 void motor_foc_tim_task(float ts);
 void motor_traj_tim_task(float ts);

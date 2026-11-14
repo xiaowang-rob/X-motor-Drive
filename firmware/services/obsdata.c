@@ -1,6 +1,6 @@
 #include "obsdata.h"
+#include "motor_ctrl.h"
 #include "protection.h"
-#include "xfoc_main.h"
 
 const tObsData g_data = {
     .current_u = &g_motor.fb.is[0],
