@@ -76,8 +76,7 @@ bool usb_is_ready(const tUsbDriver *usb) {
 }
 
 bool usb_send(tUsbDriver *usb, uint8_t id, const uint8_t *data, uint16_t len) {
-    if (usb == NULL || !usb->initialized || !usb->started || data == NULL ||
-        len > USB_MAX_PKT_SIZE)
+    if (!usb->initialized || !usb->started || len > USB_MAX_PKT_SIZE)
         return false;
     if (!usb_is_ready(usb)) {
         usb->tstate = DEV_OFFLINE;
@@ -92,8 +91,6 @@ bool usb_send(tUsbDriver *usb, uint8_t id, const uint8_t *data, uint16_t len) {
 }
 
 bool usb_process_frame(tUsbDriver *usb, tUsb_Frame *frame) {
-    if (frame == NULL)
-        return false;
     frame->data_len = 0U;
     if (usb == NULL || !usb->initialized || !usb->started)
         return false;

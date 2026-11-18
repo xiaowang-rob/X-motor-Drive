@@ -32,52 +32,54 @@ typedef enum
     PARAM_POSITIVE_DIR = 0x18, /* 方向反转 */
     PARAM_THETA_SOURCE = 0x19, /* 角度源 */
     PARAM_HFI_SMO_THRESHOLD = 0x1A, /* HFI/SMO切换阈值 */
-    PARAM_HALL_TABLE_0 = 0x1B, /* HALL编码器表0 */
-    PARAM_HALL_TABLE_1 = 0x1C, /* HALL编码器表1 */
-    PARAM_HALL_TABLE_2 = 0x1D, /* HALL编码器表2 */
-    PARAM_HALL_TABLE_3 = 0x1E, /* HALL编码器表3 */
-    PARAM_HALL_TABLE_4 = 0x1F, /* HALL编码器表4 */
-    PARAM_HALL_TABLE_5 = 0x20, /* HALL编码器表5 */
-    PARAM_HALL_TABLE_6 = 0x21, /* HALL编码器表6 */
-    PARAM_HALL_TABLE_7 = 0x22, /* HALL编码器表7 */
+    PARAM_HALL_PSC = 0x1B, /* 捕获时基PSC */
+    PARAM_HALL_FILTER = 0x1C, /* 滤波系数 */
+    PARAM_HALL_TABLE_0 = 0x1D, /* HALL编码器表0 */
+    PARAM_HALL_TABLE_1 = 0x1E, /* HALL编码器表1 */
+    PARAM_HALL_TABLE_2 = 0x1F, /* HALL编码器表2 */
+    PARAM_HALL_TABLE_3 = 0x20, /* HALL编码器表3 */
+    PARAM_HALL_TABLE_4 = 0x21, /* HALL编码器表4 */
+    PARAM_HALL_TABLE_5 = 0x22, /* HALL编码器表5 */
     PARAM_ABI_COUNT = 0x23, /* ABI编码器线数 */
-    PARAM_SIN_AMP = 0x24, /* SIN幅值 */
-    PARAM_COS_AMP = 0x25, /* COS幅值 */
-    PARAM_SIN_OFFSET = 0x26, /* SIN偏移 */
-    PARAM_COS_OFFSET = 0x27, /* COS偏移 */
-    PARAM_SINCOS_FL = 0x28, /* SINCOS滤波系数 */
-    PARAM_ENC_CHIP = 0x29, /* 编码器芯片 */
-    PARAM_VLKP = 0x2A, /* 速度环Kp */
-    PARAM_VLKI = 0x2B, /* 速度环Ki */
-    PARAM_VELOCITY_LIMIT = 0x2C, /* 速度限制 */
-    PARAM_POS_PIDMODE = 0x2D, /* 位置环模式 */
-    PARAM_PLKP = 0x2E, /* 位置环Kp */
-    PARAM_PLKI = 0x2F, /* 位置环Ki */
-    PARAM_PLKD = 0x30, /* 位置环Kd */
-    PARAM_PLALPHA = 0x31, /* 位置环滤波系数 */
-    PARAM_POS_LIMIT_MODE = 0x32, /* 位置限制模式 */
-    PARAM_POS_MIN_LIMIT = 0x33, /* 最小位置 */
-    PARAM_POS_MAX_LIMIT = 0x34, /* 最大位置 */
-    PARAM_MIT_KP = 0x35, /* MIT 刚度(Kp) */
-    PARAM_MIT_KD = 0x36, /* MIT 阻尼(Kd) */
-    PARAM_MIT_KPMAX = 0x37, /* MIT 最大刚度 */
-    PARAM_MIT_KDMAX = 0x38, /* MIT 最大阻尼 */
-    PARAM_MIT_TMAX = 0x39, /* MIT最大扭矩 */
-    PARAM_FWLKP = 0x3A, /* 弱磁Kp */
-    PARAM_FWLKI = 0x3B, /* 弱磁Ki */
-    PARAM_TRAJ_MODE = 0x3C, /* 轨迹规划器模式 */
-    PARAM_TRAJ_LIMIT_D1 = 0x3D, /* 轨迹一阶限幅 */
-    PARAM_TRAJ_LIMIT_D2 = 0x3E, /* 轨迹二阶限幅 */
-    PARAM_TRAJ_LIMIT_D3 = 0x3F, /* 轨迹三阶限幅 */
-    PARAM_TRAJ_TOLERANCE = 0x40, /* 轨迹容差 */
-    PARAM_UNDERVOLTAGE_THRESHOLD = 0x41, /* 欠压阈值 */
-    PARAM_OVERVOLTAGE_THRESHOLD = 0x42, /* 过压阈值 */
-    PARAM_OVERTEMP_THRESHOLD = 0x43, /* 过温阈值 */
-    PARAM_PRO_TOLERANCE = 0x44, /* 保护超限容忍度 */
-    PARAM_PRO_TOLERANCE_TIME_MS = 0x45, /* 保护超限容忍时间 */
-    PARAM_CAN_RATE = 0x46, /* CAN速率 */
-    PARAM_CAN_ID = 0x47, /* CAN ID */
-    PARAM_CAN_MODE = 0x48, /* CAN模式 */
+    PARAM_ABI_FILTER = 0x24, /* 滤波系数 */
+    PARAM_ABI_INDEX = 0x25, /* abi编码器有无 I输入 */
+    PARAM_SIN_AMP = 0x26, /* SIN幅值 */
+    PARAM_COS_AMP = 0x27, /* COS幅值 */
+    PARAM_SIN_OFFSET = 0x28, /* SIN偏移 */
+    PARAM_COS_OFFSET = 0x29, /* COS偏移 */
+    PARAM_SINCOS_FL = 0x2A, /* SINCOS滤波系数 */
+    PARAM_ENC_CHIP = 0x2B, /* 编码器芯片 */
+    PARAM_VLKP = 0x2C, /* 速度环Kp */
+    PARAM_VLKI = 0x2D, /* 速度环Ki */
+    PARAM_VELOCITY_LIMIT = 0x2E, /* 速度限制 */
+    PARAM_POS_PIDMODE = 0x2F, /* 位置环模式 */
+    PARAM_PLKP = 0x30, /* 位置环Kp */
+    PARAM_PLKI = 0x31, /* 位置环Ki */
+    PARAM_PLKD = 0x32, /* 位置环Kd */
+    PARAM_PLALPHA = 0x33, /* 位置环滤波系数 */
+    PARAM_POS_LIMIT_MODE = 0x34, /* 位置限制模式 */
+    PARAM_POS_MIN_LIMIT = 0x35, /* 最小位置 */
+    PARAM_POS_MAX_LIMIT = 0x36, /* 最大位置 */
+    PARAM_MIT_KP = 0x37, /* MIT 刚度(Kp) */
+    PARAM_MIT_KD = 0x38, /* MIT 阻尼(Kd) */
+    PARAM_MIT_KPMAX = 0x39, /* MIT 最大刚度 */
+    PARAM_MIT_KDMAX = 0x3A, /* MIT 最大阻尼 */
+    PARAM_MIT_TMAX = 0x3B, /* MIT最大扭矩 */
+    PARAM_FWLKP = 0x3C, /* 弱磁Kp */
+    PARAM_FWLKI = 0x3D, /* 弱磁Ki */
+    PARAM_TRAJ_MODE = 0x3E, /* 轨迹规划器模式 */
+    PARAM_TRAJ_LIMIT_D1 = 0x3F, /* 轨迹一阶限幅 */
+    PARAM_TRAJ_LIMIT_D2 = 0x40, /* 轨迹二阶限幅 */
+    PARAM_TRAJ_LIMIT_D3 = 0x41, /* 轨迹三阶限幅 */
+    PARAM_TRAJ_TOLERANCE = 0x42, /* 轨迹容差 */
+    PARAM_UNDERVOLTAGE_THRESHOLD = 0x43, /* 欠压阈值 */
+    PARAM_OVERVOLTAGE_THRESHOLD = 0x44, /* 过压阈值 */
+    PARAM_OVERTEMP_THRESHOLD = 0x45, /* 过温阈值 */
+    PARAM_PRO_TOLERANCE = 0x46, /* 保护超限容忍度 */
+    PARAM_PRO_TOLERANCE_TIME_MS = 0x47, /* 保护超限容忍时间 */
+    PARAM_CAN_RATE = 0x48, /* CAN速率 */
+    PARAM_CAN_ID = 0x49, /* CAN ID */
+    PARAM_CAN_MODE = 0x4A, /* CAN模式 */
     PARAM_ALL = 0xFF, /* 全部参数；写入时仅发送此 ID 表示应用全部已写入参数，重置时表示全部重置，不携带 value */
 } eParameter;
 
@@ -108,6 +110,12 @@ typedef enum
     THETA_PLL = 0, /* PLL */
     THETA_RAW = 1, /* 原始角度 */
 } eThetaSource;
+
+typedef enum
+{
+    ABI_INDEX_OFF = 0, /* 无 */
+    ABI_INDEX_ON = 1, /* 有 */
+} eAbiIndex;
 
 typedef enum
 {
@@ -177,15 +185,17 @@ typedef struct
     bool positive_dir;
     uint8_t theta_source;
     float hfi_smo_threshold;
+    uint16_t hall_psc;
+    float hall_filter;
     uint8_t hall_table_0;
     uint8_t hall_table_1;
     uint8_t hall_table_2;
     uint8_t hall_table_3;
     uint8_t hall_table_4;
     uint8_t hall_table_5;
-    uint8_t hall_table_6;
-    uint8_t hall_table_7;
     uint16_t abi_count;
+    float abi_filter;
+    uint8_t abi_index;
     float sin_amp;
     float cos_amp;
     float sin_offset;
@@ -225,7 +235,7 @@ typedef struct
     uint8_t can_mode;
 } tParameter;
 
-#define PARAM_NUM 0x49
+#define PARAM_NUM 0x4B
 
 #define PARAM_FIELDS(X) \
     X(PARAM_MOTOR_TYPE, motor_type, FLD_U8, 0u) \
@@ -254,19 +264,21 @@ typedef struct
     X(PARAM_POSITIVE_DIR, positive_dir, FLD_BOOL, false) \
     X(PARAM_THETA_SOURCE, theta_source, FLD_U8, 0u) \
     X(PARAM_HFI_SMO_THRESHOLD, hfi_smo_threshold, FLD_F32, 0.0f) \
+    X(PARAM_HALL_PSC, hall_psc, FLD_U16, 0u) \
+    X(PARAM_HALL_FILTER, hall_filter, FLD_F32, 0.5f) \
     X(PARAM_HALL_TABLE_0, hall_table_0, FLD_U8, 255u) \
     X(PARAM_HALL_TABLE_1, hall_table_1, FLD_U8, 255u) \
     X(PARAM_HALL_TABLE_2, hall_table_2, FLD_U8, 255u) \
     X(PARAM_HALL_TABLE_3, hall_table_3, FLD_U8, 255u) \
     X(PARAM_HALL_TABLE_4, hall_table_4, FLD_U8, 255u) \
     X(PARAM_HALL_TABLE_5, hall_table_5, FLD_U8, 255u) \
-    X(PARAM_HALL_TABLE_6, hall_table_6, FLD_U8, 255u) \
-    X(PARAM_HALL_TABLE_7, hall_table_7, FLD_U8, 255u) \
     X(PARAM_ABI_COUNT, abi_count, FLD_U16, 8192u) \
+    X(PARAM_ABI_FILTER, abi_filter, FLD_F32, 0.5f) \
+    X(PARAM_ABI_INDEX, abi_index, FLD_U8, 0u) \
     X(PARAM_SIN_AMP, sin_amp, FLD_F32, 1.0f) \
     X(PARAM_COS_AMP, cos_amp, FLD_F32, 1.0f) \
-    X(PARAM_SIN_OFFSET, sin_offset, FLD_F32, 1.65f) \
-    X(PARAM_COS_OFFSET, cos_offset, FLD_F32, 1.65f) \
+    X(PARAM_SIN_OFFSET, sin_offset, FLD_F32, 1.2f) \
+    X(PARAM_COS_OFFSET, cos_offset, FLD_F32, 1.2f) \
     X(PARAM_SINCOS_FL, sincos_fl, FLD_F32, 0.5f) \
     X(PARAM_ENC_CHIP, enc_chip, FLD_U8, 0u) \
     X(PARAM_VLKP, vlkp, FLD_F32, 0.0f) \

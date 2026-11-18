@@ -4,8 +4,8 @@
 #include "bsp_mcu.h"
 #include "xmath.h"
 
-static bool sincos_init(void *dev, void *cfg);
-static bool sincos_open(void *dev);
+static bool sincos_init(void *dev);
+static bool sincos_open(void *dev, void *cfg);
 static bool sincos_close(void *dev);
 static bool sincos_read(void *dev, tEncSample *sample);
 
@@ -30,21 +30,22 @@ static const tEncDevHandle s_sincos_handle = {
 
 const tEncDevHandle *Get_EncSinCosHandle(void) { return &s_sincos_handle; }
 
-static bool sincos_init(void *dev, void *cfg) {
+static bool sincos_init(void *dev) {
+    (void)dev;
+    // 初始化 adc 硬件链路
+    return true;
+}
+
+static bool sincos_open(void *dev, void *cfg) {
+    if (!dev || !cfg)
+        return false;
     tSinCosEncDev *enc = (tSinCosEncDev *)dev;
     tSinCosEncCfg *_cfg = (tSinCosEncCfg *)cfg;
     memcpy(&enc->cfg, _cfg, sizeof(tSinCosEncCfg));
 
-    return true;
-}
-
-static bool sincos_open(void *dev) {
-    if (!dev)
-        return false;
-
     if (!bsp_enc_adc_sincos_open())
         return false;
-    (void)dev;
+
     return true;
 }
 
@@ -54,8 +55,6 @@ static bool sincos_close(void *dev) {
     (void)dev;
     return true;
 }
-
-
 
 static bool sincos_read(void *dev, tEncSample *sample) {
     tSinCosEncDev *enc = (tSinCosEncDev *)dev;

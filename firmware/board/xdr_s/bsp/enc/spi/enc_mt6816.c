@@ -31,8 +31,8 @@ typedef struct {
     volatile uint32_t error_count;
 } tMt6816Dev;
 
-static bool mt6816_init(void *dev, void *cfg);
-static bool mt6816_open(void *dev);
+static bool mt6816_init(void *dev);
+static bool mt6816_open(void *dev, void *cfg);
 static bool mt6816_read(void *dev, tEncSample *sample);
 static bool mt6816_close(void *dev);
 
@@ -107,18 +107,7 @@ static void mt6816_callback(tBspEncSpiResult result, void *context) {
     inst->phase = MT6816_PHASE_IDLE;
 }
 
-static bool mt6816_init(void *dev, void *cfg) {
-    tMt6816Dev *inst = dev;
-    if (!inst)
-        return false;
-    inst->initialized = false;
-    inst->phase = MT6816_PHASE_IDLE;
-    inst->latest_valid = false;
-    inst->error_count = 0;
-    return true;
-}
-
-static bool mt6816_open(void *dev) {
+static bool mt6816_init(void *dev) {
     tMt6816Dev *inst = dev;
     if (!inst)
         return false;
@@ -138,6 +127,16 @@ static bool mt6816_open(void *dev) {
     inst->phase = MT6816_PHASE_IDLE;
     inst->latest_valid = false;
     inst->error_count = 0;
+
+    return true;
+}
+
+static bool mt6816_open(void *dev, void *cfg) {
+    (void)cfg;
+    tMt6816Dev *inst = dev;
+    if (!inst)
+        return false;
+
     return true;
 }
 

@@ -227,6 +227,18 @@ fields:
     unit: rad/s
     val_type: FLD_F32
     default: 0.0
+  - field: hall_psc
+    name: 捕获时基PSC
+    id_name: PARAM_HALL_PSC
+    unit: ""
+    val_type: FLD_U16
+    default: 0
+  - field: hall_filter
+    name: 滤波系数
+    id_name: PARAM_HALL_FILTER
+    unit: ""
+    val_type: FLD_F32
+    default: 0.5
   - field: hall_table_0
     name: HALL编码器表0
     id_name: PARAM_HALL_TABLE_0
@@ -263,24 +275,30 @@ fields:
     unit: ""
     val_type: FLD_U8
     default: 255
-  - field: hall_table_6
-    name: HALL编码器表6
-    id_name: PARAM_HALL_TABLE_6
-    unit: ""
-    val_type: FLD_U8
-    default: 255
-  - field: hall_table_7
-    name: HALL编码器表7
-    id_name: PARAM_HALL_TABLE_7
-    unit: ""
-    val_type: FLD_U8
-    default: 255
   - field: abi_count
     name: ABI编码器线数
     id_name: PARAM_ABI_COUNT
     unit: counts/rev
     val_type: FLD_U16
     default: 8192
+  - field: abi_filter
+    name: 滤波系数
+    id_name: PARAM_ABI_FILTER
+    unit: ""
+    val_type: FLD_F32
+    default: 0.5
+  - field: abi_index
+    name: abi编码器有无 I输入
+    id_name: PARAM_ABI_INDEX
+    unit: ""
+    val_type: FLD_U8
+    default: 0
+    options:
+      enum_name: eAbiIndex
+      comment: abi编码器有无 I输入
+      items:
+        - { id_name: ABI_INDEX_OFF, comment: 无 }
+        - { id_name: ABI_INDEX_ON, comment: 有 }
   - {
       field: sin_amp,
       name: SIN幅值,
@@ -303,7 +321,7 @@ fields:
       id_name: PARAM_SIN_OFFSET,
       unit: V,
       val_type: FLD_F32,
-      default: 1.65,
+      default: 1.2,
     }
   - {
       field: cos_offset,
@@ -311,7 +329,7 @@ fields:
       id_name: PARAM_COS_OFFSET,
       unit: V,
       val_type: FLD_F32,
-      default: 1.65,
+      default: 1.2,
     }
   - field: sincos_fl
     name: SINCOS滤波系数

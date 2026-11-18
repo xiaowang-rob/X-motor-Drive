@@ -29,8 +29,8 @@ typedef struct {
     volatile uint32_t error_count;
 } tAs5047Dev;
 
-static bool as5047_init(void *dev, void *cfg);
-static bool as5047_open(void *dev);
+static bool as5047_init(void *dev);
+static bool as5047_open(void *dev, void *cfg);
 static bool as5047_read(void *dev, tEncSample *sample);
 static bool as5047_close(void *dev);
 
@@ -102,18 +102,7 @@ static void as5047_callback(tBspEncSpiResult result, void *context) {
     inst->phase = AS5047_PHASE_IDLE;
 }
 
-static bool as5047_init(void *dev, void *cfg) {
-    tAs5047Dev *inst = dev;
-    if (!inst)
-        return false;
-    inst->initialized = false;
-    inst->phase = AS5047_PHASE_IDLE;
-    inst->latest_valid = false;
-    inst->error_count = 0;
-    return true;
-}
-
-static bool as5047_open(void *dev) {
+static bool as5047_init(void *dev) {
     tAs5047Dev *inst = dev;
     if (!inst)
         return false;
@@ -133,6 +122,15 @@ static bool as5047_open(void *dev) {
     inst->phase = AS5047_PHASE_IDLE;
     inst->latest_valid = false;
     inst->error_count = 0;
+    return true;
+}
+
+static bool as5047_open(void *dev, void *cfg) {
+    (void)cfg;
+    tAs5047Dev *inst = dev;
+    if (!inst)
+        return false;
+
     return true;
 }
 

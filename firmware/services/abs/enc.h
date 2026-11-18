@@ -33,6 +33,7 @@ typedef struct HALL_ENCODER_CONFIG {
 typedef struct SINCOS_ENCODER_CONFIG {
     float sin_offset, cos_offset; // 原始12位码域
     float sin_gain, cos_gain;     // 校正后的幅值比例，必须为正
+    float filter_alpha;           // 滤波系数
 } tSinCosEncCfg;
 
 typedef enum {
@@ -52,9 +53,9 @@ typedef struct {
 
 // 驱动接口（板级实现）；dev 为驱动实例
 typedef struct {
-    bool (*init)(void *dev, void *cfg);          // 初始化
-    bool (*open)(void *dev);                     // 启动该路
-    bool (*close)(void *dev);                    // 停止该路
+    bool (*init)(void *dev);                     // 初始化通讯接口
+    bool (*open)(void *dev, void *cfg);          // 配置并 启动该路
+    bool (*close)(void *dev);                    // 停止
     bool (*read)(void *dev, tEncSample *sample); // 读一次采样值
 } tEncoderOps;
 
@@ -76,7 +77,7 @@ typedef struct {
 extern tEncoder g_enc;
 
 // 启动对象：ops/handle 须已由装配层挂好（任一为空返回 false）
-bool enc_init(tEncoder *enc, const tEncDevHandle *handle);
+bool enc_init(tEncoder *enc, const tEncDevHandle *handle, void *cfg);
 
 // 周期任务：读取一次角度并更新状态
 void enc_task(tEncoder *enc);

@@ -23,7 +23,5 @@ void pwm_enable(tPwmDrv *drv, bool en) {
 
 void pwm_set_compare(tPwmDrv *drv, uint16_t ticA, uint16_t ticB,
                      uint16_t ticC) {
-    if (!drv)
-        return;
     drv->handle->ops->set_compare(drv->handle->dev, ticA, ticB, ticC);
 }

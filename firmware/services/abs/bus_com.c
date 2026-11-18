@@ -15,8 +15,6 @@
 static void bus_on_rx_frame(void *ctx, uint32_t id, const uint8_t *data,
                             uint8_t len) {
     tBusDriver *bus = (tBusDriver *)ctx;
-    if (!bus || !data)
-        return;
 
     tBus_Frame *frame = (tBus_Frame *)mp_alloc(&bus->mem_pool);
     if (!frame) {
@@ -41,7 +39,8 @@ static void bus_on_rx_frame(void *ctx, uint32_t id, const uint8_t *data,
     }
 }
 
-bool bus_init(tBusDriver *bus,const tBusDevHandle *handle, const tBusBuffer *buf) {
+bool bus_init(tBusDriver *bus, const tBusDevHandle *handle,
+              const tBusBuffer *buf) {
     if (!bus || !buf || !handle)
         return false;
     bus->handle = handle;
@@ -88,9 +87,6 @@ bool bus_start(tBusDriver *bus, uint32_t device_id) {
 }
 
 bool bus_send(tBusDriver *bus, const tBus_Frame *frame) {
-    if (!bus || !frame || !bus->handle->ops || !bus->handle->ops->send)
-        return false;
-
     if (!bus->handle->ops->send(
             bus->handle->dev, frame->id, frame->data, frame->data_len)) {
         bus->tstate = DEV_BUSY; // 发送失败一般因邮箱忙
@@ -102,8 +98,6 @@ bool bus_send(tBusDriver *bus, const tBus_Frame *frame) {
 }
 
 bool bus_process_frame(tBusDriver *bus, tBus_Frame *frame) {
-    if (!bus | !frame)
-        return false;
 
     tBus_Frame *slot = NULL;
     if (QUEUE_STATUS_OK != queue_static_dequeue_bulk(&bus->frame_queue,

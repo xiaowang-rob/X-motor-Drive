@@ -8,28 +8,8 @@
 #include "enc.h"
 #include "string.h"
 
-static tAbiCfg abi_cfg = {
-    .enc_counts_per_rev = 16384,
-    .filter = 0.1f,
-    .index_falling = false,
-};
-
-static tHallEncCfg hall_cfg = {
-    // 默认 120° 相序环；实际板级接线不同时必须按参数校准。
-    .sequence = {0},
-    .prescaler = 0,
-    .filter = 0,
-};
-
-static tSinCosEncCfg sincos_cfg = {
-    .sin_offset = 1.2f,
-    .cos_offset = 0.0f,
-    .sin_gain = 1.0f,
-    .cos_gain = 1.0f,
-};
-
-bool enc_init(tEncoder *enc, const tEncDevHandle *handle) {
-    if (!enc || !handle)
+bool enc_init(tEncoder *enc, const tEncDevHandle *handle, void *cfg) {
+    if (!enc || !handle || !cfg)
         return false;
 
     enc->handle = handle;
@@ -39,12 +19,11 @@ bool enc_init(tEncoder *enc, const tEncDevHandle *handle) {
     memset(&enc->sample, 0U, sizeof(enc->sample));
     enc->valid_counter = 0U;
 
-    // if (!enc->handle->ops->init(enc->handle->dev))
-    // {
-    //     return false;
-    // }
+    if (!enc->handle->ops->init(enc->handle->dev)) {
+        return false;
+    }
 
-    if (!enc->handle->ops->open(enc->handle->dev)) {
+    if (!enc->handle->ops->open(enc->handle->dev, cfg)) {
         enc->dstate = DEV_RUN_ERROR;
         return false;
     }

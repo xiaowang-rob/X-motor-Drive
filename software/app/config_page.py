@@ -57,17 +57,21 @@ OBSERVER_PAGES = (
     (
         "HALL 编码器",
         (
+            Pidx.PARAM_HALL_PSC,
+            Pidx.PARAM_HALL_FILTER,
             Pidx.PARAM_HALL_TABLE_0,
             Pidx.PARAM_HALL_TABLE_1,
             Pidx.PARAM_HALL_TABLE_2,
             Pidx.PARAM_HALL_TABLE_3,
             Pidx.PARAM_HALL_TABLE_4,
             Pidx.PARAM_HALL_TABLE_5,
-            Pidx.PARAM_HALL_TABLE_6,
-            Pidx.PARAM_HALL_TABLE_7,
         ),
     ),
-    ("ABI 编码器", (Pidx.PARAM_ABI_COUNT,)),
+    ("ABI 编码器", 
+     (Pidx.PARAM_ABI_COUNT,
+                 Pidx.PARAM_ABI_FILTER,
+                 Pidx.PARAM_ABI_INDEX,)
+    ),
     (
         "SIN/COS 编码器",
         (

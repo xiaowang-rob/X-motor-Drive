@@ -27,10 +27,6 @@ static const uint8_t BREATH[64] = {
     79,  67,  57,  46,  37,  29,  21,  15,  10,  6,   2,   1,
 };
 
-static bool valid_state(eIndicator_state state) {
-    return (unsigned)state <= INDICATOR_STATE_FAULT;
-}
-
 bool led_init(tLed *led, const tLedDevHandle *handle) {
     if (!led)
         return false;
@@ -47,15 +43,13 @@ bool led_init(tLed *led, const tLedDevHandle *handle) {
 }
 
 void led_set_state(tLed *led, eIndicator_state state) {
-    if (!led || !valid_state(state) || led->state == state)
+    if (!led || led->state == state)
         return;
     led->state = state;
     led->started = false;
 }
 
 void led_task(tLed *led) {
-    if (!led || !led->handle || !valid_state(led->state))
-        return;
 
     uint32_t now = bsp_time_ms();
     if (!led->started) {

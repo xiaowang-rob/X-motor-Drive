@@ -5,8 +5,8 @@
 #include "main.h"
 #include "xmath.h"
 
-static bool abi_enc_init(void *dev, void *cfg);
-static bool abi_enc_open(void *dev);
+static bool abi_enc_init(void *dev);
+static bool abi_enc_open(void *dev, void *cfg);
 static bool abi_enc_read(void *dev, tEncSample *sample);
 static bool abi_enc_close(void *dev);
 static void abi_enc_irq(void *dev);
@@ -37,27 +37,28 @@ static const tEncDevHandle s_abi_handle = {
 
 const tEncDevHandle *Get_EncAbiHandle(void) { return &s_abi_handle; }
 
-static bool abi_enc_init(void *dev, void *cfg) {
+static bool abi_enc_init(void *dev) {
+    if (!dev)
+        return false;
+    (void)dev;
+    // 初始化硬件链路
+    bsp_tim_enc_init();
+    return true;
+}
+
+static bool abi_enc_open(void *dev, void *cfg) {
     if (!dev || !cfg)
         return false;
     tAbiEncDev *enc = (tAbiEncDev *)dev;
     tAbiCfg *_cfg = (tAbiCfg *)cfg;
+    // 加载编码器配置
     memcpy(&enc->cfg, _cfg, sizeof(tAbiCfg));
 
     enc->counts_per_rev = XCLAMP(
         enc->cfg.enc_counts_per_rev * ABI_TIM_DECODING, 1, ABI_MAX_COUNTS);
     enc->filter = (uint8_t)(enc->cfg.filter * 15 + 0.5f);
-
-    return true;
-}
-
-static bool abi_enc_open(void *dev) {
-    if (!dev)
-        return false;
-    tAbiEncDev *enc = (tAbiEncDev *)dev;
-
-    bsp_tim_enc_init();
-    const tTimEncConfig cfg = {
+    // 时钟配置
+    const tTimEncConfig tim_cfg = {
         .psc = 0U,
         .arr = enc->counts_per_rev - 1U,
         .cr2 = 0U, // 禁用 Hall XOR
@@ -73,9 +74,11 @@ static bool abi_enc_open(void *dev) {
         .dier = TIM_DIER_CC3IE,
         .cr1 = TIM_CR1_CEN,
     };
-    enc->s_index = enc->s_error = false;
+    // 注册中断 并 加载时钟配置
     bsp_tim_register_cb(abi_enc_irq, enc);
-    bsp_tim_enc_configure(&cfg);
+    bsp_tim_enc_configure(&tim_cfg);
+
+    enc->s_index = enc->s_error = false;
     return true;
 }
 

@@ -5,8 +5,8 @@
 #include "main.h"
 #include "xmath.h"
 
-static bool hall_enc_init(void *dev, void *cfg);
-static bool hall_enc_open(void *dev);
+static bool hall_enc_init(void *dev);
+static bool hall_enc_open(void *dev, void *cfg);
 static bool hall_enc_close(void *dev);
 static bool hall_enc_read(void *dev, tEncSample *sample);
 static void hall_enc_irq(void *dev);
@@ -48,22 +48,26 @@ static int sector(tHallEncDev *dev, uint8_t state) {
     return -1;
 }
 
-static bool hall_enc_init(void *dev, void *cfg) {
+static bool hall_enc_init(void *dev) {
+    if (!dev)
+        return false;
+    //  tHallEncDev *enc = (tHallEncDev *)dev;
+
+    // 硬件链路初始化
+    bsp_tim_enc_init();
+    return true;
+}
+
+static bool hall_enc_open(void *dev, void *cfg) {
     if (!dev || !cfg)
         return false;
     tHallEncDev *enc = (tHallEncDev *)dev;
     tHallEncCfg *_cfg = (tHallEncCfg *)cfg;
+    // 加载编码器配置
     memcpy(&enc->cfg, _cfg, sizeof(tHallEncCfg));
-
     enc->filter = (uint8_t)(enc->cfg.filter * 225 + 0.5f);
-    return true;
-}
 
-static bool hall_enc_open(void *dev) {
-    if (!dev)
-        return false;
-    tHallEncDev *enc = (tHallEncDev *)dev;
-
+    // 校验配置
     uint8_t seen = 0;
     for (unsigned i = 0; i < 6; ++i) {
         unsigned state = enc->cfg.sequence[i];
@@ -73,20 +77,19 @@ static bool hall_enc_open(void *dev) {
             return false;
         seen |= (uint8_t)(1U << state);
     }
-
-    bsp_tim_enc_init();
+    // 获取初始相位
     int initial = sector(enc, hall_state());
     if (initial < 0)
         return false;
-    const tTimEncConfig cfg = {
+    // 配置时钟
+    const tTimEncConfig tim_cfg = {
         .psc = enc->cfg.prescaler,
         .arr = 0xffffU,
         // TI1S: CH1/2/3 XOR；TI1F_ED 对任意 Hall 边沿产生触发。
         .cr2 = TIM_CR2_TI1S,
         // CC1S=TRC：捕获 TI1F_ED 的触发脉冲，与硬件复位共用事件。
         // IC1F 配置 TI1 输入滤波；实际毛刺抑制效果需要在板上验证。
-        .ccmr1 =
-            TIM_CCMR1_CC1S | ((uint32_t)enc->filter << TIM_CCMR1_IC1F_Pos),
+        .ccmr1 = TIM_CCMR1_CC1S | ((uint32_t)enc->filter << TIM_CCMR1_IC1F_Pos),
         // TS=TI1F_ED(100)，SMS=Reset(100)：捕获旧计数并硬件清零。
         .smcr = (4U << TIM_SMCR_TS_Pos) | (4U << TIM_SMCR_SMS_Pos),
         // TI1F_ED 已将 XOR 的双边沿转换为脉冲；TRC 只捕获脉冲上升沿。
@@ -102,7 +105,8 @@ static bool hall_enc_open(void *dev) {
     enc->s_error = enc->s_overflow = false;
     enc->s_open = true;
     bsp_tim_register_cb(hall_enc_irq, enc);
-    bsp_tim_enc_configure(&cfg);
+    bsp_tim_enc_configure(&tim_cfg);
+
     return true;
 }
 

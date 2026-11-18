@@ -17,8 +17,6 @@
 // 收字节回调（中断上下文）：ctx 为 uart_init 时绑定的 tUartDriver 实例
 static void uart_on_rx_data(void *ctx, const uint8_t *data, uint16_t len) {
     tUartDriver *uart = (tUartDriver *)ctx;
-    if (!uart || !data || len == 0U)
-        return;
 
     if (QUEUE_STATUS_OK !=
         queue_static_enqueue_bulk(&uart->rx_queue, data, len)) {
@@ -76,9 +74,7 @@ bool uart_start(tUartDriver *uart) {
 }
 
 bool uart_send(tUartDriver *uart, const tUart_Frame *frame) {
-    if (!uart || !frame || !uart->handle || !uart->handle->ops ||
-        !uart->handle->ops->send)
-        return false;
+
     if (frame->data_len > UART_MAX_PKT_SIZE)
         return false;
 
@@ -105,8 +101,6 @@ bool uart_send(tUartDriver *uart, const tUart_Frame *frame) {
 }
 
 bool uart_process_frame(tUartDriver *uart, tUart_Frame *frame) {
-    if (!uart || !frame || !uart->frame_buf)
-        return false;
 
     const uint16_t frame_cap = (uint16_t)UART_MAX_PKT_SIZE + 4U;
 

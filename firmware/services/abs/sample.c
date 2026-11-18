@@ -41,8 +41,6 @@ void sample_set_sample_point(tSample *s, uint32_t tic) {
 }
 
 void sample_update(tSample *s, bool motor_idle) {
-    if (!s)
-        return;
 
     float cur_raw[3];
     if (!s->handle->ops->get_cur_raw(s->handle->dev, cur_raw))

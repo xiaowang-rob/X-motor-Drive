@@ -32,7 +32,7 @@ static float pos_accumulate(tPosAcc *acc, float theta) {
 // 外接编码器初始化
 bool em_init(tParameter *param) {
     const tEncDevHandle *handle;
-
+    void *cfg = NULL;
     switch (param->rotor_enc) {
     case ENC_NONE:
         return true;
@@ -41,6 +41,17 @@ bool em_init(tParameter *param) {
         break;
     case ENC_HALL:
         handle = Get_EncHallHandle();
+        tHallEncCfg hall_cfg;
+        hall_cfg.sequence[0] = param->hall_table_0;
+        hall_cfg.sequence[1] = param->hall_table_1;
+        hall_cfg.sequence[2] = param->hall_table_2;
+        hall_cfg.sequence[3] = param->hall_table_3;
+        hall_cfg.sequence[4] = param->hall_table_4;
+        hall_cfg.sequence[5] = param->hall_table_5;
+        hall_cfg.prescaler = param->hall_psc;
+        hall_cfg.filter = param->hall_filter;
+
+        cfg = &hall_cfg;
         break;
     case ENC_SPI:
         switch (param->enc_chip) {
@@ -59,9 +70,21 @@ bool em_init(tParameter *param) {
         break;
     case ENC_ABI:
         handle = Get_EncAbiHandle();
+        tAbiCfg abi_cfg;
+        abi_cfg.enc_counts_per_rev = param->abi_count;
+        abi_cfg.filter = param->abi_filter;
+        abi_cfg.index_falling = param->abi_index;
+        cfg = &abi_cfg;
         break;
     case ENC_SINCOS:
         handle = Get_EncSinCosHandle();
+        tSinCosEncCfg sincos_cfg;
+        sincos_cfg.sin_offset = param->sin_offset;
+        sincos_cfg.cos_offset = param->cos_offset;
+        sincos_cfg.sin_gain = param->sin_amp;
+        sincos_cfg.cos_gain = param->cos_amp;
+        sincos_cfg.filter_alpha = param->sincos_fl;
+        cfg = &sincos_cfg;
         break;
 
     default:
@@ -74,7 +97,7 @@ bool em_init(tParameter *param) {
              ENCODER_PLL_INTEG_LIMIT,
              ENCODER_VEL_PHYS_LIMIT);
 
-    g_encm.enc_active = enc_init(&g_enc, handle);
+    g_encm.enc_active = enc_init(&g_enc, handle, cfg);
     return g_encm.enc_active;
 }
 
