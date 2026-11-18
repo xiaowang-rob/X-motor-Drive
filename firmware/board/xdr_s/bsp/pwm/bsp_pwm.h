@@ -13,9 +13,9 @@
 #define GATE_T_NOISE (12.0f * 0.000000001f)      // 开关噪声时间
 #define GATE_T_DIED ((200 + 100) * 0.000000001f) // 硬件+软件死区时间
 // 相 → 通道映射（与硬件相序一致）
-#define GATE_PWM_CH_U LL_TIM_CHANNEL_CH3
-#define GATE_PWM_CH_V LL_TIM_CHANNEL_CH2
-#define GATE_PWM_CH_W LL_TIM_CHANNEL_CH1
+#define GATE_PWM_CH_U CCR3
+#define GATE_PWM_CH_V CCR2
+#define GATE_PWM_CH_W CCR1
 
 #define POWER12V_GPIO_PORT GPIOB
 #define POWER12V_GPIO_PIN GPIO_PIN_6

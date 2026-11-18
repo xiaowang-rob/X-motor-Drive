@@ -17,7 +17,7 @@ bool traj_init(tTraj *traj, tParameter *param) {
         .tolerance = param->traj_tolerance,
         .mode = param->traj_mode,
     };
-    memset(traj, 0, sizeof(traj));
+    memset(traj, 0, sizeof(tTraj));
     traj->cfg = cfg;
     return true;
 }

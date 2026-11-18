@@ -76,9 +76,9 @@ void mcu_uart_dma_tx_irq(void) {
 
 // ---- 驱动接口（tUartOps） ----
 
-static bool mcu_uart_open(void *handle) {
-    tMcuUart *inst = (tMcuUart *)handle;
-    if (!inst)
+static bool mcu_uart_open(void *dev) {
+    tMcuUart *uart = (tMcuUart *)dev;
+    if (!uart)
         return false;
 
     /* 1. 停掉可能还在跑的 DMA / UART RX 请求，防止残留 */
@@ -118,10 +118,9 @@ static bool mcu_uart_open(void *handle) {
     return true;
 }
 
-static bool mcu_uart_send(void *handle, const uint8_t *data, uint16_t len) {
-    tMcuUart *inst = (tMcuUart *)handle;
-    if (!inst || !data || len == 0U)
-        return false;
+static bool mcu_uart_send(void *dev, const uint8_t *data, uint16_t len) {
+    (void)dev;
+
     /* 上一次还没发完？可以选择等待或返回忙 */
     if (LL_DMA_IsEnabledChannel(MCU_UART_DMA, LL_DMA_CHANNEL_3))
         return false; /* 或者 while 等待，看业务需求 */
@@ -144,12 +143,12 @@ static bool mcu_uart_send(void *handle, const uint8_t *data, uint16_t len) {
     return true;
 }
 
-static void mcu_uart_set_rx_cb(void *handle, uart_rx_done_cb cb, void *ctx) {
-    tMcuUart *inst = (tMcuUart *)handle;
-    if (!inst)
+static void mcu_uart_set_rx_cb(void *dev, uart_rx_done_cb cb, void *ctx) {
+    tMcuUart *uart = (tMcuUart *)dev;
+    if (!uart)
         return;
-    inst->rx_cb = cb;
-    inst->rx_ctx = ctx;
+    uart->rx_cb = cb;
+    uart->rx_ctx = ctx;
 }
 
 // ---- 驱动出口 ----

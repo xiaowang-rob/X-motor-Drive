@@ -1,5 +1,5 @@
-#ifndef XDR_BSP_USB_VENDOR_H
-#define XDR_BSP_USB_VENDOR_H
+#ifndef __BSP_USB_VENDOR_H
+#define __BSP_USB_VENDOR_H
 
 #include "usb_com.h"
 

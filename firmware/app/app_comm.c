@@ -166,7 +166,6 @@ static void _target_openloop(const uint8_t *data, uint8_t len) {
     uint8_t payload_size;
     DEPACK_OPENLOOP_CTRL_REQUEST(
         payload_size, data, rx_cmd.openloop.duty, rx_cmd.openloop.value);
-    rx_cmd.openloop.duty = rx_cmd.openloop.duty * 0.01f;
     if (payload_size != len)
         pm_handle_fault(FAULT_INVALID_INPUT);
     else if (!motor_cmd_set(&rx_cmd))

@@ -50,20 +50,21 @@ typedef struct {
 } tBusDevHandle;
 
 typedef struct {
-    tBusDevHandle *handle;    // 驱动句柄
-    uint32_t device_id;       // 设备 id
-    eDeviceStatus dstate;     // 设备状态
-    eDeviceStatus tstate;     // 发送状态
-    eDeviceStatus rstate;     // 接收状态
-    tMemPool mem_pool;        // 内存池（存放帧实体，缓冲由调用方提供）
-    tStaticQueue frame_queue; // 队列（存放帧实体地址，缓冲由调用方提供）
+    const tBusDevHandle *handle; // 驱动句柄
+    uint32_t device_id;          // 设备 id
+    eDeviceStatus dstate;        // 设备状态
+    eDeviceStatus tstate;        // 发送状态
+    eDeviceStatus rstate;        // 接收状态
+    tMemPool mem_pool;           // 内存池（存放帧实体，缓冲由调用方提供）
+    tStaticQueue frame_queue;    // 队列（存放帧实体地址，缓冲由调用方提供）
 } tBusDriver;
 
 // 全局对象：CAN 总线（调用方提供缓冲）
 extern tBusDriver g_bus_can;
 
 // 启动对象：ops/handle 须已由装配层挂好；初始化内存池 / 队列 / 收帧回调
-bool bus_init(tBusDriver *bus, tBusDevHandle *handle, const tBusBuffer *buf);
+bool bus_init(tBusDriver *bus, const tBusDevHandle *handle,
+              const tBusBuffer *buf);
 
 // 以设备 ID 启动总线（内部调用 ops->open）
 bool bus_start(tBusDriver *bus, uint32_t device_id);

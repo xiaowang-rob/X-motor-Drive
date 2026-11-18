@@ -41,7 +41,7 @@ static void bus_on_rx_frame(void *ctx, uint32_t id, const uint8_t *data,
     }
 }
 
-bool bus_init(tBusDriver *bus, tBusDevHandle *handle, const tBusBuffer *buf) {
+bool bus_init(tBusDriver *bus,const tBusDevHandle *handle, const tBusBuffer *buf) {
     if (!bus || !buf || !handle)
         return false;
     bus->handle = handle;

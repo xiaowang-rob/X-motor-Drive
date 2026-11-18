@@ -15,17 +15,17 @@ typedef struct tGpioLed {
 tGpioLed gpio_led = {.port = GPIOB, .pin = GPIO_PIN_11, .active_level = false};
 // ---------- 驱动接口（tLedOps） ----------
 
-static bool led_gpio_open(void *handle) {
-    const tGpioLed *led = (const tGpioLed *)handle;
+static bool led_gpio_open(void *dev) {
+    const tGpioLed *led = (const tGpioLed *)dev;
     if (!led)
         return false;
     return true;
 }
 
-static void led_gpio_set(void *handle, tRGBColor color, uint8_t brightness) {
+static void led_gpio_set(void *dev, tRGBColor color, uint8_t brightness) {
     (void)color;
     bool active = brightness != 0U;
-    const tGpioLed *led = (const tGpioLed *)handle;
+    const tGpioLed *led = (const tGpioLed *)dev;
     if (!led)
         return;
     if (active == led->active_level)

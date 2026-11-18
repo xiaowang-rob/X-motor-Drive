@@ -55,7 +55,8 @@ static bool vt_open(volatile uint16_t *adc_buf) {
     if (!adc_enable(VT_ADC))
         return false;
     LL_DMA_DisableChannel(VT_ADC_DMA, VT_ADC_DMA_CH);
-    // 必须是循环模式：普通模式传完一轮就关闭通道，之后 TIM2 再触发也不会更新缓冲区
+    // 必须是循环模式：普通模式传完一轮就关闭通道，之后 TIM2
+    // 再触发也不会更新缓冲区
     LL_DMA_SetMode(VT_ADC_DMA, VT_ADC_DMA_CH, LL_DMA_MODE_CIRCULAR);
     LL_DMA_SetPeriphAddress(
         VT_ADC_DMA,
@@ -90,42 +91,38 @@ static bool current_open(volatile uint16_t *adc_buf) {
     return true;
 }
 
-static bool sample_open(void *handle) {
-    if (!handle)
+static bool sample_open(void *dev) {
+    if (!dev)
         return false;
-    tMcuAdcDev *dev = (tMcuAdcDev *)handle;
-    dev->inst = VT_ADC_TIM;
+    tMcuAdcDev *adc = (tMcuAdcDev *)dev;
+    adc->inst = VT_ADC_TIM;
     if (__get_IPSR() != 0U || LL_ADC_IsEnabled(CUR_ADC))
         return false;
-    if (!vt_open(dev->vt_adc_buf) || !current_open(dev->cur_adc_buf))
+    if (!vt_open(adc->vt_adc_buf) || !current_open(adc->cur_adc_buf))
         return false;
 
     return true;
 }
 
-static void sample_point(void *handle, uint32_t tick) {
-    (void)handle;
+static void sample_point(void *dev, uint32_t tick) {
+    (void)dev;
     CUR_SET_SP(tick);
 }
 
-static bool sample_current(void *handle, float raw[3]) {
-    if (!handle)
-        return false;
-    tMcuAdcDev *dev = (tMcuAdcDev *)handle;
-    raw[0] = (dev->cur_adc_buf[CURRENT_U_CH] & 0xfffU) * current_scale;
-    raw[1] = (dev->cur_adc_buf[CURRENT_V_CH] & 0xfffU) * current_scale;
-    raw[2] = (dev->cur_adc_buf[CURRENT_W_CH] & 0xfffU) * current_scale;
+static bool sample_current(void *dev, float raw[3]) {
+    tMcuAdcDev *adc = (tMcuAdcDev *)dev;
+    raw[0] = (adc->cur_adc_buf[CURRENT_U_CH] & 0xfffU) * current_scale;
+    raw[1] = (adc->cur_adc_buf[CURRENT_V_CH] & 0xfffU) * current_scale;
+    raw[2] = (adc->cur_adc_buf[CURRENT_W_CH] & 0xfffU) * current_scale;
     return true;
 }
 
-static bool sample_vt(void *handle, float *vbus, uint8_t *temp) {
-    if (!handle)
-        return false;
-    tMcuAdcDev *dev = (tMcuAdcDev *)handle;
+static bool sample_vt(void *dev, float *vbus, uint8_t *temp) {
+    tMcuAdcDev *adc = (tMcuAdcDev *)dev;
     if (vbus)
-        *vbus = dev->vt_adc_buf[VBUS_CH] * vbus_scale;
+        *vbus = adc->vt_adc_buf[VBUS_CH] * vbus_scale;
     if (temp) {
-        uint8_t index = (dev->vt_adc_buf[TEMP_CH] & 0xff) * (24.0f / (*vbus));
+        uint8_t index = (adc->vt_adc_buf[TEMP_CH] & 0xff) * (24.0f / (*vbus));
         *temp = TEMP_TABLE[index];
     }
     return true;

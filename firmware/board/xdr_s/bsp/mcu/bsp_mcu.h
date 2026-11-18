@@ -8,10 +8,6 @@
 
 #include "main.h"
 
-// 中断使能
-#define irq_enable() __enable_irq()
-// 中断失能
-#define irq_disable() __disable_irq()
 // 软件复位
 #define system_reset() NVIC_SystemReset()
 
@@ -28,9 +24,9 @@ void bsp_time_delay_ms(uint32_t ms);
 uint32_t bsp_critical_enter(void);
 void bsp_critical_exit(uint32_t primask);
 
-#define __DEBUG_TIME 1 // 是否启用调试
+#define __DEBUG_TIME // 是否启用调试
 
-#if __DEBUG_TIME
+#ifdef __DEBUG_TIME
 typedef struct {
     uint32_t task_us;
     uint32_t t_us;

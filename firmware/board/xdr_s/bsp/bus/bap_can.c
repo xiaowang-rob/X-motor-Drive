@@ -19,7 +19,6 @@ typedef struct tCanBus {
     FDCAN_HandleTypeDef *hcan; // 外设
     bus_rx_frame_cb rx_cb;     // 收帧回调（由 bus_com 注册）
     void *rx_ctx;              // 回调上下文（bus_com 实例）
-
 } tCanBus;
 
 tCanBus can0 = {
@@ -28,10 +27,10 @@ tCanBus can0 = {
     .rx_ctx = NULL,
 };
 
-static bool can_bus_open(void *handle, uint32_t std_id);
-static bool can_bus_send(void *handle, uint32_t id, const uint8_t *data,
+static bool can_bus_open(void *dev, uint32_t std_id);
+static bool can_bus_send(void *dev, uint32_t id, const uint8_t *data,
                          uint16_t len);
-static void can_bus_set_rx_cb(void *handle, bus_rx_frame_cb cb, void *ctx);
+static void can_bus_set_rx_cb(void *dev, bus_rx_frame_cb cb, void *ctx);
 
 const tBusOps can_bus_ops = {
     .open = can_bus_open,
@@ -44,13 +43,11 @@ const tBusDevHandle CanHandle = {
     .dev = &can0,
 };
 
-tBusDevHandle *Get_CanHandle(void) { return &CanHandle; }
+const tBusDevHandle *Get_CanHandle(void) { return &CanHandle; }
 // ---- 收帧中断 ----
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
                                uint32_t RxFifo0ITs) {
     (void)RxFifo0ITs; // HAL 已过滤到 RX FIFO0 新报文
-    if (!can0.hcan || hfdcan->Instance != can0.hcan->Instance)
-        return;
 
     // 一次中断可能堆积多帧：把 RX FIFO0 取空
     while (HAL_FDCAN_GetRxFifoFillLevel(hfdcan, FDCAN_RX_FIFO0) > 0U) {
@@ -69,7 +66,7 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
 }
 
 // 按标准帧 ID 配置过滤器：精确匹配一个 ID → RX FIFO0
-static bool can_config_filter(tCanBus *inst, uint32_t std_id) {
+static bool can_config_filter(tCanBus *can, uint32_t std_id) {
     FDCAN_FilterTypeDef f = {0};
     f.IdType = FDCAN_STANDARD_ID;
     f.FilterIndex = CAN_FILTER_INDEX;
@@ -77,12 +74,12 @@ static bool can_config_filter(tCanBus *inst, uint32_t std_id) {
     f.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
     f.FilterID1 = std_id & CAN_STD_ID_MASK;
     f.FilterID2 = CAN_STD_ID_MASK; // 掩码全 1 → 仅接受 FilterID1
-    if (HAL_FDCAN_ConfigFilter(inst->hcan, &f) != HAL_OK)
+    if (HAL_FDCAN_ConfigFilter(can->hcan, &f) != HAL_OK)
         return false;
 
     // 未匹配报文与远程帧一律不接收
 
-    return HAL_FDCAN_ConfigGlobalFilter(inst->hcan,
+    return HAL_FDCAN_ConfigGlobalFilter(can->hcan,
                                         FDCAN_REJECT,
                                         FDCAN_REJECT,
                                         FDCAN_REJECT_REMOTE,
@@ -91,25 +88,25 @@ static bool can_config_filter(tCanBus *inst, uint32_t std_id) {
 
 // ---- 驱动接口（tBusOps） ----
 
-static bool can_bus_open(void *handle, uint32_t std_id) {
-    tCanBus *inst = (tCanBus *)handle;
-    if (!inst || !inst->hcan)
+static bool can_bus_open(void *dev, uint32_t std_id) {
+    tCanBus *can = (tCanBus *)dev;
+    if (!can || !can->hcan)
         return false;
     MX_FDCAN1_Init();
-    if (!can_config_filter(inst, std_id))
+    if (!can_config_filter(can, std_id))
         return false;
-    if (HAL_FDCAN_Start(inst->hcan) != HAL_OK)
+    if (HAL_FDCAN_Start(can->hcan) != HAL_OK)
         return false;
     if (HAL_FDCAN_ActivateNotification(
-            inst->hcan, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0U) != HAL_OK)
+            can->hcan, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0U) != HAL_OK)
         return false;
     return true;
 }
 
-static bool can_bus_send(void *handle, uint32_t id, const uint8_t *data,
+static bool can_bus_send(void *dev, uint32_t id, const uint8_t *data,
                          uint16_t len) {
-    tCanBus *inst = (tCanBus *)handle;
-    if (!inst || !inst->hcan || !data || len > 8U)
+    tCanBus *can = (tCanBus *)dev;
+    if (!can || len > 8U)
         return false;
 
     FDCAN_TxHeaderTypeDef hdr = {0};
@@ -124,14 +121,14 @@ static bool can_bus_send(void *handle, uint32_t id, const uint8_t *data,
     hdr.MessageMarker = 0U;
 
     // TX FIFO 满则返回 false，由上层重试
-    return HAL_FDCAN_AddMessageToTxFifoQ(inst->hcan, &hdr, (uint8_t *)data) ==
+    return HAL_FDCAN_AddMessageToTxFifoQ(can->hcan, &hdr, (uint8_t *)data) ==
            HAL_OK;
 }
 
-static void can_bus_set_rx_cb(void *handle, bus_rx_frame_cb cb, void *ctx) {
-    tCanBus *inst = (tCanBus *)handle;
-    if (!inst)
+static void can_bus_set_rx_cb(void *dev, bus_rx_frame_cb cb, void *ctx) {
+    tCanBus *can = (tCanBus *)dev;
+    if (!can)
         return;
-    inst->rx_cb = cb;
-    inst->rx_ctx = ctx;
+    can->rx_cb = cb;
+    can->rx_ctx = ctx;
 }

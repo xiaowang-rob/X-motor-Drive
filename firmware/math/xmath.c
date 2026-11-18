@@ -84,6 +84,21 @@ void XSIN_COS(float theta_rad, float *pSin, float *pCos) {
 }
 
 /* ---------- ATAN2 ---------- */
+// static bool cordic_phase(float x, float y, float *angle) {
+//     // 独占 CORDIC：Phase=2，6轮(24次迭代)，两个Q1.31参数，一个结果。
+//     LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_CORDIC);
+//     CORDIC->CSR = 2U | (6U << CORDIC_CSR_PRECISION_Pos) | CORDIC_CSR_NARGS;
+//     float scale = fmaxf(fabsf(x), fabsf(y));
+//     CORDIC->WDATA = (uint32_t)(int32_t)((x / scale) * 1073741824.0f);
+//     CORDIC->WDATA = (uint32_t)(int32_t)((y / scale) * 1073741824.0f);
+//     uint32_t timeout = 10000U;
+//     while (!(CORDIC->CSR & CORDIC_CSR_RRDY))
+//         if (--timeout == 0U)
+//             return false;
+//     *angle = (int32_t)CORDIC->RDATA * (3.14159265359f / 2147483648.0f);
+//     return true;
+// }
+
 float XATAN2(float y, float x) {
     cordic_clock_on();
     float scale = fmaxf(fabsf(x), fabsf(y));

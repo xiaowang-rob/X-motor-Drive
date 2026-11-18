@@ -22,7 +22,6 @@ static tHallEncCfg hall_cfg = {
 };
 
 static tSinCosEncCfg sincos_cfg = {
-    .frequency_hz = 1000,
     .sin_offset = 1.2f,
     .cos_offset = 0.0f,
     .sin_gain = 1.0f,

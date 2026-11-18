@@ -4,6 +4,8 @@
 #include "cmd_list.h"
 #include "devices.h"
 
+#include "bsp_cfg.h"
+
 #include "enc_manager.h"
 #include "gate_drv.h"
 #include "obsdata.h"
@@ -33,7 +35,7 @@ void app_main_init(void) {
     // 辅助通讯初始化
     comm_sup_init();
     // 初始化slot槽服务
-    slot_con_init();
+    slot_con_init(F_PWM);
     // 栅极驱动模块初始化
     gd_init(&g_pwm, &g_sample);
     // 配置

@@ -87,11 +87,11 @@ void bsp_usb_vendor_on_tx_done(void) {
 
 bool bsp_usb_vendor_ready(void) { return USBD_VENDOR_IsReady() != 0U; }
 
-bool bsp_usb_vendor_send(void *handle, uint8_t id, const uint8_t *data,
+bool bsp_usb_vendor_send(void *dev, uint8_t id, const uint8_t *data,
                          uint16_t len) {
     /* Thread-context producers only: a higher-priority ISR could interrupt
      * DataIn midway through its queue update, even with USB IRQ disabled. */
-    if (handle != &g_uart_usb || __get_IPSR() != 0U)
+    if (dev != &g_uart_usb || __get_IPSR() != 0U)
         return false;
     /* Claim a producer with a very short global critical section. Mask only
      * USB while encoding/copying: motor-control IRQs must remain serviceable.
@@ -237,30 +237,29 @@ void bsp_usb_vendor_get_stats(tUsbVendorStats *out) {
     irq_unlock(key);
 }
 
-static bool bsp_usb_vendor_open(void *handle) {
+static bool bsp_usb_vendor_open(void *dev) {
     LL_GPIO_SetOutputPin(USBCS_GPIO_Port, USBCS_Pin);
-    return handle ==
+    return dev ==
            &g_uart_usb; /* Enumeration is started by MX_USB_Device_Init. */
 }
 
-static void bsp_usb_vendor_set_rx_cb(void *handle, uart_rx_done_cb cb,
-                                     void *ctx) {
-    (void)handle;
+static void bsp_usb_vendor_set_rx_cb(void *dev, uart_rx_done_cb cb, void *ctx) {
+    (void)dev;
     uint32_t key = irq_lock();
     g_uart_usb.rx_ctx = ctx;
     g_uart_usb.rx_cb = cb;
     irq_unlock(key);
 }
 
-static bool bsp_usb_vendor_is_ready(void *handle) {
-    return handle == &g_uart_usb && bsp_usb_vendor_ready();
+static bool bsp_usb_vendor_is_ready(void *dev) {
+    return dev == &g_uart_usb && bsp_usb_vendor_ready();
 }
 
-static void bsp_usb_vendor_set_frame_cb(void *handle, usb_rx_frame_cb cb,
+static void bsp_usb_vendor_set_frame_cb(void *dev, usb_rx_frame_cb cb,
                                         void *ctx) {
     /* Both contracts consume a complete USB payload. They intentionally share
      * one callback slot, so a message never enters two independent parsers. */
-    bsp_usb_vendor_set_rx_cb(handle, cb, ctx);
+    bsp_usb_vendor_set_rx_cb(dev, cb, ctx);
 }
 
 const tUsbOps usb_vendor_ops = {

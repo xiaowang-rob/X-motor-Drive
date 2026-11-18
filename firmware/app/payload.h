@@ -157,7 +157,7 @@ static inline int payload_i4(uint8_t nibble) {
 #define DEPACK_OPENLOOP_CTRL_REQUEST(_out_length, _packet, _duty, _value)      \
     do {                                                                       \
         const uint8_t *_payload_in = (_packet);                                \
-        (_duty) = payload_u16(_payload_in) / 256.0f;                           \
+        (_duty) = payload_u16(_payload_in) / 256.0f * 0.01f;                   \
         (_value) = payload_f32(_payload_in + 2);                               \
         (_out_length) = 6;                                                     \
     } while (0)

@@ -124,22 +124,22 @@ static bool flash_erase_pages(uint32_t first_page, uint32_t n) {
 
 // ---------- 驱动接口（tFlashOps） ----------
 
-static bool fla_mcu_open(void *handle, uint32_t *size) {
-    tMcuFlashPart *inst = (tMcuFlashPart *)handle;
-    if (!inst || !size)
+static bool fla_mcu_open(void *dev, uint32_t *size) {
+    tMcuFlashPart *flash = (tMcuFlashPart *)dev;
+    if (!flash || !size)
         return false;
 
-    *size = inst->size;
+    *size = flash->size;
     return true; // 内部 Flash 无需初始化
 }
 
-static bool fla_mcu_read(void *handle, uint32_t addr, uint8_t *data,
+static bool fla_mcu_read(void *dev, uint32_t addr, uint8_t *data,
                          uint32_t len) {
-    const tMcuFlashPart *inst = (const tMcuFlashPart *)handle;
-    if (!inst || !data || len == 0U)
+    const tMcuFlashPart *flash = (const tMcuFlashPart *)dev;
+    if (!flash || !data || len == 0U)
         return false;
-    uint32_t flash_addr = addr + inst->start_addr;
-    if (flash_addr < inst->start_addr || len > inst->size)
+    uint32_t flash_addr = addr + flash->start_addr;
+    if (flash_addr < flash->start_addr || len > flash->size)
         return false;
 
     // 内部 Flash 是存储器映射：直接 memcpy
@@ -147,15 +147,15 @@ static bool fla_mcu_read(void *handle, uint32_t addr, uint8_t *data,
     return true;
 }
 
-static bool fla_mcu_write(void *handle, uint32_t addr, const uint8_t *data,
+static bool fla_mcu_write(void *dev, uint32_t addr, const uint8_t *data,
                           uint32_t len) {
-    const tMcuFlashPart *inst = (const tMcuFlashPart *)handle;
+    const tMcuFlashPart *flash = (const tMcuFlashPart *)dev;
 
-    if (!inst || !data || len == 0U)
+    if (!flash || !data || len == 0U)
         return false;
 
     /* 分区起始地址必须 Double Word 对齐 */
-    if ((inst->start_addr & 7U) != 0U)
+    if ((flash->start_addr & 7U) != 0U)
         return false;
 
     /* 起始地址必须 Double Word 对齐 */
@@ -163,17 +163,17 @@ static bool fla_mcu_write(void *handle, uint32_t addr, const uint8_t *data,
         return false;
 
     /* 检查逻辑写入范围 */
-    if (addr > inst->size || len > inst->size - addr)
+    if (addr > flash->size || len > flash->size - addr)
         return false;
 
     /* 实际编程长度向上对齐到 Double Word */
     uint32_t aligned_len = (len + 7U) & ~7U;
 
     /* 检查实际编程范围，防止尾部填充越过分区 */
-    if (aligned_len > inst->size - addr)
+    if (aligned_len > flash->size - addr)
         return false;
 
-    uint32_t flash_addr = inst->start_addr + addr;
+    uint32_t flash_addr = flash->start_addr + addr;
 
     if (HAL_FLASH_Unlock() != HAL_OK)
         return false;
@@ -213,11 +213,11 @@ static bool fla_mcu_write(void *handle, uint32_t addr, const uint8_t *data,
     return ok;
 }
 
-static bool fla_mcu_erase_addr(void *handle, uint32_t addr, uint32_t len) {
-    const tMcuFlashPart *inst = (const tMcuFlashPart *)handle;
-    if (!inst || len == 0U)
+static bool fla_mcu_erase_addr(void *dev, uint32_t addr, uint32_t len) {
+    const tMcuFlashPart *flash = (const tMcuFlashPart *)dev;
+    if (!flash || len == 0U)
         return false;
-    uint32_t flash_addr = addr + inst->start_addr;
+    uint32_t flash_addr = addr + flash->start_addr;
     int first = page_index_at(flash_addr);
     int last = page_index_at(flash_addr + len - 1U);
     if (first < 0 || last < 0)

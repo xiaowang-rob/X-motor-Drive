@@ -16,9 +16,6 @@
 // ---------- 实例 ----------
 typedef struct tMcuPwm {
     TIM_TypeDef *htim;      // 外设：功率级定时器
-    uint32_t ch_a;          // A 相通道
-    uint32_t ch_b;          // B 相通道
-    uint32_t ch_c;          // C 相通道
     GPIO_TypeDef *pwr_port; // 12V 使能 GPIO
     uint16_t pwr_pin;       // 12V 使能引脚
 
@@ -26,9 +23,6 @@ typedef struct tMcuPwm {
 
 tMcuPwm mcu_pwm = {
     .htim = PWM_TIM,
-    .ch_a = GATE_PWM_CH_U,
-    .ch_b = GATE_PWM_CH_V,
-    .ch_c = GATE_PWM_CH_W,
     .pwr_port = POWER12V_GPIO_PORT,
     .pwr_pin = POWER12V_GPIO_PIN,
 };
@@ -61,54 +55,49 @@ void pwm_register_callback(void (*up_cb)(void), void (*down_cb)(void)) {
 
 // ---------- 驱动接口（tGateOps） ----------
 
-static void mcu_pwm_open(void *handle, tPwmCfg *cfg) {
-    tMcuPwm *inst = (tMcuPwm *)handle;
-    if (!inst)
+static void mcu_pwm_open(void *dev, tPwmCfg *cfg) {
+    tMcuPwm *pwm = (tMcuPwm *)dev;
+    if (!pwm)
         return;
     cfg->pwm_arr = PWM_ARR, cfg->ticTd = GATE_T_DIED * PWM_FREQ * PWM_ARR;
     cfg->ticTn = GATE_T_NOISE * PWM_FREQ * PWM_ARR;
     cfg->ticTs = ADC_T_SAMPLE_CUR * PWM_FREQ * PWM_ARR;
 }
 
-static void gate_drv_power(void *handle, bool on) {
-    tMcuPwm *inst = (tMcuPwm *)handle;
-    if (!inst)
+static void gate_drv_power(void *dev, bool on) {
+    tMcuPwm *pwm = (tMcuPwm *)dev;
+    if (!pwm)
         return;
     HAL_GPIO_WritePin(
-        inst->pwr_port, inst->pwr_pin, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
+        pwm->pwr_port, pwm->pwr_pin, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
-static void mcu_pwm_enable(void *handle, bool en) {
-    tMcuPwm *inst = (tMcuPwm *)handle;
-    if (!inst || !inst->htim)
+static void mcu_pwm_enable(void *dev, bool en) {
+    tMcuPwm *pwm = (tMcuPwm *)dev;
+    if (!pwm || !pwm->htim)
         return;
 
-    uint32_t channels = inst->ch_a | inst->ch_b | inst->ch_c |
-                        LL_TIM_CHANNEL_CH1N | LL_TIM_CHANNEL_CH2N |
-                        LL_TIM_CHANNEL_CH3N;
+    uint32_t channels = LL_TIM_CHANNEL_CH1 | LL_TIM_CHANNEL_CH2 |
+                        LL_TIM_CHANNEL_CH3 | LL_TIM_CHANNEL_CH1N |
+                        LL_TIM_CHANNEL_CH2N | LL_TIM_CHANNEL_CH3N;
     if (en) {
-        LL_TIM_CC_EnableChannel(inst->htim, channels);
-        LL_TIM_EnableAllOutputs(inst->htim);
-        LL_TIM_EnableCounter(inst->htim);
+        LL_TIM_CC_EnableChannel(pwm->htim, channels);
+        LL_TIM_EnableAllOutputs(pwm->htim);
+        LL_TIM_EnableCounter(pwm->htim);
     } else {
-        LL_TIM_CC_DisableChannel(inst->htim, channels);
+        LL_TIM_CC_DisableChannel(pwm->htim, channels);
     }
 }
 
 // 三相占空比：20kHz 热路径，直写 CCR 寄存器，绕开 __HAL_TIM_SetCompare
 // 的通道判断
-static void mcu_pwm_set_compare(void *handle, uint16_t ticA, uint16_t ticB,
-                                uint16_t ticC) {
-    const tMcuPwm *inst = (const tMcuPwm *)handle;
-    if (!inst || !inst->htim)
-        return;
+static void mcu_pwm_set_compare(void *dev, uint16_t ticU, uint16_t ticV,
+                                uint16_t ticW) {
+    const tMcuPwm *pwm = (const tMcuPwm *)dev;
 
-    inst->htim->CCR3 = ticA; // 与上方 GATE_PWM_CH_U=CH3 对应
-    inst->htim->CCR2 = ticB;
-    inst->htim->CCR1 = ticC;
-    // inst->htim->CCR3 = ticA; // 与上方 GATE_PWM_CH_U=CH3 对应
-    // inst->htim->CCR2 = 0;
-    // inst->htim->CCR1 = 0;
+    pwm->htim->GATE_PWM_CH_U = ticU; // 与上方 GATE_PWM_CH_U=CH3 对应
+    pwm->htim->GATE_PWM_CH_V = ticV;
+    pwm->htim->GATE_PWM_CH_W = ticW;
 }
 
 // ---- 驱动出口 ----

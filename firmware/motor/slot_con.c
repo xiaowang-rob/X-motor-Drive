@@ -1,7 +1,6 @@
 
 #include "slot_con.h"
 
-#include "bsp_cfg.h"
 #include "bsp_mcu.h"
 #include "bsp_pwm.h"
 
@@ -12,10 +11,9 @@ uint32_t max_task_us;
 uint8_t max_task_ht;
 uint8_t max_task_mt;
 
-void slot_con_init(void) {
+void slot_con_init(float f_con) {
     TIME_INIT();
 
-    float f_con = F_PWM;
     g_slotcon.base_tic = 0;
     g_slotcon.high_tic = 0;
     g_slotcon.medium_tic = 0;
@@ -34,16 +32,16 @@ void slot_con_update(void) {
 
     TIME_SAMPLE_START(high_s);
     for (uint8_t i = 0; i < FREQ_HIGH_LOOP; i++) {
-        if (g_slotcon.base_tic == high_schedule[i].slot)
-            high_schedule[i].task(g_slotcon.t_high);
+        if (g_slotcon.base_tic == g_slotcon.high_schedule[i].slot)
+            g_slotcon.high_schedule[i].task(g_slotcon.t_high);
     }
     g_slotcon.base_tic++;
     if (FREQ_HIGH_LOOP - 1 <= g_slotcon.base_tic) {
         g_slotcon.base_tic = 0;
         g_slotcon.high_tic++;
         for (uint8_t i = 0; i < FREQ_MEDIUM_LOOP; i++) {
-            if (g_slotcon.high_tic == medium_schedule[i].slot)
-                medium_schedule[i].task(g_slotcon.t_med);
+            if (g_slotcon.high_tic == g_slotcon.medium_schedule[i].slot)
+                g_slotcon.medium_schedule[i].task(g_slotcon.t_med);
         }
 
         if (FREQ_MEDIUM_LOOP - 1 <= g_slotcon.high_tic) {
@@ -51,8 +49,8 @@ void slot_con_update(void) {
             g_slotcon.medium_tic++;
 
             for (uint8_t i = 0; i < FREQ_LOW_LOOP; i++) {
-                if (g_slotcon.medium_tic == low_schedule[i].slot)
-                    low_schedule[i].task(g_slotcon.t_low);
+                if (g_slotcon.medium_tic == g_slotcon.low_schedule[i].slot)
+                    g_slotcon.low_schedule[i].task(g_slotcon.t_low);
             }
             if (FREQ_LOW_LOOP - 1 <= g_slotcon.medium_tic) {
                 g_slotcon.medium_tic = 0;
@@ -72,9 +70,4 @@ void slot_con_start(bool start) {
         pwm_register_callback(NULL, NULL);
     else
         pwm_register_callback(NULL, slot_con_update);
-}
-
-bool slot_con_reg_task(eSlotConType type, uint8_t slot, slot_task *task) {
-    // TODO:后续可以作为软件注册
-    return false;
 }

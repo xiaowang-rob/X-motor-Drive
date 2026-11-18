@@ -24,14 +24,13 @@ typedef struct ABI_CONFIG {
 
 typedef struct HALL_ENCODER_CONFIG {
     uint8_t
-        sequence[8]; // 电角度正向 Hall 状态序列，必须为1..6的合法单比特相邻环
+        sequence[6]; // 电角度正向 Hall 状态序列，必须为1..6的合法单比特相邻环
     uint16_t prescaler; // 捕获时基 PSC，不是 PWM 分频
     float filter;       // 滤波 0-1
 } tHallEncCfg;
 
 #define SC_MIN_AMPLITUDE 100 // 校正后最小向量幅值
 typedef struct SINCOS_ENCODER_CONFIG {
-    uint32_t frequency_hz;
     float sin_offset, cos_offset; // 原始12位码域
     float sin_gain, cos_gain;     // 校正后的幅值比例，必须为正
 } tSinCosEncCfg;
@@ -46,8 +45,7 @@ typedef struct {
     uint32_t ts_us;
     float angle_rad; // [0,2pi)，含义由 angle_kind 指明
     eBspAngleKind angle_kind;
-    bool referenced; // ABI 为是否见过 Z；是否能表示绝对位置
-    uint16_t sin_raw, cos_raw;
+    bool referenced;         // ABI 为是否见过 Z；是否能表示绝对位置
     uint32_t interval_ticks; // Hall 相邻跳变计时
     int8_t direction;        // Hall 相序方向，-1/0/+1
 } tEncSample;
