@@ -9,7 +9,7 @@
         {
             "name": "XDr-S (xdr_s-app)",
             "compileCommands": "${workspaceFolder}/firmware/build/xdr_s-app/Debug/compile_commands.json",
-            "compilerPath": "/usr/local/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi/bin/arm-none-eabi-gcc",
+            "compilerPath": "/usr/bin/arm-none-eabi-gcc",
             "compilerArgs": [
                 "-mcpu=cortex-m4",
                 "-mfpu=fpv4-sp-d16",

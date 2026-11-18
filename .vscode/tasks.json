@@ -1,10 +1,19 @@
 {
+    // 标准 VS Code 任务定义。Task Buttons 插件按 label 调用任务，
+    // 按钮外观（图标 / tooltip / 对齐）在 settings.json 的 VsCodeTaskButtons.tasks 中配置。
     "version": "2.0.0",
     "tasks": [
         {
             "label": "编译",
             "type": "shell",
-            "command": "python3 firmware/build_tools/build.py build",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/firmware/build_tools/build.py",
+                "build"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -12,63 +21,108 @@
             "problemMatcher": [
                 "$gcc"
             ],
-            "icon": {
-                "id": "gear",
-                "tooltip": "编译（板卡/类型取 project.json）"
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
             }
         },
         {
             "label": "重编译",
             "type": "shell",
-            "command": "python3 firmware/build_tools/build.py clean && python3 firmware/build_tools/build.py build",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/firmware/build_tools/build.py",
+                "build"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": [
+                "清理"
+            ],
+            "dependsOrder": "sequence",
             "group": "build",
             "problemMatcher": [
                 "$gcc"
             ],
-            "icon": {
-                "id": "debug-rerun",
-                "tooltip": "清理并重新编译"
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
             }
         },
         {
             "label": "烧录",
             "type": "shell",
-            "command": "python3 firmware/build_tools/build.py flash",
-            "group": "test",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/firmware/build_tools/build.py",
+                "flash"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
             "problemMatcher": [],
-            "icon": {
-                "id": "zap",
-                "tooltip": "烧录当前固件"
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
             }
         },
         {
             "label": "编译并烧录",
             "type": "shell",
-            "command": "python3 firmware/build_tools/build.py bf",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/firmware/build_tools/build.py",
+                "bf"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
             "group": "build",
             "problemMatcher": [
                 "$gcc"
             ],
-            "icon": {
-                "id": "rocket",
-                "tooltip": "编译并烧录"
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
             }
         },
         {
             "label": "擦除",
             "type": "shell",
-            "command": "python3 firmware/build_tools/build.py erase",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/firmware/build_tools/build.py",
+                "erase"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
             "problemMatcher": [],
-            "icon": {
-                "id": "trash",
-                "tooltip": "擦除芯片"
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
             }
         },
         {
             "label": "清理",
             "type": "shell",
-            "command": "python3 firmware/build_tools/build.py clean",
-            "problemMatcher": []
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/firmware/build_tools/build.py",
+                "clean"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
         },
         {
             "label": "CheckAndFlash",
@@ -77,8 +131,15 @@
             "args": [
                 "${workspaceFolder}/firmware/build_tools/check_flash.py"
             ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
             "group": "build",
-            "problemMatcher": []
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
         },
         {
             "label": "上位机",
@@ -87,11 +148,13 @@
             "args": [
                 "${workspaceFolder}/software/start.py"
             ],
-            "group": "build",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
             "problemMatcher": [],
-            "icon": {
-                "id": "play",
-                "tooltip": "启动上位机"
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
             }
         }
     ]

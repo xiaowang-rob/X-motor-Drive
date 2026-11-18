@@ -31,4 +31,77 @@
     "[jsonc]": {
         "editor.defaultFormatter": "vscode.json-language-features"
     },
+    // ---------- Task Buttons 状态栏按钮 ----------
+    // 插件按 label 精确匹配 tasks.json 中的任务，图标写在 label 的 $(icon-name) 中
+    "VsCodeTaskButtons.tasks": [
+        {
+            "label": "$(gear) 编译",
+            "task": "编译",
+            "tooltip": "编译（板卡/类型取 project.json）"
+        },
+        {
+            "label": "$(debug-rerun) 重编译",
+            "task": "重编译",
+            "tooltip": "清理并重新编译"
+        },
+        {
+            "label": "$(zap) 烧录",
+            "task": "烧录",
+            "tooltip": "烧录当前固件"
+        },
+        {
+            "label": "$(rocket) 编译并烧录",
+            "task": "编译并烧录",
+            "tooltip": "编译并烧录"
+        },
+        {
+            "label": "$(trash) 擦除",
+            "task": "擦除",
+            "tooltip": "擦除芯片"
+        },
+        {
+            "label": "$(clear-all) 清理",
+            "task": "清理",
+            "tooltip": "删除 build/ 目录"
+        },
+        {
+            "label": "$(play) 上位机",
+            "task": "上位机",
+            "tooltip": "启动上位机"
+        }
+    ],
+    "better-todo-tree.general.tags": [
+        "TODO",
+        "FIXME",
+        "BUG",
+        "HACK",
+        "NOTE"
+    ],
+    "better-todo-tree.filtering.excludeGlobs": [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/build/**",
+        "**/.git/**"
+    ],
+    "better-todo-tree.general.statusBar": "tags",
+    "better-todo-tree.general.showActivityBarBadge": true,
+    "better-todo-tree.highlights.defaultHighlight": {
+        "icon": "alert",
+        "type": "text",
+        "foreground": "#F00",
+        "background": "#FFF",
+        "opacity": 50,
+        "iconColour": "#00F"
+    },
+    "better-todo-tree.highlights.customHighlight": {
+        "TODO": {
+            "icon": "check",
+            "type": "line"
+        },
+        "FIXME": {
+            "foreground": "#000",
+            "iconColour": "#FF0",
+            "gutterIcon": true
+        }
+    }
 }

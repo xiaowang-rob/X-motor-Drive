@@ -1,42 +1,34 @@
 # XDr 上位机
 
-`start.py` 启动 UI；`app/services/device_service.py` 负责串口、参数、波形和 IAP。所有 payload 为小端二进制，**协议唯一来源是仓库根目录的 `protocol/*.yaml`**。
+`start.py` 启动 UI；`app/services/device_service.py` 负责串口、参数、波形和 IAP。所有 payload 为小端二进制，由上下位机各自手工维护编解码。
 
-## 协议生成
+## 协议生成与维护
 
 ```bash
-# 在仓库根目录运行：校验 YAML，同时生成 Python 模块和 C 头文件
+# 在仓库根目录运行：生成命令枚举、参数/观测元数据和设备常量
 python3 protocol/gen_protocol.py
 
-# CI / 提交前：确认生成代码没有落后于 YAML
+# 确认生成文件与 YAML 元数据同步
 python3 protocol/gen_protocol.py --check
-
-# 可选：覆盖 payload.h 输出位置（其他 C 头仍生成到 firmware/protocol/）
-python3 protocol/gen_protocol.py --c-output /tmp/payload.h
 ```
 
 输入文件：
 
-- `protocol/cmd.yaml`：帧常量、命令 ID、请求/回复字段、通用反馈和特殊请求；payload 已内嵌在各命令中。
-- `protocol/fieldvaluetype.yaml`：字段的线宽与 C/Python 类型映射。
+- `protocol/cmd.yaml`：生成命令 ID、帧常量和反馈枚举；其中请求/回复的 payload 描述仅供查阅，不参与代码生成或布局校验。
+- `protocol/fieldvaluetype.yaml`：生成固件的字段类型枚举和字节数查询。
 - `protocol/parameter.yaml`、`protocol/obsdata.yaml`：参数、观测项、单位、默认值和选项。
+- `protocol/devices.yaml`：USB VID/PID 等设备常量。
 
-输出：
+生成输出为 `software/protocol/__init__.py`、`software/protocol/devices.py`，以及 `firmware/protocol/` 下的 `cmd_list.h`、`fieldvaluetype.h`、`parameter_list.h`、`data_list.h`、`devices.h`。`cmd_list.h` 只含 `eCmdId`、`eUartFrame`、`eFeedBack` 等枚举。
 
-- `Software/protocol/__init__.py`：命令/字段常量、参数和观测元数据。
-- `Software/protocol/payload.py`：由 JSON 生成的通用 `encode()` / `decode()` 及字段编解码。
-- `firmware/protocol/`：`fieldvaluetype.h`、`cmd_list.h`、`parameter_list.h`、`data_list.h` 和 `payload.h`。
+payload 在以下位置手工维护，生成脚本不会覆盖：
 
-`app/services/payload_codec.py` 是兼容 UI/IAP 调用的薄封装，不能在其中增加字段偏移或 `struct.pack` 格式。参数与观测 ID 按 JSON 数组顺序从 `0x01` 自动分配；因此已发布协议中不可插入、删除或重排字段，只能追加，否则后续 ID 会变化。
+- `firmware/app/payload.h`：现有 CMD 固定 payload 的装包/解包宏，直接维护字段偏移、缩放和长度；调用方负责接收长度校验。动态 payload 保留在业务 handler 中处理。
+- `software/app/services/payload_codec.py`：上位机编码和解码，直接维护字节格式、字段偏移、长度检查和数值范围。
 
-### JSON 规则
+修改 payload 时，按需同步两端实现。YAML 中已有的 payload 描述保留为参考，无须为了编解码修改 YAML 或运行生成脚本。
 
-- 固定字段按数组顺序紧密排列，`offset` / `size` 由生成器推导，不手填。
-- `scale` 统一为编码 `raw = round(value * scale)`、解码 `value = raw / scale`，采用半远离零舍入。
-- `overflow` 默认报错；显式 `"saturate"` 才饱和裁剪。
-- `FLD_I4` 共享字节必须声明 `bits: [0, 3]` 或 `[4, 7]`。
-- `DYNAMIC`、`BYTES`、`STRING` 是请求/回复尾部动态字段；动态观测数据和数据流需要 ID/订阅上下文。
-- `special_requests` 定义完整特殊字节请求，例如参数应用的 `FF`；上位机从生成 schema 读取，不能直接写字面量。
+参数与观测 ID 按 YAML 字段顺序从 `0x01` 自动分配；已发布协议增项时应追加，避免重排引起 ID 变化。参数/观测项的值类型继续引用生成元数据，字节编码由手写代码负责。
 
 ## USB 设备识别
 
@@ -65,23 +57,20 @@ USB 帧：`A5 5A | id:u8 | len:u16 LE | data | CRC16 LE`。`len` 只计算数据
 - MIT：位置为 `i24/2^18`；速度、力矩的配置指数为正数 6/8，线上写入负指数。
 - IAP：写入 `[offset:u32][data<=124B] -> [offset:u32][status:u8]`。
 
-生成脚本直接同步 Python 模块与 C 协议头文件，不修改固件业务 handler。业务 handler 仍需调用 `payload.h` 中有长度检查的 `proto_encode_*` / `proto_decode_*` 接口，生成文件更新本身不等于完成业务接入。
-
 ## 测试
 
 协议测试不依赖 Qt：
 
 ```bash
-PYTHONPATH=Software python3 -B -m unittest Software.test_protocol -v
+PYTHONPATH=software python3 -B -m unittest software.test_protocol -v
+python3 -B -m unittest discover -s protocol -p 'test_*.py' -v
 python3 protocol/gen_protocol.py --check
-python3 protocol/gen_protocol.py --c-output /tmp/payload.h
-printf '#include "/tmp/payload.h"\nint main(void) { return 0; }\n' | cc -x c -std=c11 -Wall -Wextra -Werror -o /tmp/payload-check -
 ```
 
 UI 回归测试仍为：
 
 ```bash
-cd Software
+cd software
 QT_QPA_PLATFORM=offscreen python3.13 -m unittest test_ui -v
 ```
 

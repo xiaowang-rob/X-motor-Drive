@@ -1,45 +1,45 @@
 #include "control.h"
 
 // FOC初始化
-void ctrl_foc_init(tCtrl *con, tParameter *param, float alpha, float t_cl) {
+void ctrl_foc_init(tCtrl *con, tParameter *param, float t_cl) {
     pi_init(&con->PI_iq, param->qclkp, param->qclki, 1.0f, t_cl);
     pi_init(&con->PI_id, param->dclkp, param->dclki, 1.0f, t_cl);
 
-    filter_first_order_lag_init(&con->cf_u, alpha, 0);
-    filter_first_order_lag_init(&con->cf_v, alpha, 0);
-    filter_first_order_lag_init(&con->cf_w, alpha, 0);
+    filter_first_order_lag_init(&con->cf_u, param->cfalpha, 0);
+    filter_first_order_lag_init(&con->cf_v, param->cfalpha, 0);
+    filter_first_order_lag_init(&con->cf_w, param->cfalpha, 0);
 }
 
-// pid 控制器初始化
-void ctrl_pid_init(tCtrl *con, tParameter *param, float t_ml, float t_ll) {
+// pid 速度环控制器初始化
+void ctrl_pid_vel_init(tCtrl *con, tParameter *param, float t_vl) {
     pi_init(&con->PI_vel,
             param->vlkp,
             param->vlki,
             param->motor_rated_current,
-            t_ml);
+            t_vl);
     pi_init(&con->PI_fw,
             param->vlkp,
             param->vlki,
             param->motor_rated_current,
-            t_ml);
-    con->pos_pvc = param->pos_pidmode;
-    if (con->pos_pvc == POS_PID_PC)
-        pid_init(&con->PID_pos,
-                 param->plkp,
-                 param->plki,
-                 param->plkd,
-                 param->motor_rated_current,
-                 param->plalpha,
-                 t_ml);
-    else
-        pid_init(&con->PID_pos,
-                 param->plkp,
-                 param->plki,
-                 param->plkd,
-                 param->velocity_limit,
-                 param->plalpha,
-                 t_ll);
+            t_vl);
 }
+
+// pid 位置环控制器初始化
+void ctrl_pid_pos_init(tCtrl *con, tParameter *param, float t_pl) {
+
+    float pid_output_limit = param->pos_pidmode == POS_PID_PC
+                                 ? param->motor_rated_current
+                                 : param->velocity_limit;
+
+    pid_init(&con->PID_pos,
+             param->plkp,
+             param->plki,
+             param->plkd,
+             pid_output_limit,
+             param->plalpha,
+             t_pl);
+}
+
 // mit 控制器初始化
 void ctrl_mit_init(tCtrl *con, tParameter *param) {
     mit_init(&con->mit,

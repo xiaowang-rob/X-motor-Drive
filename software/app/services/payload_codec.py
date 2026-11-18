@@ -1,11 +1,9 @@
-"""上位机的 payload 编解码；protocol.payload 只提供 JSON 生成的布局常量。"""
+"""上位机命令 payload 的手写编解码；字段偏移、格式和缩放在此维护。"""
 
 import math
 import struct
 
 from protocol import CmdId, Didx, OBSDATA, PARAMETERS, Pidx, eMotorState
-from protocol import codec
-from protocol import payload as layout
 
 STATUS_STREAM_IDS = (
     Didx.DATA_MOTOR_STATE,
@@ -14,7 +12,18 @@ STATUS_STREAM_IDS = (
     Didx.DATA_DRIVER_TEMP,
     Didx.DATA_MOTOR_TEMP,
 )
-MAX_STREAM_CHANNELS = layout.CMD_DATA_STREAM_SET_REQUEST_IDS_MAX_COUNT
+MAX_STREAM_CHANNELS = 5
+IAP_MAX_DATA = 124
+
+# 参数和观测项仍使用生成的元数据，基础值的字节表示由上位机维护。
+_VALUE_FORMATS = {
+    "FLD_U8": "<B", "FLD_U16": "<H", "FLD_U32": "<I",
+    "FLD_F32": "<f", "FLD_BOOL": "<B", "FLD_I16": "<h",
+}
+_VALUE_SIZES = {
+    "FLD_U8": 1, "FLD_U16": 2, "FLD_U32": 4, "FLD_F32": 4,
+    "FLD_BOOL": 1, "FLD_I4": 1, "FLD_I16": 2, "FLD_I24": 3, "FLD_U24": 3,
+}
 
 
 def _finite(value):
@@ -47,7 +56,7 @@ def _length(payload, size):
 
 
 def value_size(meta):
-    return getattr(layout, meta.val_type + "_SIZE")
+    return _VALUE_SIZES[meta.val_type]
 
 
 def pack_value(meta, value):
@@ -64,12 +73,12 @@ def pack_value(meta, value):
         raw = _integer(
             value, -(1 << (bits - 1)) if signed else 0, (1 << (bits - int(signed))) - 1
         )
-    if meta.val_type == "FLD_I24":
-        return raw.to_bytes(size, "little", signed=True)
+    if meta.val_type in ("FLD_I24", "FLD_U24"):
+        return raw.to_bytes(size, "little", signed=meta.val_type == "FLD_I24")
     if meta.val_type == "FLD_I4":
         return bytes([raw & 0x0F])
     buf = bytearray(size)
-    _pack(buf, getattr(layout, meta.val_type + "_FORMAT"), 0, raw)
+    _pack(buf, _VALUE_FORMATS[meta.val_type], 0, raw)
     return bytes(buf)
 
 
@@ -77,14 +86,14 @@ def unpack_value(meta, data, offset=0):
     size = value_size(meta)
     if offset < 0 or offset + size > len(data):
         raise ValueError("字段数据不足")
-    if meta.val_type == "FLD_I24":
-        value = int.from_bytes(data[offset : offset + size], "little", signed=True)
+    if meta.val_type in ("FLD_I24", "FLD_U24"):
+        value = int.from_bytes(data[offset : offset + size], "little", signed=meta.val_type == "FLD_I24")
     elif meta.val_type == "FLD_I4":
         value = data[offset] & 0x0F
         value = value - 16 if value & 8 else value
     else:
         value = struct.unpack_from(
-            getattr(layout, meta.val_type + "_FORMAT"), data, offset
+            _VALUE_FORMATS[meta.val_type], data, offset
         )[0]
         if meta.val_type == "FLD_F32":
             _finite(value)
@@ -99,18 +108,13 @@ def pack_param(meta, value):
     if meta.id not in PARAMETERS:
         raise ValueError("未知参数 ID")
     raw = pack_value(meta, value)
-    buf = bytearray(layout.CMD_PARAM_WRITE_REQUEST_FIXED_SIZE + len(raw))
-    buf[layout.CMD_PARAM_WRITE_REQUEST_ID_OFFSET] = meta.id
-    buf[layout.CMD_PARAM_WRITE_REQUEST_VALUE_OFFSET :] = raw
-    return bytes(buf)
+    return bytes([meta.id]) + raw
 
 
 def pack_param_read(meta):
     if meta.id not in PARAMETERS:
         raise ValueError("未知参数 ID")
-    buf = bytearray(layout.CMD_PARAM_READ_REQUEST_SIZE)
-    buf[layout.CMD_PARAM_READ_REQUEST_ID_OFFSET] = meta.id
-    return bytes(buf)
+    return bytes([meta.id])
 
 
 def special_request(command, special):
@@ -122,13 +126,13 @@ def special_request(command, special):
 
 
 def unpack_param(payload):
-    if len(payload) < layout.CMD_PARAM_READ_RESPONSE_FIXED_SIZE:
+    if len(payload) < 1:
         raise ValueError("参数回包为空")
-    meta = PARAMETERS.get(payload[layout.CMD_PARAM_READ_RESPONSE_ID_OFFSET])
+    meta = PARAMETERS.get(payload[0])
     if meta is None:
         raise ValueError("未知参数 ID")
     value, end = unpack_value(
-        meta, payload, layout.CMD_PARAM_READ_RESPONSE_VALUE_OFFSET
+        meta, payload, 1
     )
     _length(payload, end)
     return meta, value
@@ -172,47 +176,46 @@ def _channels(channel_ids):
 
 def pack_stream_set(channel_ids):
     ids = _channels(channel_ids)
-    buf = bytearray(layout.CMD_DATA_STREAM_SET_REQUEST_FIXED_SIZE + len(ids))
-    buf[layout.CMD_DATA_STREAM_SET_REQUEST_COUNT_OFFSET] = len(ids)
-    buf[layout.CMD_DATA_STREAM_SET_REQUEST_IDS_OFFSET :] = bytes(ids)
-    return bytes(buf)
+    return bytes([len(ids), *ids])
 
 
 def pack_heartbeat(status_values):
+    """[state:u8][fault:u8][vbus:u16 / 2^8][driver_temp:u8][motor_temp:u8]。"""
     if len(status_values) != len(STATUS_STREAM_IDS):
         raise ValueError("心跳状态块数量不匹配")
     state, fault, vbus, driver_temp, motor_temp = status_values
-    return codec.encode(
-        "CMD_HEARTBEAT_RESPONSE",
-        {"state": state, "fault": fault, "vbus": vbus,
-         "driver_temp": driver_temp, "motor_temp": motor_temp},
-    )
+    buf = bytearray(6)
+    _pack(buf, "<B", 0, _integer(state, 0, 255))
+    _pack(buf, "<B", 1, _integer(fault, 0, 255))
+    _pack(buf, "<H", 2, _integer(_finite(vbus) * 256, 0, 65535))
+    _pack(buf, "<B", 4, _integer(driver_temp, 0, 255))
+    _pack(buf, "<B", 5, _integer(motor_temp, 0, 255))
+    return bytes(buf)
 
 
 def unpack_heartbeat(payload):
-    values = codec.decode("CMD_HEARTBEAT_RESPONSE", payload)
-    return [values[name] for name in
-            ("state", "fault", "vbus", "driver_temp", "motor_temp")]
+    _length(payload, 6)
+    state, fault, vbus, driver_temp, motor_temp = struct.unpack("<BBHBB", payload)
+    return [state, fault, vbus / 256.0, driver_temp, motor_temp]
 
 
 def pack_data_stream(wave_channels=(), wave_values=()):
     channels, values = _channels(wave_channels), tuple(wave_values)
     if len(channels) != len(values):
         raise ValueError("示波通道和值数量不匹配")
-    buf = bytearray(layout.CMD_DATA_STREAM_RESPONSE_FIXED_SIZE)
-    buf[layout.CMD_DATA_STREAM_RESPONSE_COUNT_OFFSET] = len(values)
+    buf = bytearray([len(values)])
     buf.extend(b"".join(pack_value(OBSDATA[c], v) for c, v in zip(channels, values)))
     return bytes(buf)
 
 
 def unpack_data_stream(payload, channel_ids):
     channels = _channels(channel_ids)
-    if len(payload) < layout.CMD_DATA_STREAM_RESPONSE_FIXED_SIZE:
+    if len(payload) < 1:
         raise ValueError("示波回包为空")
-    count = payload[layout.CMD_DATA_STREAM_RESPONSE_COUNT_OFFSET]
+    count = payload[0]
     if count > len(channels):
         raise ValueError("示波通道上下文不足")
-    offset, values = layout.CMD_DATA_STREAM_RESPONSE_VALUES_OFFSET, []
+    offset, values = 1, []
     for channel in channels[:count]:
         value, offset = unpack_value(OBSDATA[channel], payload, offset)
         values.append(value)
@@ -222,149 +225,108 @@ def unpack_data_stream(payload, channel_ids):
 
 def pack_calibration(command, values):
     """校准输入直接放入命令 payload，不经过参数读写协议。"""
-    layouts = {
-        CmdId.CMD_RL_TUNNING: "CMD_RL_TUNNING_REQUEST",
-        CmdId.CMD_PSIF_TUNNING: "CMD_PSIF_TUNNING_REQUEST",
-        CmdId.CMD_MECH_TUNNING: "CMD_MECH_TUNNING_REQUEST",
-        CmdId.CMD_OBS_TUNNING: "CMD_OBS_TUNNING_REQUEST",
-        CmdId.CMD_PID_TUNNING: "CMD_PID_TUNNING_REQUEST",
-        CmdId.CMD_MIT_TUNNING: "CMD_MIT_TUNNING_REQUEST",
-    }
-    if command not in layouts:
+    fields = {
+        CmdId.CMD_RL_TUNNING: ("tune_current",),
+        CmdId.CMD_PSIF_TUNNING: ("tune_vel",),
+        CmdId.CMD_MECH_TUNNING: ("tune_current", "tune_vel"),
+        CmdId.CMD_OBS_TUNNING: ("tune_current", "tune_vel"),
+        CmdId.CMD_PID_TUNNING: ("tune_current", "tune_vel"),
+        CmdId.CMD_MIT_TUNNING: ("tune_current", "tune_vel"),
+    }.get(command)
+    if fields is None:
         raise ValueError("未知校准命令")
-    return codec.encode(layouts[command], {
-        "tune_current": _finite(values["tune_current"]),
-        "tune_vel": _finite(values["tune_vel"]),
-    })
+    buf = bytearray(4 * len(fields))
+    for index, field in enumerate(fields):
+        _pack(buf, "<f", index * 4, _finite(values[field]))
+    return bytes(buf)
 
 
 def pack_connect(state):
-    return codec.encode("CMD_CONNECT_REQUEST", {"state": int(bool(state))})
+    return bytes([int(bool(state))])
 
 
 def pack_ctrl_config(mode, control=0):
-    """CMD_CTRL_CONFIG 的 2 字节分支：控制模式 + 该模式的子控制字节。"""
-    variants = {
-        eMotorState.MOTOR_OPENLOOP: "OPENLOOP",
-        eMotorState.MOTOR_CURRENT_MODE: "CURRENT",
-        eMotorState.MOTOR_PID_SPEED: "PID_SPEED",
-        eMotorState.MOTOR_PID_POSITION: "PID_POSITION",
-    }
-    try:
-        suffix = variants[int(mode)]
-    except (KeyError, TypeError, ValueError):
-        raise ValueError("未知控制模式") from None
-    return codec.encode(
-        "CMD_CTRL_CONFIG_REQUEST_" + suffix, {"mode": mode, "control": control})
+    """普通分支：[mode:u8][control:u8]。"""
+    if mode not in (eMotorState.MOTOR_OPENLOOP, eMotorState.MOTOR_CURRENT_MODE,
+                    eMotorState.MOTOR_PID_SPEED, eMotorState.MOTOR_PID_POSITION):
+        raise ValueError("未知控制模式")
+    return bytes([_integer(mode, 0, 255), _integer(control, 0, 255)])
 
 
-def pack_ctrl_config_mit(
-    kp, kd, scale=layout.CMD_CTRL_CONFIG_MIT_REQUEST_SCALE_DEFAULT
-):
-    """CMD_CTRL_CONFIG 的 MIT 分支：kp/kd 共用同一指数，线上为 3 字节无符号。"""
-    return codec.encode(
-        "CMD_CTRL_CONFIG_REQUEST_MIT",
-        {"mode": eMotorState.MOTOR_MIT_MODE, "scale": scale, "kp": kp, "kd": kd},
-    )
+def pack_ctrl_config_mit(kp, kd, scale=16):
+    """[mode:u8][scale:u8][kp:u24][kd:u24]；kp/kd 共用 2^scale 缩放。"""
+    scale = _integer(scale, 0, 255)
+    factor = 1 << scale
+    kp_raw = _integer(_finite(kp) * factor, 0, 0xFFFFFF)
+    kd_raw = _integer(_finite(kd) * factor, 0, 0xFFFFFF)
+    return (bytes([eMotorState.MOTOR_MIT_MODE, scale])
+            + kp_raw.to_bytes(3, "little") + kd_raw.to_bytes(3, "little"))
 
 
 def pack_openloop_ctrl(duty, value):
-    return codec.encode("CMD_OPENLOOP_CTRL_REQUEST", {"duty": duty, "value": value})
+    """[duty:u16 / 2^8][value:f32]，占空比按协议范围饱和。"""
+    buf = bytearray(6)
+    _pack(buf, "<H", 0, _integer(_finite(duty) * 256, 0, 65535, saturate=True))
+    _pack(buf, "<f", 2, _finite(value))
+    return bytes(buf)
 
 
 def pack_current_torque(value):
-    return codec.encode("CMD_CUR_TAU_CTRL_REQUEST", {"value": value})
+    return pack_single(value)
 
 
 def pack_single(value):
-    return codec.encode("CMD_PID_VEL_CTRL_REQUEST", {"velocity": value})
+    buf = bytearray(4)
+    _pack(buf, "<f", 0, _finite(value))
+    return bytes(buf)
 
 
-def pack_mit_ctrl(
-    position,
-    velocity=0.0,
-    torque=0.0,
-    velocity_exp=layout.CMD_MIT_CTRL_REQUEST_VELOCITY_SCALE_DEFAULT,
-    torque_exp=layout.CMD_MIT_CTRL_REQUEST_TORQUE_SCALE_DEFAULT,
-):
+def pack_mit_ctrl(position, velocity=0.0, torque=0.0, velocity_exp=6, torque_exp=8):
+    """[position:i24 / 2^18][负指数低/高半字节][velocity:i16][torque:i16]。"""
     for exponent in (velocity_exp, torque_exp):
         if _finite(exponent) != int(exponent) or not 0 <= exponent <= 8:
             raise ValueError("MIT 配置指数必须为 0..8 的整数")
-    # 指数字段按“正指数”传入：引擎的 SCALE_SIGNED_EXP 负责在线上存负值。
-    return codec.encode(
-        "CMD_MIT_CTRL_REQUEST",
-        {"position": position,
-         "velocity_scale": int(velocity_exp),
-         "torque_scale": int(torque_exp),
-         "velocity": velocity, "torque": torque},
-    )
+    position_raw = _integer(_finite(position) * (1 << 18), -0x800000, 0x7FFFFF,
+                            saturate=True)
+    velocity_raw = _integer(_finite(velocity) * (1 << int(velocity_exp)),
+                            -32768, 32767, saturate=True)
+    torque_raw = _integer(_finite(torque) * (1 << int(torque_exp)),
+                          -32768, 32767, saturate=True)
+    scales = (-int(velocity_exp) & 0x0F) | ((-int(torque_exp) & 0x0F) << 4)
+    return (position_raw.to_bytes(3, "little", signed=True) + bytes([scales])
+            + struct.pack("<hh", velocity_raw, torque_raw))
 
 
 def pack_iap_enter(version, size):
-    buf = bytearray(layout.CMD_IAP_ENTER_REQUEST_SIZE)
-    _pack(
-        buf,
-        "<I",
-        layout.CMD_IAP_ENTER_REQUEST_VERSION_OFFSET,
-        _integer(version, 0, 0xFFFFFF),
-    )
-    _pack(
-        buf,
-        "<I",
-        layout.CMD_IAP_ENTER_REQUEST_SIZE_OFFSET,
-        _integer(size, 8, 0xFFFFFFFF),
-    )
+    buf = bytearray(8)
+    _pack(buf, "<I", 0, _integer(version, 0, 0xFFFFFF))
+    _pack(buf, "<I", 4, _integer(size, 8, 0xFFFFFFFF))
     return bytes(buf)
 
 
 def pack_iap_erase(size):
-    buf = bytearray(layout.CMD_IAP_ERASE_FLASH_REQUEST_SIZE)
-    _pack(
-        buf,
-        "<I",
-        layout.CMD_IAP_ERASE_FLASH_REQUEST_SIZE_OFFSET,
-        _integer(size, 0, 0xFFFFFFFF),
-    )
+    buf = bytearray(4)
+    _pack(buf, "<I", 0, _integer(size, 0, 0xFFFFFFFF))
     return bytes(buf)
 
 
 def pack_iap_write(offset, data):
     data = bytes(data)
-    if len(data) > layout.CMD_IAP_WRITE_FLASH_REQUEST_DATA_MAX_SIZE:
+    if len(data) > IAP_MAX_DATA:
         raise ValueError("IAP 数据过长")
-    buf = bytearray(layout.CMD_IAP_WRITE_FLASH_REQUEST_FIXED_SIZE + len(data))
-    _pack(
-        buf,
-        "<I",
-        layout.CMD_IAP_WRITE_FLASH_REQUEST_OFFSET_OFFSET,
-        _integer(offset, 0, 0xFFFFFFFF),
-    )
-    buf[layout.CMD_IAP_WRITE_FLASH_REQUEST_DATA_OFFSET :] = data
+    buf = bytearray(4 + len(data))
+    _pack(buf, "<I", 0, _integer(offset, 0, 0xFFFFFFFF))
+    buf[4:] = data
     return bytes(buf)
 
 
 def unpack_iap_write_ack(payload):
-    _length(payload, layout.CMD_IAP_WRITE_FLASH_RESPONSE_SIZE)
-    return (
-        struct.unpack_from(
-            "<I", payload, layout.CMD_IAP_WRITE_FLASH_RESPONSE_OFFSET_OFFSET
-        )[0],
-        payload[layout.CMD_IAP_WRITE_FLASH_RESPONSE_STATUS_OFFSET],
-    )
+    _length(payload, 5)
+    return struct.unpack("<IB", payload)
 
 
 def pack_iap_verify(crc32, size):
-    buf = bytearray(layout.CMD_IAP_VERIFY_FLASH_REQUEST_SIZE)
-    _pack(
-        buf,
-        "<I",
-        layout.CMD_IAP_VERIFY_FLASH_REQUEST_CRC32_OFFSET,
-        _integer(crc32, 0, 0xFFFFFFFF),
-    )
-    _pack(
-        buf,
-        "<I",
-        layout.CMD_IAP_VERIFY_FLASH_REQUEST_SIZE_OFFSET,
-        _integer(size, 0, 0xFFFFFFFF),
-    )
+    buf = bytearray(8)
+    _pack(buf, "<I", 0, _integer(crc32, 0, 0xFFFFFFFF))
+    _pack(buf, "<I", 4, _integer(size, 0, 0xFFFFFFFF))
     return bytes(buf)

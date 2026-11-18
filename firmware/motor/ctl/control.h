@@ -14,13 +14,13 @@ typedef struct {
     tPI PI_iq;
     tPI PI_id;
     tPI PI_fw, PI_vel;
-    uint8_t pos_pvc; // pvc控制
     tPID PID_pos;
     tMIT mit;
 } tCtrl;
 
-void ctrl_foc_init(tCtrl *con, tParameter *param, float alpha, float t_cl);
-void ctrl_pid_init(tCtrl *con, tParameter *param, float t_ml, float t_ll);
+void ctrl_foc_init(tCtrl *con, tParameter *param, float t_cl);
+void ctrl_pid_vel_init(tCtrl *con, tParameter *param, float t_vl);
+void ctrl_pid_pos_init(tCtrl *con, tParameter *param, float t_pl);
 void ctrl_mit_init(tCtrl *con, tParameter *param);
 void current_process(tCtrl *con, uint8_t sec, float is_in[3], float is_out[3]);
 void ctrl_reset(tCtrl *con);

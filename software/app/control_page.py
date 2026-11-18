@@ -34,24 +34,37 @@ from app.waveform_widget import CHANNEL_COLORS, CHANNEL_COUNT, WaveformWidget
 WAVE_CHANNELS = (
     (  # 通道 1：相电流与 dq 电流
         Didx.DATA_CURRENT_U,
-        Didx.DATA_CURRENT_D,
-        Didx.DATA_CURRENT_D_REF,
-        Didx.DATA_VOLTAGE_D,
-    ),
-    (  # 通道 2：电压与角度
-        Didx.DATA_CURRENT_V,
-        Didx.DATA_CURRENT_Q,
-        Didx.DATA_CURRENT_Q_REF,
-        Didx.DATA_VOLTAGE_Q,
-    ),
-    (  # 通道 3：速度与位置
-        Didx.DATA_CURRENT_W,
+        Didx.DATA_CURRENT_D, 
+        Didx.DATA_DUTY,  
         Didx.DATA_THETA_ELEC,
         Didx.DATA_THETA_MECH,
         Didx.DATA_VELOCITY,
         Didx.DATA_VELOCITY_REF,
         Didx.DATA_POSITION,
         Didx.DATA_POSITION_REF,
+    ),
+    (  # 通道 2：电压与角度
+        Didx.DATA_CURRENT_V,
+        Didx.DATA_CURRENT_Q, 
+        Didx.DATA_DUTY,  
+        Didx.DATA_THETA_ELEC,
+        Didx.DATA_THETA_MECH,
+        Didx.DATA_VELOCITY,
+        Didx.DATA_VELOCITY_REF,
+        Didx.DATA_POSITION,
+        Didx.DATA_POSITION_REF,      
+    ),
+    (  # 通道 3：速度与位置
+        Didx.DATA_CURRENT_W,
+        Didx.DATA_CURRENT_D_REF,
+        Didx.DATA_CURRENT_Q_REF,
+        Didx.DATA_DUTY,  
+        Didx.DATA_THETA_ELEC,
+        Didx.DATA_THETA_MECH,
+        Didx.DATA_VELOCITY,
+        Didx.DATA_VELOCITY_REF,
+        Didx.DATA_POSITION,
+        Didx.DATA_POSITION_REF,  
     ),
 )
 
@@ -502,8 +515,13 @@ class ControlPage(ContentPage):
             self.current_torque_control.set_spec("力矩", "N·m", 5)
 
     def _build_pid_speed_page(self):
+        self.field_weakening_kind = ComboBox()
+        self.field_weakening_kind.setFixedHeight(32)
+        self.field_weakening_kind.addItem("禁用弱磁", userData=0)
+        self.field_weakening_kind.addItem("启用弱磁", userData=1)
+        self.field_weakening_kind.setAccessibleName("模式")
         self.speed_control = self._make_target("速度", "rad/s", 100)
-        return self._mode_page(None, self.speed_control)
+        return self._mode_page(self.field_weakening_kind, self.speed_control)
 
     def _build_pid_position_page(self):
         self.position_control = self._make_target("位置", "rad", 180)

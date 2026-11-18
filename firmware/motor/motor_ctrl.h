@@ -49,9 +49,10 @@ typedef struct {
 } tCmdValue;
 
 typedef struct {
-    void (*theta_process)(float ts, float *th_e, float *th_r,
-                          float *vel);                  // 处理角度信息
+    void (*theta_process)(float ts, float *th_e, float *th_r, float *vel,
+                          float *pos);                  // 处理角度信息
     void (*get_current)(float is[3]);                   // 获取采集电流
+    float (*get_motor_temp)(void);                      // 获取电机温度
     void (*gate_drv_enable)(bool en);                   // 栅极驱动 使能
     void (*gate_drv_out)(float Du, float Dv, float Dw); // 栅极驱动 输出
     void (*sp_calibration)(uint8_t sec);                // 校准采样点
@@ -63,6 +64,12 @@ typedef struct {
 
     bool enc_on; // 有感
     bool obs_on; // 无感
+    struct {
+        bool foc;
+        bool pid_vel;
+        bool pid_pos;
+        bool mit;
+    } init;
 
     tParameter *param; // 参数
 
@@ -87,6 +94,7 @@ typedef struct {
         float id, iq;              // dq电流
         float tau;                 // 转矩 N/m
         float dutyd, dutyq;        // qd 占空比
+        float duty;                // 总输出占空比
         float dutya, dutyb;        // ab 占空比
         float dutyU, dutyV, dutyW; // 三相占空比输出
     } ref;
@@ -110,16 +118,14 @@ typedef struct {
 
 extern tMotorCtrl g_motor;
 
-void motor_init(tParameter *param, tMotorOps *ops, float t_hl, float t_ml,
-                float t_ll);
+void motor_init(tParameter *param, tMotorOps *ops);
 void motor_reset(void);
 void motor_disable(void);
 void motor_handle_fault(void);
 bool motor_cmd_cfg(tCmdCfg *cfg);
 bool motor_cmd_set(tCmdValue *cmd);
-void motor_set_pos_zero(void);
-void motor_set_pos_limit(void);
 
+void motor_loop_task(void);
 void motor_foc_tim_task(float ts);
 void motor_traj_tim_task(float ts);
 void motor_vl_pid_mit_tim_task(float ts);

@@ -14,13 +14,13 @@
 
 #include "motor_ctrl.h"
 
-eFault motor_fault;
 tMotorOps mc_ops = {
     .gate_drv_enable = gd_enable,
     .gate_drv_out = gd_output,
     .theta_process = em_theta_process_task,
     .get_current = gd_get_current,
     .sp_calibration = NULL, // 先不启用
+    .get_motor_temp = NULL, // 先不用
 };
 
 void app_main_init(void) {
@@ -53,9 +53,8 @@ void app_main_config(void) {
         pm_handle_fault(FAULT_ENCODER_INIT);
 
     // 电机算法初始化
-    motor_init(
-        &g_param, &mc_ops, g_slotcon.t_high, g_slotcon.t_med, g_slotcon.t_low);
-    // 将solt槽任务注册到pwm下溢中断 以 启动solt槽任务
+    motor_init(&g_param, &mc_ops);
+    // 启动solt槽任务
     slot_con_start(true);
 }
 
@@ -74,6 +73,7 @@ void app_main_start(void) {
         status_fb_loop_task(g_motor.state);
     }
 }
+
 const tSlotTask high_schedule[FREQ_HIGH_LOOP] = {{0, motor_foc_tim_task}};
 const tSlotTask medium_schedule[FREQ_MEDIUM_LOOP] = {
     {4, motor_traj_tim_task},

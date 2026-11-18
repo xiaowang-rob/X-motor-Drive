@@ -1,5 +1,6 @@
 
 #include "cmd_list.h"
+#include "payload.h"
 
 #include "bus_com.h"
 #include "uart_com.h"
@@ -96,7 +97,7 @@ static bool _read_u32(const uint8_t *data, uint8_t len, uint32_t *value) {
 // ---------------- 状态心跳 / 示波数据流 ----------------
 static void _heartbeat_send(ePort port) {
 
-    uint8_t motor_sta, _fault, motor_warning;
+    uint8_t motor_sta, _fault;
     float vbus, dtemp, mtemp;
     uint8_t send_len;
     dm_data_get(DATA_MOTOR_STATE, &motor_sta, &send_len);
@@ -133,22 +134,19 @@ static void _data_stream_send(ePort port) {
 // 控制配置
 static void _config_ctrl(const uint8_t *data, uint8_t len) {
     tCmdCfg cfg;
-    uint8_t payload_size;
-    DEPACK_CTRL_CONFIG_REQUEST(payload_size, data, cfg.mode);
-    // if (payload_size != len)
-    //     pm_handle_fault(FAULT_INVALID_INPUT);
+    DEPACK_CTRL_CONFIG_REQUEST(data, cfg.mode);
     switch (cfg.mode) {
     case MOTOR_OPENLOOP:
-        DEPACK_CTRL_CONFIG_OPENLOOP_REQUEST(data, cfg.ol_vel_ctrl);
+        DEPACK_CTRL_CONFIG_REQUEST(data, cfg.ol_vel_ctrl);
         break;
     case MOTOR_CURRENT_MODE:
-        DEPACK_CTRL_CONFIG_CURRENT_REQUEST(data, cfg.tau_ctrl);
+        DEPACK_CTRL_CONFIG_REQUEST(data, cfg.tau_ctrl);
         break;
     case MOTOR_PID_SPEED:
-        DEPACK_CTRL_CONFIG_PID_SPEED_REQUEST(data, cfg.fw_ctrl);
+        DEPACK_CTRL_CONFIG_REQUEST(data, cfg.fw_ctrl);
         break;
     case MOTOR_PID_POSITION:
-        DEPACK_CTRL_CONFIG_PID_POSITION_REQUEST(data, cfg.pvt_ctrl);
+        DEPACK_CTRL_CONFIG_REQUEST(data, cfg.pvt_ctrl);
         break;
     case MOTOR_MIT_MODE:
         DEPACK_CTRL_CONFIG_MIT_REQUEST(data, cfg.mit_kp, cfg.mit_kd);
@@ -267,10 +265,10 @@ static void _process_bus_command(ePort port, uint8_t cmd_id,
         break;
 
     case CMD_SET_ZERO_POS:
-        motor_set_pos_zero();
+        em_set_pos_zero();
         break;
     case CMD_SET_LIMIT_POS:
-        motor_set_pos_limit();
+        em_set_pos_limit();
         break;
     case CMD_CTRL_CONFIG:
         _config_ctrl(data, len);
@@ -389,10 +387,10 @@ static void _process_command(ePort port, uint8_t cmd_id, const uint8_t *data,
         break;
 
     case CMD_SET_ZERO_POS:
-        motor_set_pos_zero();
+        em_set_pos_zero();
         break;
     case CMD_SET_LIMIT_POS:
-        motor_set_pos_limit();
+        em_set_pos_limit();
         break;
 
     case CMD_IAP_ENTER: {

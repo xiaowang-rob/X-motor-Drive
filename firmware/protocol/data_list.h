@@ -9,23 +9,22 @@ typedef enum
     DATA_CURRENT_U = 0x01, /* U相电流 */
     DATA_CURRENT_V = 0x02, /* V相电流 */
     DATA_CURRENT_W = 0x03, /* W相电流 */
-    DATA_CURRENT_ALPHA = 0x04, /* α轴电流 */
-    DATA_CURRENT_BETA = 0x05, /* β轴电流 */
-    DATA_CURRENT_D = 0x06, /* D轴电流 */
-    DATA_CURRENT_Q = 0x07, /* Q轴电流 */
-    DATA_CURRENT_D_REF = 0x08, /* D轴电流参考 */
-    DATA_CURRENT_Q_REF = 0x09, /* Q轴电流参考 */
-    DATA_VELOCITY = 0x0A, /* 速度 */
-    DATA_VELOCITY_REF = 0x0B, /* 速度参考 */
-    DATA_THETA_ELEC = 0x0C, /* 电角度 */
-    DATA_THETA_MECH = 0x0D, /* 机械角度 */
-    DATA_POSITION = 0x0E, /* 位置 */
-    DATA_POSITION_REF = 0x0F, /* 位置参考 */
-    DATA_MOTOR_STATE = 0x10, /* 电机状态 */
-    DATA_FAULT = 0x11, /* 故障 */
-    DATA_VBUS = 0x12, /* 母线电压 */
-    DATA_DRIVER_TEMP = 0x13, /* 驱动温度 */
-    DATA_MOTOR_TEMP = 0x14, /* 电机温度 */
+    DATA_CURRENT_D = 0x04, /* D轴电流 */
+    DATA_CURRENT_Q = 0x05, /* Q轴电流 */
+    DATA_CURRENT_D_REF = 0x06, /* D轴电流参考 */
+    DATA_CURRENT_Q_REF = 0x07, /* Q轴电流参考 */
+    DATA_DUTY = 0x08, /* 输出占空比 */
+    DATA_VELOCITY = 0x09, /* 速度 */
+    DATA_VELOCITY_REF = 0x0A, /* 速度参考 */
+    DATA_THETA_ELEC = 0x0B, /* 电角度 */
+    DATA_THETA_MECH = 0x0C, /* 机械角度 */
+    DATA_POSITION = 0x0D, /* 位置 */
+    DATA_POSITION_REF = 0x0E, /* 位置参考 */
+    DATA_MOTOR_STATE = 0x0F, /* 电机状态 */
+    DATA_FAULT = 0x10, /* 故障 */
+    DATA_VBUS = 0x11, /* 母线电压 */
+    DATA_DRIVER_TEMP = 0x12, /* 驱动温度 */
+    DATA_MOTOR_TEMP = 0x13, /* 电机温度 */
 } eObsData;
 
 typedef enum
@@ -68,12 +67,11 @@ typedef struct
     float *current_u;
     float *current_v;
     float *current_w;
-    float *current_alpha;
-    float *current_beta;
     float *current_d;
     float *current_q;
     float *current_d_ref;
     float *current_q_ref;
+    float *duty;
     float *velocity;
     float *velocity_ref;
     float *theta_elec;
@@ -87,18 +85,17 @@ typedef struct
     float *motor_temp;
 } tObsData;
 
-#define DATA_NUM 0x15
+#define DATA_NUM 0x14
 
 #define DATA_FIELDS(X) \
     X(DATA_CURRENT_U, current_u, FLD_F32) \
     X(DATA_CURRENT_V, current_v, FLD_F32) \
     X(DATA_CURRENT_W, current_w, FLD_F32) \
-    X(DATA_CURRENT_ALPHA, current_alpha, FLD_F32) \
-    X(DATA_CURRENT_BETA, current_beta, FLD_F32) \
     X(DATA_CURRENT_D, current_d, FLD_F32) \
     X(DATA_CURRENT_Q, current_q, FLD_F32) \
     X(DATA_CURRENT_D_REF, current_d_ref, FLD_F32) \
     X(DATA_CURRENT_Q_REF, current_q_ref, FLD_F32) \
+    X(DATA_DUTY, duty, FLD_F32) \
     X(DATA_VELOCITY, velocity, FLD_F32) \
     X(DATA_VELOCITY_REF, velocity_ref, FLD_F32) \
     X(DATA_THETA_ELEC, theta_elec, FLD_F32) \

@@ -25,9 +25,15 @@ typedef struct {
     float theta_e; // 电角度
     float theta_r; // 转子角度
     float vel;     // 转子速度
+    float pos;
 } tEncManager;
 
 bool em_init(tParameter *param);
 void em_loop_task(void);
-void em_theta_process_task(float ts, float *th_e, float *th_r, float *vel);
+void em_theta_process_task(float ts, float *th_e, float *th_r, float *vel,
+                           float *pos);
+
+void em_set_pos_zero(void);
+void em_set_pos_limit(void);
+
 #endif

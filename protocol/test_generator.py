@@ -1,4 +1,4 @@
-"""生成器布局校验及 C 宏字节回归，不依赖 Qt。"""
+"""协议元数据生成校验及手写 APP payload 宏的字节回归，不依赖 Qt。"""
 import copy
 import os
 from pathlib import Path
@@ -6,22 +6,17 @@ import subprocess
 import tempfile
 import unittest
 
-from gen_protocol import (_c_header, _descriptor, _payload_macros, _render_c_headers,
-                          _render_descriptor_c, _render_devices)
+from gen_protocol import _render_c_headers, _render_devices, _render_init
 from schema import load_yaml, normalize
 
 SOURCE = Path(__file__).resolve().parent
 
 
-def _write_protocol_headers(root, headers, doc, types):
-    """宏依赖描述表与通用引擎，编译测试需一并落盘。"""
+def _write_protocol_headers(root, headers):
     for name, content in headers.items():
         (root / name).write_text(content, encoding="utf-8")
-    (root / "descriptor.h").write_text(
-        _c_header("PROTO_DESCRIPTOR_H", _render_descriptor_c(*_descriptor(doc, types))),
-        encoding="utf-8")
-    (root / "payload_codec.h").write_text(
-        (SOURCE.parent / "firmware" / "protocol" / "payload_codec.h").read_text(encoding="utf-8"),
+    (root / "payload.h").write_text(
+        (SOURCE.parent / "firmware" / "app" / "payload.h").read_text(encoding="utf-8"),
         encoding="utf-8")
 
 
@@ -60,97 +55,46 @@ class GeneratorTest(unittest.TestCase):
         self.source = load_yaml(SOURCE / "cmd.yaml")
         self.types = load_yaml(SOURCE / "fieldvaluetype.yaml")
         self.obs = load_yaml(SOURCE / "obsdata.yaml")
-        self.doc = normalize(self.source, self.types["value_type"], self.obs)
+        self.doc = normalize(self.source)
 
-    def test_explicit_layout_and_enum_reference(self):
-        original = copy.deepcopy(self.source)
-        normalize(self.source, self.types["value_type"], self.obs)
-        self.assertEqual(self.source, original)
-        for command in self.source["commands"]:
-            for direction in ("request", "response"):
-                if isinstance(command[direction], list):
-                    for field in command[direction]:
-                        self.assertIn("size", field)
-                        self.assertIn("offset", field)
-        for key, wrong in (("size", 2), ("offset", 1)):
-            broken = copy.deepcopy(self.source)
-            broken["commands"][0]["request"][0][key] = wrong
-            with self.assertRaises(ValueError):
-                normalize(broken, self.types["value_type"], self.obs)
-        iap = next(c for c in self.doc["commands"] if c["id_name"] == "CMD_IAP_WRITE_FLASH")
-        self.assertEqual(iap["response"][1]["enum"]["FB_EXECUTE"], 0x91)
-
-    def test_macros_follow_yaml_and_exclude_dynamic_payloads(self):
-        changed = copy.deepcopy(self.source)
-        heartbeat = next(c for c in changed["commands"] if c["id_name"] == "CMD_HEARTBEAT")
-        heartbeat["response"][2]["scale"] = 9
-        heartbeat["response"].append({"name": "extra", "type": "FLD_U8", "offset": 6, "size": 1})
-        text = "\n".join(_payload_macros(normalize(changed, self.types["value_type"], self.obs), self.types["value_type"]))
-        self.assertIn("PROTO_LAYOUT_CMD_HEARTBEAT_RESPONSE", text)
-        self.assertIn("motor_temp, extra)", text)
-        self.assertNotIn("* 512", text)
-        self.assertNotIn("ENPACK_CONNECT_RESPONSE", text)
-        self.assertNotIn("DEPACK_HEARTBEAT_REQUEST", text)
-        self.assertNotIn("DEPACK_PARAM_WRITE_REQUEST", text)
-        self.assertNotIn("DEPACK_IAP_WRITE_FLASH_REQUEST", text)
-        self.assertNotIn("ENPACK_DATA_STREAM_RESPONSE", text)
-        self.assertEqual(text.count("#define ENPACK_FEEDBACK("), 1)
-        self.assertNotIn("_SIZE", text)
-        self.assertNotIn("_OFFSET", text)
-
-    def test_control_config_and_parameter_special_id(self):
-        from gen_protocol import _payload_constants, _render_init
+    def test_payload_descriptions_do_not_affect_generation(self):
         params = load_yaml(SOURCE / "parameter.yaml")
-        obs = load_yaml(SOURCE / "obsdata.yaml")
-        constants = dict(_payload_constants(self.doc, self.types, params, obs))
-        prefix = "CMD_CTRL_CONFIG_"
-        self.assertEqual(constants[prefix + "REQUEST_MIN_SIZE"], 2)
-        self.assertEqual(constants[prefix + "REQUEST_MAX_SIZE"], 8)
-        config = next(c for c in self.doc["commands"] if c["id_name"] == "CMD_CTRL_CONFIG")
-        states = next(f for f in obs["fields"] if f["field"] == "motor_state")["options"]["items"]
-        state_ids = {item["id_name"]: index for index, item in enumerate(states)}
-        for name, fields in config["request_variants"].items():
-            mode, value = next(iter(fields[0]["enum"].items()))
-            self.assertEqual(value, state_ids[mode])
-            self.assertEqual(constants[prefix + name.upper() + "_REQUEST_SIZE"],
-                             8 if name == "mit" else 2)
-        self.assertEqual(constants[prefix + "MIT_REQUEST_SCALE_OFFSET"], 1)
-        self.assertEqual(constants[prefix + "MIT_REQUEST_SCALE_DEFAULT"], 16)
-        self.assertEqual(constants[prefix + "MIT_REQUEST_KP_OFFSET"], 2)
-        self.assertEqual(constants[prefix + "MIT_REQUEST_KD_OFFSET"], 5)
-        for field in config["request_variants"]["mit"][2:]:
-            self.assertEqual(field["scale_ref"], "scale")
-        namespace = {}
-        exec(_render_init(self.types, params, obs, self.doc), namespace)
-        self.assertEqual(namespace["Pidx"].PARAM_ALL, 255)
-        self.assertNotIn(255, namespace["PARAMETERS"])
+        changed = copy.deepcopy(self.source)
+        for command in changed["commands"]:
+            command["request"] = "仅供查阅，不要求布局有效"
+            command.pop("response", None)
+            command["request_variants"] = {"unused": None}
+        normalized = normalize(changed)
+        self.assertEqual(normalized, self.doc)
+        headers = _render_c_headers(self.types, params, self.obs, normalized)
+        self.assertEqual(headers, _render_c_headers(self.types, params, self.obs, self.doc))
+        self.assertEqual(_render_init(self.types, params, self.obs, normalized),
+                         _render_init(self.types, params, self.obs, self.doc))
+        self.assertEqual(headers["cmd_list.h"].count("#define"), 1)  # include guard
+        self.assertNotIn("#include", headers["cmd_list.h"])
+        self.assertEqual(headers["cmd_list.h"].count("typedef enum"), 3)
+        self.assertEqual(set(headers), {"cmd_list.h", "fieldvaluetype.h",
+                                        "parameter_list.h", "data_list.h"})
+
+    def test_duplicate_command_id_rejected(self):
+        changed = copy.deepcopy(self.source)
+        changed["commands"][1]["id"] = changed["commands"][0]["id"]
+        with self.assertRaises(ValueError):
+            normalize(changed)
+
     def test_internal_scale_decode_macros(self):
         headers = _render_c_headers(self.types, load_yaml(SOURCE / "parameter.yaml"),
-                                    load_yaml(SOURCE / "obsdata.yaml"), self.doc)
-        self.assertIn("#define DEPACK_CTRL_CONFIG_REQUEST(_out_length, _packet, mode)",
-                      headers["cmd_list.h"])
-        self.assertIn("#define DEPACK_CTRL_CONFIG_MIT_REQUEST(_packet, kp, kd)",
-                      headers["cmd_list.h"])
-        for variant in ("OPENLOOP", "CURRENT", "PID_SPEED", "PID_POSITION", "MIT"):
-            macro = headers["cmd_list.h"].split("#define DEPACK_CTRL_CONFIG_" + variant + "_REQUEST(")[1].split("while (0)")[0]
-            self.assertNotIn("_out_length", macro)
-            self.assertNotIn("_proto_mode", macro)
-            self.assertNotIn("(mode)", macro)
-        self.assertNotIn("(scale) =", headers["cmd_list.h"])
-        self.assertIn("#define DEPACK_MIT_CTRL_REQUEST(_out_length, _packet, position, velocity, torque)",
-                      headers["cmd_list.h"])
-        self.assertNotIn("(velocity_scale) =", headers["cmd_list.h"])
-        self.assertNotIn("(torque_scale) =", headers["cmd_list.h"])
-        program = '''#include "cmd_list.h"
+                                    self.obs, self.doc)
+        program = '''#include "payload.h"
 #include <assert.h>
 int main(void) {
-    unsigned char packet[] = {8, 16, 0, 128, 1, 0, 64, 0};
+    unsigned char packet[] = {MOTOR_MIT_MODE, 16, 0, 128, 1, 0, 64, 0};
     int length = 0, mode = 0, control = 0;
     float kp = 0, kd = 0;
     DEPACK_CTRL_CONFIG_REQUEST(length, packet, mode);
-    assert(length == 8 && mode == 8);
+    assert(length == 8 && mode == MOTOR_MIT_MODE);
     DEPACK_CTRL_CONFIG_MIT_REQUEST(packet, kp, kd);
-    assert(length == 8 && mode == 8 && kp == 1.5f && kd == 0.25f);
+    assert(length == 8 && mode == MOTOR_MIT_MODE && kp == 1.5f && kd == 0.25f);
     packet[1] = 8;
     DEPACK_CTRL_CONFIG_MIT_REQUEST(packet, kp, kd);
     assert(kp == 384.0f && kd == 64.0f);
@@ -160,14 +104,14 @@ int main(void) {
     packet[1] = 32;
     DEPACK_CTRL_CONFIG_MIT_REQUEST(packet, kp, kd);
     assert(kp == 0x1.8p-16f && kd == 0x1p-18f);
-    unsigned char high[] = {8, 16, 255, 255, 255, 0, 0, 128};
+    unsigned char high[] = {MOTOR_MIT_MODE, 16, 255, 255, 255, 0, 0, 128};
     DEPACK_CTRL_CONFIG_MIT_REQUEST(high, kp, kd);
     assert(kp > 255.99f && kd == 128.0f);
-    unsigned char normal[] = {4, 1};
+    unsigned char normal[] = {MOTOR_OPENLOOP, 1};
     DEPACK_CTRL_CONFIG_REQUEST(length, normal, mode);
-    assert(length == 2 && mode == 4);
+    assert(length == 2 && mode == MOTOR_OPENLOOP);
     DEPACK_CTRL_CONFIG_OPENLOOP_REQUEST(normal, control);
-    assert(length == 2 && mode == 4 && control == 1);
+    assert(length == 2 && mode == MOTOR_OPENLOOP && control == 1);
     DEPACK_CTRL_CONFIG_CURRENT_REQUEST(normal, control);
     assert(length == 2 && control == 1);
     DEPACK_CTRL_CONFIG_PID_SPEED_REQUEST(normal, control);
@@ -183,37 +127,11 @@ int main(void) {
 '''
         with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as directory:
             root = Path(directory)
-            _write_protocol_headers(root, headers, self.doc, self.types)
+            _write_protocol_headers(root, headers)
             (root / "config.c").write_text(program)
             subprocess.run(["cc", "-std=c99", "-Wall", "-Wextra", "-Werror",
                             str(root / "config.c"), "-o", str(root / "config")], check=True)
             subprocess.run([str(root / "config")], check=True)
-
-    def test_control_requests_exclude_configuration(self):
-        from gen_protocol import _payload_constants
-        commands = {c["id_name"]: c for c in self.doc["commands"]}
-        self.assertEqual([f["name"] for f in commands["CMD_OPENLOOP_CTRL"]["request"]],
-                         ["duty", "value"])
-        self.assertEqual([f["name"] for f in commands["CMD_CUR_TAU_CTRL"]["request"]],
-                         ["value"])
-        constants = dict(_payload_constants(self.doc, self.types,
-                         load_yaml(SOURCE / "parameter.yaml"), load_yaml(SOURCE / "obsdata.yaml")))
-        self.assertEqual(constants["CMD_OPENLOOP_CTRL_REQUEST_SIZE"], 6)
-        self.assertEqual(constants["CMD_OPENLOOP_CTRL_REQUEST_DUTY_OFFSET"], 0)
-        self.assertEqual(constants["CMD_OPENLOOP_CTRL_REQUEST_VALUE_OFFSET"], 2)
-        self.assertEqual(constants["CMD_CUR_TAU_CTRL_REQUEST_SIZE"], 4)
-        self.assertEqual(constants["CMD_CUR_TAU_CTRL_REQUEST_VALUE_OFFSET"], 0)
-
-    def test_scale_exponent_validation(self):
-        for scale in (0, -8, 8, 18):
-            changed = copy.deepcopy(self.source)
-            changed["commands"][1]["response"][3]["scale"] = scale
-            normalize(changed, self.types["value_type"], self.obs)
-        for scale in (256, 0.5, True):
-            changed = copy.deepcopy(self.source)
-            changed["commands"][1]["response"][3]["scale"] = scale
-            with self.assertRaises(ValueError):
-                normalize(changed, self.types["value_type"], self.obs)
 
     def test_c_field_value_type_sizes(self):
         for changed in (False, True):
@@ -247,7 +165,7 @@ int main(void) {
         headers = _render_c_headers(self.types, load_yaml(SOURCE / "parameter.yaml"),
                                     load_yaml(SOURCE / "obsdata.yaml"), self.doc)
         program = r'''
-#include "cmd_list.h"
+#include "payload.h"
 #include <assert.h>
 int main(void) {
     uint8_t packet[16], length = 0, mode = 0, id = 0;
@@ -280,11 +198,11 @@ int main(void) {
     DEPACK_MIT_CTRL_REQUEST(length, mit, position, velocity, torque);
     assert(length == 8 && position == -1.5f);
     assert(velocity == 2.5f && torque == -3.25f);
-    const uint8_t config[] = {8, 16, 0, 0, 1, 0, 0, 2};
+    const uint8_t config[] = {MOTOR_MIT_MODE, 16, 0, 0, 1, 0, 0, 2};
     DEPACK_CTRL_CONFIG_REQUEST(length, config, mode);
-    assert(length == 8 && mode == 8);
+    assert(length == 8 && mode == MOTOR_MIT_MODE);
     DEPACK_CTRL_CONFIG_MIT_REQUEST(config, kp, kd);
-    assert(length == 8 && mode == 8 && kp == 1.0f && kd == 2.0f);
+    assert(length == 8 && mode == MOTOR_MIT_MODE && kp == 1.0f && kd == 2.0f);
     const uint8_t erase[] = {0, 4, 0, 0};
     DEPACK_IAP_ERASE_FLASH_REQUEST(length, erase, size);
     assert(length == 4 && size == 1024);
@@ -299,7 +217,7 @@ int main(void) {
 '''
         with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as scratch:
             root = Path(scratch)
-            _write_protocol_headers(root, headers, self.doc, self.types)
+            _write_protocol_headers(root, headers)
             source = root / "macros.c"
             source.write_text(program, encoding="utf-8")
             for standard in ("c99", "c11"):

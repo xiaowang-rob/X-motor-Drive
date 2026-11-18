@@ -26,22 +26,6 @@ fields:
       default: 0.0,
     }
   - {
-      field: current_alpha,
-      name: α轴电流,
-      id_name: DATA_CURRENT_ALPHA,
-      unit: A,
-      val_type: FLD_F32,
-      default: 0.0,
-    }
-  - {
-      field: current_beta,
-      name: β轴电流,
-      id_name: DATA_CURRENT_BETA,
-      unit: A,
-      val_type: FLD_F32,
-      default: 0.0,
-    }
-  - {
       field: current_d,
       name: D轴电流,
       id_name: DATA_CURRENT_D,
@@ -69,6 +53,14 @@ fields:
       field: current_q_ref,
       name: Q轴电流参考,
       id_name: DATA_CURRENT_Q_REF,
+      unit: A,
+      val_type: FLD_F32,
+      default: 0.0,
+    }
+  - {
+      field: duty,
+      name: 输出占空比,
+      id_name: DATA_DUTY,
       unit: A,
       val_type: FLD_F32,
       default: 0.0,

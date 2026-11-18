@@ -3,18 +3,19 @@ import math
 import unittest
 
 from app.services import payload_codec as codec
-from protocol import Didx, FbId, PARAMETERS, Pidx
-from protocol import payload as wire
+from protocol import CmdId, Didx, FbId, PARAMETERS, Pidx, eMotorState
 
 
 class ProtocolTest(unittest.TestCase):
-    def test_schema_generated_fixed_payloads(self):
+    def test_fixed_payload_bytes(self):
         self.assertEqual(codec.pack_connect(True), b"\x01")
         self.assertEqual(codec.pack_openloop_ctrl(0.5, 1.0).hex(), "80000000803f")
         self.assertEqual(codec.pack_current_torque(2.0).hex(), "00000040")
         self.assertEqual(codec.pack_single(1.0).hex(), "0000803f")
-        self.assertEqual(codec.pack_ctrl_config(4, 1).hex(), "0401")
-        self.assertEqual(codec.pack_ctrl_config_mit(1.0, 2.0).hex(), "0810000001000002")
+        self.assertEqual(codec.pack_ctrl_config(eMotorState.MOTOR_OPENLOOP, 1),
+                         bytes([eMotorState.MOTOR_OPENLOOP, 1]))
+        self.assertEqual(codec.pack_ctrl_config_mit(1.0, 2.0),
+                         bytes([eMotorState.MOTOR_MIT_MODE]) + bytes.fromhex("10000001000002"))
         self.assertEqual(codec.pack_iap_erase(1024), b"\x00\x04\x00\x00")
         self.assertEqual(codec.pack_iap_verify(0x12345678, 12).hex(), "785634120c000000")
 
@@ -59,15 +60,26 @@ class ProtocolTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             codec.pack_mit_ctrl(0, velocity_exp=9)
 
-    def test_generated_layout_and_feedback_values(self):
-        self.assertFalse(hasattr(wire, "SCHEMA"))
-        self.assertFalse(any(callable(value) for name, value in vars(wire).items()
-                             if not name.startswith("__")))
-        self.assertEqual(wire.CMD_MIT_CTRL_REQUEST_SIZE, 8)
-        self.assertEqual(wire.CMD_MIT_CTRL_REQUEST_VELOCITY_OFFSET, 4)
-        self.assertEqual(wire.CMD_IAP_WRITE_FLASH_REQUEST_MAX_SIZE, 128)
-        self.assertEqual(FbId.FB_EXECUTE, 0x91)
-        self.assertEqual(FbId.FB_FAILURE, 0x9E)
+    def test_calibration_bytes(self):
+        values = {"tune_current": 1.0, "tune_vel": -2.0}
+        self.assertEqual(codec.pack_calibration(CmdId.CMD_RL_TUNNING,
+                                               {"tune_current": 1.0}).hex(), "0000803f")
+        self.assertEqual(codec.pack_calibration(CmdId.CMD_PSIF_TUNNING,
+                                               {"tune_vel": -2.0}).hex(), "000000c0")
+        for command in (CmdId.CMD_MECH_TUNNING, CmdId.CMD_OBS_TUNNING,
+                        CmdId.CMD_PID_TUNNING, CmdId.CMD_MIT_TUNNING):
+            self.assertEqual(codec.pack_calibration(command, values).hex(),
+                             "0000803f000000c0")
+
+    def test_mit_saturation_and_rounding(self):
+        self.assertEqual(codec.pack_mit_ctrl(1000, 1000, -1000).hex(),
+                         "ffff7f8aff7f0080")
+        self.assertEqual(codec.pack_mit_ctrl(-0.5 / (1 << 18), -0.5, 0.5,
+                                            velocity_exp=0, torque_exp=0).hex(),
+                         "ffffff00ffff0100")
+        for mode in (eMotorState.MOTOR_IDLE, eMotorState.MOTOR_MIT_MODE, 255):
+            with self.assertRaises(ValueError):
+                codec.pack_ctrl_config(mode)
 
     def test_limits_and_invalid_values(self):
         self.assertEqual(len(codec.pack_iap_write(0, b"x" * 124)), 128)

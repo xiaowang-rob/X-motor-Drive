@@ -1,5 +1,6 @@
 #include "enc_manager.h"
-#include "motor_ctrl.h"
+
+#include "xmath.h"
 
 #include "enc_abi.h"
 #include "enc_as5047.h"
@@ -17,6 +18,7 @@
 
 tEncoder g_enc;
 tEncManager g_encm;
+
 // 位置累积
 static float pos_accumulate(tPosAcc *acc, float theta) {
     float angle_delta = theta - acc->last_angle;
@@ -65,6 +67,7 @@ bool em_init(tParameter *param) {
     default:
         return false;
     }
+
     pll_init(&g_encm.pll,
              ENCODER_PLL_KP,
              ENCODER_PLL_KI,
@@ -84,19 +87,20 @@ void em_loop_task(void) {
 }
 
 void em_set_pos_zero(void) {
-    g_motor.pacc.zero_angle = g_motor.fb.theta_rotor;
-    g_motor.pacc.num_turns = 0;
-    g_motor.pacc.last_angle = g_motor.fb.theta_rotor;
+    g_encm.pacc.zero_angle = g_encm.theta_r;
+    g_encm.pacc.num_turns = 0;
+    g_encm.pacc.last_angle = g_encm.theta_r;
 }
 
 void em_set_pos_limit(void) {
-    if (g_motor.fb.pos > 0)
-        g_motor.pacc.max_pos = g_motor.fb.pos;
+    if (g_encm.pos > 0)
+        g_encm.pacc.max_pos = g_encm.pos;
     else
-        g_motor.pacc.min_pos = g_motor.fb.pos;
+        g_encm.pacc.min_pos = g_encm.pos;
 }
 
-void em_theta_process_task(float ts, float *th_e, float *th_r, float *vel) {
+void em_theta_process_task(float ts, float *th_e, float *th_r, float *vel,
+                           float *pos) {
     if (!g_encm.enc_active)
         return;
     pll_update(&g_encm.pll, g_encm.theta_r, ts);
@@ -105,9 +109,14 @@ void em_theta_process_task(float ts, float *th_e, float *th_r, float *vel) {
     else
         *th_r = g_encm.theta_r;
 
-    *th_e = (*th_r - g_param.theta_offset) * g_param.motor_polepairs *
-            (g_param.positive_dir ? 1 : -1);
+    g_encm.pos = pos_accumulate(&g_encm.pacc, g_encm.theta_r);
 
-    *th_e = XANGLE_2PI(*th_e);
-    *vel = g_encm.pll.vel;
+    g_encm.theta_e = (*th_r - g_param.theta_offset) * g_param.motor_polepairs *
+                     (g_param.positive_dir ? 1 : -1);
+    g_encm.theta_e = XANGLE_2PI(g_encm.theta_e);
+    g_encm.vel = g_encm.pll.vel;
+
+    *th_e = g_encm.theta_e;
+    *vel = g_encm.vel;
+    *pos = g_encm.pos;
 }

@@ -61,8 +61,8 @@ void tune_reset(tTune *tune) {
 }
 
 // foc 内参辨识 rs ldq
-void tune_RL_update(tParameter *p, tCtrl *con, float ts, float id, float iq,
-                    float ud, float uq) {
+void tune_RL_update(tParameter *p, float ts, float Vbus, float id, float iq,
+                    float dutyd, float dutyq) {
 
     switch (g_tune.step) {
     case 0:
@@ -95,6 +95,8 @@ void tune_RL_update(tParameter *p, tCtrl *con, float ts, float id, float iq,
             tune_open_cmd_cfg(false);
             g_tune.TO_init = true;
         } else {
+            float ud = Vbus * dutyd;
+            float uq = Vbus * dutyq;
             eTuneOneState sta = tune_rl_update(&g_tune.rl_ctx, id, iq, ud, uq);
             tune_open_cmd_apply(g_tune.rl_ctx.cmd.duty,
                                 g_tune.rl_ctx.cmd.theta_e);
@@ -121,13 +123,13 @@ void tune_RL_update(tParameter *p, tCtrl *con, float ts, float id, float iq,
         p->clbw_coef = 0.5f;
         float fn_d = 1 / (XMATH_2PI * p->motor_ld / p->motor_rs);
         p->dclbw = XMATH_2PI * (2 * fn_d < F_PWM / 10 ? 2 * fn_d : F_PWM / 10);
-        p->dclkp = p->clbw_coef * p->dclbw * p->motor_ld;
-        p->dclki = p->clbw_coef * p->dclbw * p->motor_rs;
+        p->dclkp = p->clbw_coef * p->dclbw * p->motor_ld * XMATH_SQRT3 / Vbus;
+        p->dclki = p->clbw_coef * p->dclbw * p->motor_rs * XMATH_SQRT3 / Vbus;
 
         float fn_q = 1 / (XMATH_2PI * p->motor_lq / p->motor_rs);
         p->qclbw = XMATH_2PI * (2 * fn_q < F_PWM / 10 ? 2 * fn_q : F_PWM / 10);
-        p->qclkp = p->clbw_coef * p->qclbw * p->motor_lq;
-        p->qclki = p->clbw_coef * p->qclbw * p->motor_rs;
+        p->qclkp = p->clbw_coef * p->qclbw * p->motor_lq * XMATH_SQRT3 / Vbus;
+        p->qclki = p->clbw_coef * p->qclbw * p->motor_rs * XMATH_SQRT3 / Vbus;
 
         // 取电流环开环截止频率 (Hz)
         float f_c_open = fminf(p->dclbw, p->qclbw) / XMATH_2PI;
@@ -147,14 +149,6 @@ void tune_RL_update(tParameter *p, tCtrl *con, float ts, float id, float iq,
 
         // 计算一阶低通滤波系数 alpha
         p->cfalpha = 1.0f - expf(-XMATH_2PI * f_filter / f_sw);
-        // TODO: 直接写入参数中 结束参数校准之后会重新应用参数,弱磁kp ki
-        // 也要根据电流环定 参数kpki要 /Vmax
-
-        current_filter_init(p->cfalpha);
-        con->PI_id.kp = p->dclkp;
-        con->PI_id.ki = p->dclki;
-        con->PI_iq.kp = p->qclkp;
-        con->PI_iq.ki = p->qclki;
 
         g_tune.state = TUNE_DONE;
         return;
@@ -162,7 +156,8 @@ void tune_RL_update(tParameter *p, tCtrl *con, float ts, float id, float iq,
     return;
 }
 
-void tune_flux_update(tParameter *p, float uq, float iq, float vel, float ts) {
+void tune_flux_update(tParameter *p, float ts, float Vbus, float dutyq,
+                      float iq, float vel) {
 
     if (!g_tune.TO_init) {
         tTune_psif_cfg psif_cfg = {
@@ -181,6 +176,7 @@ void tune_flux_update(tParameter *p, float uq, float iq, float vel, float ts) {
         tune_pid_vel_cmd_cfg();
         g_tune.TO_init = true;
     } else {
+        float uq = Vbus * dutyq;
         eTuneOneState sta = tune_psif_update(&g_tune.psif_ctx, uq, iq, vel);
         tune_pid_vel_cmd_apply(g_tune.psif_ctx.cmd.vel);
         if (TO_DONE == sta) {
@@ -299,7 +295,8 @@ bool tune_pid_update() { return false; }
 // mit参数自适应
 bool tune_mit_update() { return false; }
 
-eTuneState tune_mian_tim_task(tParameter *p, tMotorCtrl *motor, float ts) {
+eTuneState tune_mian_tim_task(tParameter *p, tMotorCtrl *motor, float Vbus,
+                              float ts) {
     switch (g_tune.state) {
     case TUNE_IDLE:
         break;
@@ -307,14 +304,16 @@ eTuneState tune_mian_tim_task(tParameter *p, tMotorCtrl *motor, float ts) {
         switch (g_tune.type) {
         case TUNE_RL:
             tune_RL_update(p,
-                           &motor->ctrl,
                            ts,
+                           Vbus,
                            motor->fb.id,
                            motor->fb.iq,
-                           motor->fb.ud,
-                           motor->fb.uq);
+                           motor->ref.dutyd,
+                           motor->ref.dutyq);
             break;
         case TUNE_Psif:
+            tune_flux_update(
+                p, ts, Vbus, motor->ref.dutyq, motor->fb.iq, motor->fb.vel);
             break;
         case TUNE_OBS:
             break;

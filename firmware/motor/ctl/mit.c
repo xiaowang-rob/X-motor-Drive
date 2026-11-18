@@ -29,6 +29,7 @@ float mit_update(tMIT *mit, float tau_ff, float pos_ref, float pos_fb,
     float tau = mit->Kp * mit->p_error + mit->Kd * mit->v_error + tau_ff +
                 mit->tau_ff_bt;
     // 无扰切换 补偿衰减
+    // TODO：这个需要和时间量对齐
     if (mit->tau_ff_bt > 0.01f)
         mit->tau_ff_bt -= 0.01f;
     else if (mit->tau_ff_bt < 0.01f)

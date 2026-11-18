@@ -4,36 +4,31 @@
 
 tMotorCtrl g_motor;
 
-void motor_init(tParameter *param, tMotorOps *ops, float t_hl, float t_ml,
-                float t_ll) {
+void motor_init(tParameter *param, tMotorOps *ops) {
     if (!param || !ops)
         return;
 
     g_motor.ops = ops;
     g_motor.param = param;
 
+    memset(&g_motor.init, 0, sizeof(g_motor.init));
     memset(&g_motor.fb, 0, sizeof(g_motor.fb));
+    memset(&g_motor.ref, 0, sizeof(g_motor.ref));
+    memset(&g_motor.cfg, 0, sizeof(g_motor.cfg));
 
     g_motor.ops->gate_drv_enable(false);
-
-    // foc初始化
-    ctrl_foc_init(&g_motor.ctrl, g_motor.param, param->cfalpha, t_hl);
-    // pid控制器初始化
-    ctrl_pid_init(&g_motor.ctrl, g_motor.param, t_ml, t_ll);
-    // mit控制器初始化
-    ctrl_mit_init(&g_motor.ctrl, g_motor.param);
 
     // 初始化观测器
     if (g_motor.param->sensorless != SENSORLESS_NONE) {
         // TODO:初始化无感算法
+
         g_motor.obs_on = true;
     }
 
     // 初始化 内置轨迹规划
     traj_init(&g_motor.traj, g_motor.param);
 
-    motor_reset();
-
+    g_motor.state = MOTOR_IDLE;
     return;
 }
 
@@ -157,6 +152,11 @@ bool motor_cmd_set(tCmdValue *cmd) {
 //     = wc_q * param->motor_rs;
 // }
 
+void motor_loop_task(void) {
+    // 更新电机温度
+    g_motor.fb.motor_temp = g_motor.ops->get_motor_temp();
+}
+
 // 时间槽高频任务
 void motor_foc_tim_task(float ts) {
 
@@ -180,9 +180,11 @@ void motor_foc_tim_task(float ts) {
                    &g_motor.fb.iq);
 
     // 角度、速度、位置更新
-    g_motor.ops->theta_process(
-        ts, &g_motor.fb.theta_elec, &g_motor.fb.theta_rotor, &g_motor.fb.vel);
-    g_motor.fb.pos = pos_accumulate(&g_motor.pacc, g_motor.fb.theta_rotor);
+    g_motor.ops->theta_process(ts,
+                               &g_motor.fb.theta_elec,
+                               &g_motor.fb.theta_rotor,
+                               &g_motor.fb.vel,
+                               &g_motor.fb.pos);
     if (g_motor.state == MOTOR_OPENLOOP) {
         g_motor.ref.theta_elec += g_motor.ref.vel_elec * ts;
         g_motor.ref.theta_elec = XANGLE_2PI(g_motor.ref.theta_elec);
@@ -194,6 +196,12 @@ void motor_foc_tim_task(float ts) {
     // 预计算sin cos
     XSIN_COS(g_motor.ref.theta_elec, &g_motor.ref.sin_e, &g_motor.ref.cos_e);
 
+    if (!g_motor.init.foc) {
+        // foc初始化
+        ctrl_foc_init(&g_motor.ctrl, g_motor.param, ts);
+        g_motor.init.foc = true;
+        return;
+    }
     if (g_motor.state < MOTOR_OPENLOOP)
         return;
     // foc电流环更新
@@ -255,16 +263,31 @@ void motor_traj_tim_task(float ts) {
 // 跑pid速度环/mit
 void motor_vl_pid_mit_tim_task(float ts) {
     if (g_motor.state == MOTOR_PID_SPEED) { // 速度环pid控制 或 位置环
+        if (!g_motor.init.pid_vel) {
+            ctrl_pid_vel_init(&g_motor.ctrl, g_motor.param, ts);
+            g_motor.init.pid_vel = true;
+            return;
+        }
         g_motor.ref.iq =
             pid_vl_update(&g_motor.ctrl, g_motor.ref.vel, g_motor.fb.vel);
     } else if (g_motor.state == MOTOR_PID_POSITION) {
-        if (g_motor.ctrl.pos_pvc == POS_PID_PVC)
+        if (!g_motor.init.pid_pos) {
+            ctrl_pid_pos_init(&g_motor.ctrl, g_motor.param, ts);
+            g_motor.init.pid_pos = true;
+            return;
+        }
+        if (g_motor.param->pos_pidmode == POS_PID_PVC)
             g_motor.ref.iq =
                 pid_vl_update(&g_motor.ctrl, g_motor.ref.vel, g_motor.fb.vel);
         else
             g_motor.ref.iq =
                 pid_pl_update(&g_motor.ctrl, g_motor.ref.pos, g_motor.fb.pos);
     } else if (g_motor.state == MOTOR_MIT_MODE) {
+        if (!g_motor.init.mit) {
+            ctrl_mit_init(&g_motor.ctrl, g_motor.param);
+            g_motor.init.mit = true;
+            return;
+        }
         g_motor.ref.tau = mit_con_update(&g_motor.ctrl,
                                          g_motor.ref.tau_ff,
                                          g_motor.ref.pos,
@@ -277,16 +300,15 @@ void motor_vl_pid_mit_tim_task(float ts) {
 }
 // 弱磁控制
 void motor_field_weakening_tim_task(float ts) {
-    if (g_motor.state == MOTOR_PID_SPEED) {
+    if (g_motor.cfg.fw_ctrl) {
         if (g_motor.ref.dutyq > 0.9f) {
-            float duty_out;
-            arm_sqrt_f32((g_motor.ref.dutyd * g_motor.ref.dutyd +
-                          g_motor.ref.dutyq * g_motor.ref.dutyq),
-                         &duty_out);
+            g_motor.ref.duty = XSQRTF(g_motor.ref.dutyd * g_motor.ref.dutyd +
+                                      g_motor.ref.dutyq * g_motor.ref.dutyq);
 
             g_motor.ref.id =
-                field_weakening_update(&g_motor.ctrl, 1.0f, duty_out);
+                field_weakening_update(&g_motor.ctrl, 1.0f, g_motor.ref.duty);
         } else {
+            g_motor.ref.duty = g_motor.ref.dutyq;
             g_motor.ref.id = 0.0f;
         }
     }
@@ -295,7 +317,7 @@ void motor_field_weakening_tim_task(float ts) {
 // pid位置环
 void motor_pl_pid_tim_task(float ts) {
     if (g_motor.state == MOTOR_PID_POSITION &&
-        g_motor.ctrl.pos_pvc == POS_PID_PVC) { // 位置环pid pvc控制
+        g_motor.param->pos_pidmode == POS_PID_PVC) { // 位置环pid pvc控制
         g_motor.ref.vel =
             pid_pl_update(&g_motor.ctrl, g_motor.ref.pos, g_motor.fb.pos);
     }
