@@ -242,8 +242,8 @@ class eMotorState:
     MOTOR_FAULT = 1  # FAULT
     MOTOR_OPENLOOP = 2  # 开环模式
     MOTOR_CURRENT_MODE = 3  # 电流模式
-    MOTOR_PID_SPEED = 4  # PID速度模式
-    MOTOR_PID_POSITION = 5  # PID位置模式
+    MOTOR_SPEED_MODE = 4  # 速度模式
+    MOTOR_POSITION_MODE = 5  # 位置模式
     MOTOR_MIT_MODE = 6  # MIT模式
 
 MotorState = eMotorState
@@ -377,7 +377,7 @@ OBSDATA = {
     12: ProtocolField(12, 'DATA_THETA_MECH', 'theta_mech', '机械角度', 'rad', 'FLD_F32', 0.0, None),
     13: ProtocolField(13, 'DATA_POSITION', 'position', '位置', 'rad', 'FLD_F32', 0.0, None),
     14: ProtocolField(14, 'DATA_POSITION_REF', 'position_ref', '位置参考', 'rad', 'FLD_F32', 0.0, None),
-    15: ProtocolField(15, 'DATA_MOTOR_STATE', 'motor_state', '电机状态', '', 'FLD_U8', 0, [('IDLE', 0), ('FAULT', 1), ('开环模式', 2), ('电流模式', 3), ('PID速度模式', 4), ('PID位置模式', 5), ('MIT模式', 6)]),
+    15: ProtocolField(15, 'DATA_MOTOR_STATE', 'motor_state', '电机状态', '', 'FLD_U8', 0, [('IDLE', 0), ('FAULT', 1), ('开环模式', 2), ('电流模式', 3), ('速度模式', 4), ('位置模式', 5), ('MIT模式', 6)]),
     16: ProtocolField(16, 'DATA_FAULT', 'fault', '故障', '', 'FLD_U8', 0, [('NONE', 0), ('观测器初始化失败', 1), ('总线通信初始化失败', 2), ('编码器初始化失败', 3), ('相电阻不平衡', 4), ('电阻电感整定失败', 5), ('磁链整定失败', 6), ('观测器校准失败', 7), ('极对数不匹配', 8), ('电机堵转', 9), ('机械参数校准失败', 10), ('过电压', 11), ('低电压', 12), ('过电流', 13), ('过温', 14), ('超速', 15), ('位置超限', 16), ('总线通讯异常', 17), ('观测器运行异常', 18), ('非法输入', 19)]),
     17: ProtocolField(17, 'DATA_VBUS', 'vbus', '母线电压', 'V', 'FLD_F32', 0.0, None),
     18: ProtocolField(18, 'DATA_DRIVER_TEMP', 'driver_temp', '驱动温度', '°C', 'FLD_F32', 0.0, None),

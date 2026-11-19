@@ -33,8 +33,8 @@ typedef enum
     MOTOR_FAULT = 1, /* FAULT */
     MOTOR_OPENLOOP = 2, /* 开环模式 */
     MOTOR_CURRENT_MODE = 3, /* 电流模式 */
-    MOTOR_PID_SPEED = 4, /* PID速度模式 */
-    MOTOR_PID_POSITION = 5, /* PID位置模式 */
+    MOTOR_SPEED_MODE = 4, /* 速度模式 */
+    MOTOR_POSITION_MODE = 5, /* 位置模式 */
     MOTOR_MIT_MODE = 6, /* MIT模式 */
 } eMotorState;
 

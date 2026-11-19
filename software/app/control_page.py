@@ -79,9 +79,9 @@ if len(WAVE_CHANNELS) != WAVE_CHANNEL_COUNT:
 # 控制模式来自 obsdata 的 eMotorState；顺序即左侧下拉和右侧顶部导航的顺序。
 MODE_PAGE_MODES = (
     ("开环模式", eMotorState.MOTOR_OPENLOOP),
-    ("电流/力矩", eMotorState.MOTOR_CURRENT_MODE),
-    ("PID速度", eMotorState.MOTOR_PID_SPEED),
-    ("PID位置", eMotorState.MOTOR_PID_POSITION),
+    ("电流/力矩模式", eMotorState.MOTOR_CURRENT_MODE),
+    ("速度模式", eMotorState.MOTOR_SPEED_MODE),
+    ("位置模式", eMotorState.MOTOR_POSITION_MODE),
     ("MIT", eMotorState.MOTOR_MIT_MODE),
 )
 MODE_STACK_HEIGHT = 96

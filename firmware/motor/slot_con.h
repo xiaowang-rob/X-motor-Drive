@@ -16,16 +16,25 @@
 // 频率分频控制（实现高中低三环分层分段时隙控制）
 // 每个分频的最后一个时间槽加计数并且处理低一级的任务
 // 故最后一个时间槽一般不分配任务
-typedef void slot_task(float ts);
+typedef void (*SlotTask)(void *ctx, float dt);
+
+typedef enum {
+    ST_TYPE_HIGH,
+    ST_TYPE_MEDIUM,
+    ST_TYPE_LOW,
+} eSlotTaskType;
 typedef struct {
     uint8_t slot;
-    slot_task *task;
-} tSlotTask;
+    SlotTask task;
+    void *ctx;
+
+} tSlotTaskItem;
+
+extern const tSlotTaskItem high_schedule[FREQ_HIGH_LOOP];
+extern const tSlotTaskItem medium_schedule[FREQ_MEDIUM_LOOP];
+extern const tSlotTaskItem low_schedule[FREQ_LOW_LOOP];
 
 typedef struct {
-    const tSlotTask high_schedule[FREQ_HIGH_LOOP];
-    const tSlotTask medium_schedule[FREQ_MEDIUM_LOOP];
-    const tSlotTask low_schedule[FREQ_LOW_LOOP];
     uint8_t base_tic;
     uint8_t high_tic;
     uint8_t medium_tic;
@@ -39,9 +48,7 @@ typedef struct {
     float t_low;  // 低环周期
 } tSlotCon;
 
-extern tSlotCon g_slotcon;
-
-void slot_con_init(float f_con);
-void slot_con_start(bool start);
+void slot_con_init(tSlotCon *sc, float f_con);
+void slot_con_callback(tSlotCon *sc);
 
 #endif

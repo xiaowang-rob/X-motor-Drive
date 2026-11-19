@@ -131,10 +131,10 @@ fields:
           comment: 开环模式
         - id_name: MOTOR_CURRENT_MODE
           comment: 电流模式
-        - id_name: MOTOR_PID_SPEED
-          comment: PID速度模式
-        - id_name: MOTOR_PID_POSITION
-          comment: PID位置模式
+        - id_name: MOTOR_SPEED_MODE
+          comment: 速度模式
+        - id_name: MOTOR_POSITION_MODE
+          comment: 位置模式
         - id_name: MOTOR_MIT_MODE
           comment: MIT模式
   - field: fault

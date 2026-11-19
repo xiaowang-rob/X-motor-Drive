@@ -33,7 +33,7 @@ _LOGO_PATH = _APP_DIR / "images" / "logo.svg"
 class CyberSplash(QWidget):
     """Borderless, full-screen cinematic intro using the original SVG logo."""
 
-    DURATION_MS = 1000
+    DURATION_MS = 1500
 
     def __init__(self, main_window, duration_ms=None, parent=None):
         super().__init__(parent)

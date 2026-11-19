@@ -26,6 +26,25 @@ void gd_loop_task(bool motor_idle) {
 void gd_poweron(bool on) { pwm_power_on(g_gate_drv.pd, on); }
 void gd_enable(bool en) { pwm_enable(g_gate_drv.pd, en); }
 void gd_output(float Du, float Dv, float Dw) {
+    // TODO：添加死区补偿
+    /*
+    // 假设 duty_a, duty_b, duty_c 已由 SVPWM 生成，范围 [0.0, 1.0]
+// dead_time_norm = t_dead / T_pwm，例如 500ns / 50us = 0.01
+float dead_time_norm = 0.01f;
+
+float sign_a = (i_a > 0.0f) ? 1.0f : ((i_a < 0.0f) ? -1.0f : 0.0f);
+float sign_b = (i_b > 0.0f) ? 1.0f : ((i_b < 0.0f) ? -1.0f : 0.0f);
+float sign_c = (i_c > 0.0f) ? 1.0f : ((i_c < 0.0f) ? -1.0f : 0.0f);
+
+duty_a += sign_a * dead_time_norm;
+duty_b += sign_b * dead_time_norm;
+duty_c += sign_c * dead_time_norm;
+
+// 在写入比较寄存器前必须限幅
+duty_a = clampf(duty_a, 0.0f, 1.0f);
+duty_b = clampf(duty_b, 0.0f, 1.0f);
+duty_c = clampf(duty_c, 0.0f, 1.0f);
+*/
     g_gate_drv.ticU = Du * g_gate_drv.pwm_arr + 0.5f;
     g_gate_drv.ticV = Dv * g_gate_drv.pwm_arr + 0.5f;
     g_gate_drv.ticW = Dw * g_gate_drv.pwm_arr + 0.5f;

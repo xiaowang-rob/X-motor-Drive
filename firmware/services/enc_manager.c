@@ -107,6 +107,8 @@ void em_loop_task(void) {
     // TODO:这里处理不同编码器角度
     enc_task(&g_enc);
     g_encm.theta_r = g_enc.sample.angle_rad;
+    g_encm.theta_r = (g_encm.theta_r - g_param.theta_offset) *
+                     (g_param.positive_dir ? 1 : -1);
 }
 
 void em_set_pos_zero(void) {
