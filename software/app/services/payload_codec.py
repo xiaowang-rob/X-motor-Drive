@@ -248,7 +248,7 @@ def pack_connect(state):
 def pack_ctrl_config(mode, control=0):
     """普通分支：[mode:u8][control:u8]。"""
     if mode not in (eMotorState.MOTOR_OPENLOOP, eMotorState.MOTOR_CURRENT_MODE,
-                    eMotorState.MOTOR_PID_SPEED, eMotorState.MOTOR_PID_POSITION):
+                    eMotorState.MOTOR_SPEED_MODE, eMotorState.MOTOR_POSITION_MODE):
         raise ValueError("未知控制模式")
     return bytes([_integer(mode, 0, 255), _integer(control, 0, 255)])
 

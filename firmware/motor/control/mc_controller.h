@@ -14,9 +14,16 @@
 typedef struct {
     eMotorState mode;
 
+    tTraj traj; // 内置轨迹规划器
     tPI PI_vel;
     tPID PID_pos;
     tMIT mit;
+
+    volatile bool init_flag; // 初始化标志
+
+    volatile bool ov_enable;  // 开环速度使能
+    volatile bool tau_enable; // 力矩输入使能
+    volatile bool pvt_enable; // pvt模式使能
 
     struct {
         float vel;          // 速度 (rad/s)
@@ -38,34 +45,8 @@ typedef struct {
 
 } tCtrl;
 
-// pid速度环更新 返回iq
-static inline float pid_vl_update(tCtrl *con) {
-    return pi_update(&con->PI_vel, con->ref.vel, con->fb.vel);
-}
-
-// pid位置环更新 pvc下返回vel pc下返回iq
-static inline float pid_pl_update(tCtrl *con) {
-    return pid_update(&con->PID_pos, con->ref.pos, con->fb.pos);
-}
-
-// mit 控制更新 返回转矩
-static inline float mit_con_update(tCtrl *con, float tau_ff, float pos_ref,
-                                   float pos_fb, float vel_ref, float vel_fb) {
-    return mit_update(&con->mit, tau_ff, pos_ref, pos_fb, vel_ref, vel_fb);
-} // pid速度环更新 返回iq
-static inline float pid_vl_update(tCtrl *con) {
-    return pi_update(&con->PI_vel, con->ref.vel, con->fb.vel);
-}
-
-// pid位置环更新 pvc下返回vel pc下返回iq
-static inline float pid_pl_update(tCtrl *con) {
-    return pid_update(&con->PID_pos, con->ref.pos, con->fb.pos);
-}
-
-// mit 控制更新 返回转矩
-static inline float mit_con_update(tCtrl *con, float tau_ff, float pos_ref,
-                                   float pos_fb, float vel_ref, float vel_fb) {
-    return mit_update(&con->mit, tau_ff, pos_ref, pos_fb, vel_ref, vel_fb);
-}
-
+void ctrl_reset(tCtrl *con);
+void ctrl_cmd_process(tCtrl *con, tParameter *param, float ts);
+void ctrl_config(tCtrl *con, tParameter *param, float ts);
+void ctrl_update(tCtrl *con, tParameter *param, float ts);
 #endif

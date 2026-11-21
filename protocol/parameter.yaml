@@ -209,18 +209,6 @@ fields:
     unit: ""
     val_type: FLD_BOOL
     default: false
-  - field: theta_source
-    name: 角度源
-    id_name: PARAM_THETA_SOURCE
-    unit: ""
-    val_type: FLD_U8
-    default: 0
-    options:
-      enum_name: eThetaSource
-      comment: 角度源
-      items:
-        - { id_name: THETA_PLL, comment: PLL }
-        - { id_name: THETA_RAW, comment: 原始角度 }
   - field: hfi_smo_threshold
     name: HFI/SMO切换阈值
     id_name: PARAM_HFI_SMO_THRESHOLD

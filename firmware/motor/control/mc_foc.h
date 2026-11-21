@@ -13,6 +13,7 @@ typedef struct {
     tPI PI_id;
     tPI PI_fw;
 
+    volatile bool to_enable; // 角度开环使能
     volatile bool cl_enable; // 电流闭环使能
     volatile bool fw_enable; // 弱磁开关
 
@@ -42,27 +43,23 @@ typedef struct {
 void mc_foc_init(tMcFoc *foc, tParameter *param, float ts);
 void mc_foc_reset(tMcFoc *foc);
 void mc_foc_current_process(tMcFoc *foc, float is_in[3]);
+void mc_foc_update(tMcFoc *foc, float ts, float fb_theta_e);
 void mc_foc_svpwm_output(tMcFoc *foc);
 
-static inline void mc_foc_cl_update(tMcFoc *foc) {
-    if (foc->cl_enable) {
-        foc->out.duty_d = pi_update(&foc->PI_id, foc->ref.id, foc->fb.id);
-        foc->out.duty_q = pi_update(&foc->PI_iq, foc->ref.iq, foc->fb.iq);
-    }
-}
-// 弱磁控制 返回id
-static inline float field_weakening_update(tMcFoc *foc) {
+// 弱磁控制
+static inline void field_weakening_update(tMcFoc *foc) {
 
     foc->out.duty = foc->out.duty_q;
+    foc->ref.id = 0.0f;
     if (!foc->fw_enable)
-        return 0.0f;
+        return;
 
     if (foc->out.duty_q < 0.9f)
-        return 0.0f;
+        return;
 
     foc->out.duty = XSQRTF(foc->out.duty_d * foc->out.duty_d +
                            foc->out.duty_q * foc->out.duty_q);
-    return pi_update(&foc->PI_fw, 1, foc->out.duty);
+    foc->ref.id = pi_update(&foc->PI_fw, 1, foc->out.duty);
 }
 
 #endif

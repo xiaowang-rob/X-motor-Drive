@@ -5,126 +5,111 @@
 
 tMotorCtrl g_motor;
 
-void motor_init(tMotorCtrl *mc, tParameter *param, tMotorOps *ops) {
+void motor_init(tParameter *param, tMotorOps *ops) {
     if (!param || !ops)
         return;
 
-    mc->ops = ops;
-    mc->param = param;
+    g_motor.ops = ops;
+    g_motor.param = param;
+    g_motor.ops->gate_drv_enable(false);
 
-    memset(&mc->fb, 0, sizeof(mc->fb));
-    memset(&mc->ref, 0, sizeof(mc->ref));
-    memset(&mc->cfg, 0, sizeof(mc->cfg));
-
-    mc->ops->gate_drv_enable(false);
-
-    // 初始化观测器
-    if (mc->param->sensorless != SENSORLESS_NONE) {
-        // TODO:初始化无感算法
-
-        mc->obs_on = true;
-    }
-
-    mc->state = MOTOR_IDLE;
+    g_motor.state = MOTOR_IDLE;
     return;
 }
 
-void motor_reset(tMotorCtrl *mc) {
-
-    ctrl_reset(&mc->ctrl);
-
-    memset(&mc->ref, 0, sizeof(mc->ref));
-    memset(&mc->cfg, 0, sizeof(mc->cfg));
-
-    mc->state = MOTOR_IDLE;
+void motor_reset() {
+    // TODO:
+    g_motor.state = MOTOR_IDLE;
 }
 
 // 失能 释放电机
-void motor_disable(tMotorCtrl *mc) {
-    mc->ops->gate_drv_enable(false);
+void motor_disable() {
+    g_motor.ops->gate_drv_enable(false);
     motor_reset();
 }
 
-void motor_handle_fault(tMotorCtrl *mc) {
+void motor_handle_fault() {
     motor_disable();
-    mc->state = MOTOR_FAULT;
+    g_motor.state = MOTOR_FAULT;
 }
 
-bool motor_cmd_cfg(tMotorCtrl *mc, tCmdCfg *cfg) {
+static bool vel_open_ctrl = false;
+bool motor_cmd_cfg(tCmdCfg *cfg) {
     if (cfg->mode < MOTOR_OPENLOOP || cfg->mode > MOTOR_MIT_MODE)
         return false;
-    if (mc->state != MOTOR_IDLE)
+    if (g_motor.state != MOTOR_IDLE)
         return false;
 
-    mc->state = cfg->mode;
+    g_motor.state = cfg->mode;
 
     switch (cfg->mode) {
     case MOTOR_OPENLOOP:
-        mc->cfg.cur_enable = false;
-        mc->cfg.ol_vel_ctrl = cfg->ol_vel_ctrl;
+        g_motor.foc.cl_enable = false;
+        g_motor.foc.to_enable = true;
+        vel_open_ctrl = cfg->vo_ctrl;
         break;
     case MOTOR_CURRENT_MODE:
-        mc->cfg.cur_enable = true;
-        mc->cfg.tau_ctrl = cfg->tau_ctrl;
+        g_motor.foc.cl_enable = true;
+        g_motor.ctrl.tau_enable = cfg->tau_ctrl;
         break;
     case MOTOR_SPEED_MODE:
-        mc->cfg.cur_enable = true;
-        mc->cfg.fw_ctrl = cfg->fw_ctrl;
+        g_motor.foc.cl_enable = true;
+        g_motor.foc.fw_enable = cfg->fw_ctrl;
         break;
     case MOTOR_POSITION_MODE:
-        mc->cfg.cur_enable = true;
-        mc->cfg.pvt_ctrl = cfg->pvt_ctrl;
+        g_motor.foc.cl_enable = true;
+        g_motor.ctrl.pvt_enable = cfg->pvt_ctrl;
         break;
     case MOTOR_MIT_MODE:
-        mc->cfg.cur_enable = true;
-        mit_config(&mc->ctrl.mit, cfg->mit_kp, cfg->mit_kd);
+        g_motor.foc.cl_enable = true;
+        mit_config(&g_motor.ctrl.mit, cfg->mit_kp, cfg->mit_kd);
         break;
     default:
         return false;
     }
     // 使能前先写入 50% 零矢量，避免 CCR=0 时三相下桥全通的过渡状态
-    mc->ops->gate_drv_out(0.5f, 0.5f, 0.5f);
-    mc->ops->gate_drv_enable(true);
+    g_motor.ops->gate_drv_out(0.5f, 0.5f, 0.5f);
+    g_motor.ops->gate_drv_enable(true);
     return true;
 }
 // 核心控制参数写入
-bool motor_cmd_set(tMotorCtrl *mc, tCmdValue *cmd) {
+bool motor_cmd_set(tCmdValue *cmd) {
 
-    if (cmd->mode != mc->state)
+    if (cmd->mode != g_motor.state)
         return false;
 
     switch (cmd->mode) {
     case MOTOR_OPENLOOP:
-        if (mc->cfg.ol_vel_ctrl)
-            mc->ref.vel_elec = cmd->openloop.value;
+        if (vel_open_ctrl)
+            g_motor.foc.ref.vel_elec = cmd->payload.openloop.value;
         else {
-            mc->foc.ref.theta_e = cmd->openloop.value;
-            mc->ref.vel_elec = 0;
+            g_motor.foc.ref.theta_e = cmd->payload.openloop.value;
+            g_motor.foc.ref.vel_elec = 0;
         }
-        mc->ref.dutyd = XCLAMP(cmd->openloop.duty, 0, 1);
+        g_motor.foc.out.duty_d = XCLAMP(cmd->payload.openloop.duty, 0, 1);
     case MOTOR_CURRENT_MODE:
-        if (mc->cfg.tau_ctrl) {
-            mc->ref.tau = cmd->current_ctrl.value;
-            mc->ref.iq = mc->ref.tau / mc->param->motor_ke;
+        if (g_motor.cfg.tau_ctrl) {
+            g_motor.ref.tau = cmd->current_ctrl.value;
+            g_motor.ref.iq = g_motor.ref.tau / g_motor.param->motor_ke;
         } else {
-            mc->ref.iq = cmd->current_ctrl.value;
+            g_motor.ref.iq = cmd->current_ctrl.value;
         }
 
         break;
     case MOTOR_SPEED_MODE:
-        traj_set_target(&mc->traj, cmd->vel_pid_ctrl.vel, mc->fb.vel);
+        traj_set_target(&g_motor.traj, cmd->vel_pid_ctrl.vel, g_motor.fb.vel);
         break;
     case MOTOR_POSITION_MODE:
         // TODO:添加pvt处理
-        traj_set_target(&mc->traj, cmd->pos_pid_ctrl.pos, mc->fb.pos);
+        traj_set_target(&g_motor.traj, cmd->pos_pid_ctrl.pos, g_motor.fb.pos);
         break;
     case MOTOR_MIT_MODE:
-        if (mc->traj.cfg.mode == TRAJ_DISABLE) {
-            mc->ref.tau_ff = cmd->mit_ctrl.tau_ff;
-            mc->ref.vel = cmd->mit_ctrl.vel;
-            mc->ref.pos = cmd->mit_ctrl.pos;
+        if (g_motor.traj.cfg.mode == TRAJ_DISABLE) {
+            g_motor.ref.tau_ff = cmd->mit_ctrl.tau_ff;
+            g_motor.ref.vel = cmd->mit_ctrl.vel;
+            g_motor.ref.pos = cmd->mit_ctrl.pos;
         } else
-            traj_set_target(&mc->traj, cmd->mit_ctrl.pos, mc->fb.pos);
+            traj_set_target(&g_motor.traj, cmd->mit_ctrl.pos, g_motor.fb.pos);
         break;
     default:
         return false;
@@ -148,39 +133,26 @@ bool motor_cmd_set(tMotorCtrl *mc, tCmdValue *cmd) {
 //     = wc_q * param->motor_rs;
 // }
 
-void motor_loop_task(tMotorCtrl *mc) {
+void motor_loop_task() {
     // 更新电机温度
-    mc->fb.motor_temp = mc->ops->get_motor_temp();
+    g_motor.fb.motor_temp = g_motor.ops->get_motor_temp();
     // TODO：状态机
 }
 
 // 时间槽高频任务
-void motor_foc_tim_task(tMotorCtrl *mc, float ts) {
+void motor_foc_tim_task(float ts) {
 
     // 获取电流
-    mc->ops->get_current(mc->fb.ims);
+    g_motor.ops->get_current(g_motor.fb.ims);
     // 电流处理 采用上一个周期的电角度解算
-    mc_foc_current_process(&mc->foc, mc->fb.ims);
+    mc_foc_current_process(&g_motor.foc, g_motor.fb.ims);
 
     // 角度、速度、位置更新
-    mc->ops->theta_process(
-        ts, &mc->fb.theta_elec, &mc->fb.theta_rotor, &mc->fb.vel, &mc->fb.pos);
+    g_motor.ops->get_theta(&g_motor.sen.theta_r_raw);
+    mc_sensor_theta_process(&g_motor.sen, ts, g_motor.param->motor_polepairs);
 
-    if (mc->state == MOTOR_OPENLOOP) {
-        mc->foc.ref.theta_e += mc->ref.vel_elec * ts;
-        mc->foc.ref.theta_e = XANGLE_2PI(mc->foc.ref.theta_e);
-    } else {
-        mc->foc.ref.theta_e = mc->fb.theta_elec;
-    }
-    mc->ref.sec = (mc->foc.ref.theta_e / XMATH_PI_3) + 0.5f;
-
-    // 预计算sin cos
-    XSIN_COS(mc->foc.ref.theta_e, &mc->foc.ref.sin_e, &mc->foc.ref.cos_e);
-
-    if (mc->state < MOTOR_OPENLOOP)
-        return;
-    // foc电流环更新 更新 dutyd dutyq
-    mc_foc_cl_update(&mc->foc);
+    // foc 更新 dutyd dutyq
+    mc_foc_update(&g_motor.foc, ts, g_motor.sen.theta_e);
 
     // TODO:电压补偿算法,和d轴高频注入都可以在这里进行
     /*
@@ -194,85 +166,59 @@ void motor_foc_tim_task(tMotorCtrl *mc, float ts) {
     }
     */
     // svpwm 调制生成脉冲
-    mc_foc_svpwm_output(&mc->foc);
+    mc_foc_svpwm_output(&g_motor.foc);
     // TODO: 这里做死区补偿
 
     //  输出
-    mc->ops->gate_drv_out(mc->ref.dutyU, mc->ref.dutyV, mc->ref.dutyW);
+    g_motor.ops->gate_drv_out(
+        g_motor.foc.out.dutyU, g_motor.foc.out.dutyV, g_motor.foc.out.dutyW);
     // 采样点重置
-    mc->ops->sp_calibration(mc->ref.sec);
+    g_motor.ops->sp_calibration(g_motor.foc.ref.sec);
 }
 
-// 运行轨迹规划器
-void motor_traj_tim_task(tMotorCtrl *mc, float ts) {
-    // 电流模式 整定 其他状态不需要轨迹规划
-    if (mc->state <= MOTOR_CURRENT_MODE)
-        return;
-    traj_Update(&mc->traj, ts);
-
-    if (mc->state == MOTOR_MIT_MODE) {
-        // 使用内置轨迹规划器 输出轨迹信息
-        mc->ref.pos = mc->traj.out.value;
-        mc->ref.vel = mc->traj.out.rate_d1;
-        mc->ref.tau_ff = mc->param->motor_j * mc->traj.out.rate_d2 +
-                         mc->param->motor_b * mc->traj.out.rate_d1;
-    } else if (mc->state == MOTOR_SPEED_MODE)
-        mc->ref.vel = mc->traj.out.value;
-    else if (mc->state == MOTOR_POSITION_MODE) {
-        mc->ref.pos = mc->traj.out.value;
-    }
+// 运行指令处理
+void motor_cmd_tim_task(float ts) {
+    ctrl_cmd_process(&g_motor.ctrl, g_motor.param, ts);
 }
 
-// 跑pid速度环/mit
-void motor_vl_pid_mit_tim_task(tMotorCtrl *mc, float ts) {
-    if (mc->state == MOTOR_SPEED_MODE) { // 速度环pid控制 或 位置环
-        mc->ref.iq = pid_vl_update(&mc->ctrl, mc->ref.vel, mc->fb.vel);
-    } else if (mc->state == MOTOR_POSITION_MODE) {
+// 运行控制器配置
+void motor_ctrl_cfg_tim_task(float ts) {
+    ctrl_config(&g_motor.ctrl, g_motor.param, ts);
+}
 
-        if (mc->param->pos_pidmode == POS_PID_PVC)
-            mc->ref.iq = pid_vl_update(&mc->ctrl, mc->ref.vel, mc->fb.vel);
-        else
-            mc->ref.iq = pid_pl_update(&mc->ctrl, mc->ref.pos, mc->fb.pos);
-    } else if (mc->state == MOTOR_MIT_MODE) {
-
-        mc->ref.tau = mit_con_update(&mc->ctrl,
-                                     mc->ref.tau_ff,
-                                     mc->ref.pos,
-                                     mc->fb.pos,
-                                     mc->ref.vel,
-                                     mc->fb.vel);
-
-        mc->ref.iq = mc->ref.tau / mc->param->motor_ke;
-    }
+// 控制任务
+void motor_ctrl_tim_task(float ts) {
+    ctrl_update(&g_motor.ctrl, g_motor.param, ts);
 }
 // 弱磁控制
-void motor_field_weakening_tim_task(tMotorCtrl *mc, float ts) {
-    if (mc->cfg.fw_ctrl) {
-        if (mc->ref.dutyq > 0.9f) {
-            mc->ref.duty = XSQRTF(mc->ref.dutyd * mc->ref.dutyd +
-                                  mc->ref.dutyq * mc->ref.dutyq);
-
-            mc->ref.id = field_weakening_update(&mc->ctrl, 1.0f, mc->ref.duty);
-        } else {
-            mc->ref.duty = mc->ref.dutyq;
-            mc->ref.id = 0.0f;
-        }
-    }
-}
-
-// pid位置环
-void motor_pl_pid_tim_task(tMotorCtrl *mc, float ts) {
-    if (mc->state == MOTOR_POSITION_MODE &&
-        mc->param->pos_pidmode == POS_PID_PVC) { // 位置环pid pvc控制
-        mc->ref.vel = pid_pl_update(&mc->ctrl, mc->ref.pos, mc->fb.pos);
-    }
+void motor_field_weakening_tim_task(float ts) {
+    field_weakening_update(&g_motor.foc);
 }
 
 const tSlotTaskItem high_schedule[FREQ_HIGH_LOOP] = {
     {
         0,
-        ,
+        motor_foc_tim_task,
+
     },
 };
-const tSlotTaskItem medium_schedule[FREQ_MEDIUM_LOOP];
+const tSlotTaskItem medium_schedule[FREQ_MEDIUM_LOOP] = {
+    {
+        0,
+        motor_cmd_tim_task,
+    },
+    {
+        1,
+        motor_ctrl_cfg_tim_task,
+    },
+    {
+        2,
+        motor_ctrl_tim_task,
+    },
+    {
+        3,
+        motor_field_weakening_tim_task,
+    },
+};
+
 const tSlotTaskItem low_schedule[FREQ_LOW_LOOP];

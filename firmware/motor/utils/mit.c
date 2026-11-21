@@ -17,6 +17,8 @@ void mit_config(tMIT *mit, float newKp, float newKd) {
     // 用前馈力矩补偿掉增益跳变引起的力矩差，保证总力矩连续，然后让的补偿量慢慢衰减回零
     mit->tau_ff_bt =
         (mit->Kp - newKp) * mit->p_error + (mit->Kd - newKd) * mit->v_error;
+    mit->Kp = newKp;
+    mit->Kd = newKd;
 }
 // MIT模式 输入参数：tau_ff (前馈扭矩)，pos_ref (位置参考)，pos_fb
 // (位置反馈)，vel_ref (速度参考)，vel_fb (速度反馈)。输出参数：tau (控制扭矩)

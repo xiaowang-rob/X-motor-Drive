@@ -16,7 +16,7 @@
 // 频率分频控制（实现高中低三环分层分段时隙控制）
 // 每个分频的最后一个时间槽加计数并且处理低一级的任务
 // 故最后一个时间槽一般不分配任务
-typedef void (*SlotTask)(void *ctx, float dt);
+typedef void (*SlotTask)(float dt);
 
 typedef enum {
     ST_TYPE_HIGH,
@@ -26,8 +26,6 @@ typedef enum {
 typedef struct {
     uint8_t slot;
     SlotTask task;
-    void *ctx;
-
 } tSlotTaskItem;
 
 extern const tSlotTaskItem high_schedule[FREQ_HIGH_LOOP];

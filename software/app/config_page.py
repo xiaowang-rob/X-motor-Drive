@@ -50,7 +50,6 @@ OBSERVER_PAGES = (
             Pidx.PARAM_ABS_POS_ENC,
             Pidx.PARAM_THETA_OFFSET,
             Pidx.PARAM_POSITIVE_DIR,
-            Pidx.PARAM_THETA_SOURCE,
         ),
     ),
     ("无感观测器", (Pidx.PARAM_HFI_SMO_THRESHOLD,)),

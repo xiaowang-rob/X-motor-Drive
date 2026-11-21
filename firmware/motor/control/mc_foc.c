@@ -140,6 +140,25 @@ void mc_foc_current_process(tMcFoc *foc, float is_in[3]) {
                    &foc->fb.iq);
 }
 
+// foc 运行 处理电角度 和 电流环 更新ud uq
+void mc_foc_update(tMcFoc *foc, float ts, float fb_theta_e) {
+    if (foc->to_enable) {
+        foc->ref.theta_e += foc->ref.vel_elec * ts;
+        foc->ref.theta_e = XANGLE_2PI(foc->ref.theta_e);
+    } else {
+        foc->ref.theta_e = fb_theta_e;
+    }
+    foc->ref.sec = (foc->ref.theta_e / XMATH_PI_3) + 0.5f;
+
+    // 预计算sin cos
+    XSIN_COS(foc->ref.theta_e, &foc->ref.sin_e, &foc->ref.cos_e);
+
+    if (foc->cl_enable) {
+        foc->out.duty_d = pi_update(&foc->PI_id, foc->ref.id, foc->fb.id);
+        foc->out.duty_q = pi_update(&foc->PI_iq, foc->ref.iq, foc->fb.iq);
+    }
+}
+
 void mc_foc_svpwm_output(tMcFoc *foc) {
     inv_park_transform(foc->out.duty_d,
                        foc->out.duty_q,

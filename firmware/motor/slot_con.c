@@ -31,21 +31,21 @@ void slot_con_callback(tSlotCon *sc) {
     TIME_SAMPLE_START(high_s);
     for (uint8_t i = 0; i < FREQ_HIGH_LOOP; i++) {
         if (sc->base_tic == high_schedule[i].slot)
-            high_schedule[i].task(high_schedule[i].ctx, sc->t_high);
+            high_schedule[i].task(sc->t_high);
     }
 
     if (++sc->base_tic >= FREQ_HIGH_LOOP) {
         sc->base_tic = 0;
         for (uint8_t i = 0; i < FREQ_MEDIUM_LOOP; i++) {
             if (sc->high_tic == medium_schedule[i].slot)
-                medium_schedule[i].task(medium_schedule[i].ctx, sc->t_med);
+                medium_schedule[i].task(sc->t_med);
         }
 
         if (++sc->high_tic >= FREQ_MEDIUM_LOOP) {
             sc->high_tic = 0;
             for (uint8_t i = 0; i < FREQ_LOW_LOOP; i++) {
                 if (sc->medium_tic == low_schedule[i].slot)
-                    low_schedule[i].task(low_schedule[i].ctx, sc->t_low);
+                    low_schedule[i].task(sc->t_low);
             }
             if (++sc->medium_tic >= FREQ_LOW_LOOP) {
                 sc->medium_tic = 0;

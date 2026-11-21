@@ -9,47 +9,48 @@
 
 #include "mc_controller.h"
 #include "mc_foc.h"
+#include "mc_sensor.h"
 
 typedef struct {
     eMotorState mode;
 
-    bool ol_vel_ctrl; // 开启开环速度控制
-    bool tau_ctrl;    // 开启电流控制
-    bool fw_ctrl;     // 弱磁控制
-    bool pvt_ctrl;    // 开启pvt模式
+    bool vo_ctrl;  // 开环速度控制
+    bool tau_ctrl; // 开启力矩控制
+    bool fw_ctrl;  // 弱磁控制
+    bool pvt_ctrl; // 开启pvt模式
     float mit_kp;
     float mit_kd;
 } tCmdCfg;
 
 typedef struct {
     eMotorState mode;
-    struct {
-        float value; // 角度或者速度
-        float duty;  // 占空比
-    } openloop;
-    struct {
-        float value; // 拖动电流/转矩 N/m
-    } current_ctrl;
+    union {
+        struct {
+            float value; // 角度或者速度
+            float duty;  // 占空比
+        } openloop;
+        struct {
+            float value; // 拖动电流/转矩 N/m
+        } current_ctrl;
 
-    struct {
-        float vel; // 速度 (rad/s)
-    } vel_pid_ctrl;
+        struct {
+            float vel; // 速度 (rad/s)
+        } vel_pid_ctrl;
 
-    struct {
-        float pos; // 位置 (rad)
-    } pos_pid_ctrl;
+        struct {
+            float pos; // 位置 (rad)
+        } pos_pid_ctrl;
 
-    struct {
-        float pos;    // 位置 (rad)
-        float vel;    // pvt vel
-        float tau_ff; // 转矩前馈
-    } mit_ctrl;
-
+        struct {
+            float pos;    // 位置 (rad)
+            float vel;    // pvt vel
+            float tau_ff; // 转矩前馈
+        } mit_ctrl;
+    } payload;
 } tCmdValue;
 
 typedef struct {
-    void (*theta_process)(float ts, float *th_e, float *th_r, float *vel,
-                          float *pos);                  // 处理角度信息
+    void (*get_theta)(float *theta);                    // 获取角度
     void (*get_current)(float is[3]);                   // 获取采集电流
     float (*get_motor_temp)(void);                      // 获取电机温度
     void (*gate_drv_enable)(bool en);                   // 栅极驱动 使能
@@ -67,17 +68,9 @@ typedef struct {
 
     tParameter *param; // 参数
 
-    tTraj traj; // 内置轨迹规划器
-    tMcFoc foc; // foc
-    tCtrl ctrl; // 控制器
-
-    struct {
-        volatile bool cur_enable;  // 电流闭环使能标记
-        volatile bool ol_vel_ctrl; // 开启开环速度控制
-        volatile bool tau_ctrl;    // 开启力矩控制
-        volatile bool fw_ctrl;     // 弱磁控制
-        volatile bool pvt_ctrl;    // 开启pvt模式
-    } cfg;
+    tMcSensor sen; // 角度感应
+    tMcFoc foc;    // foc
+    tCtrl ctrl;    // 控制器
 
     struct {
         float motor_temp; // 电机温度 C，由电机温度采样链路更新
