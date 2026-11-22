@@ -13,8 +13,7 @@ typedef struct {
 
 bool em_init(tParameter *param);
 void em_loop_task(void);
-void em_theta_process_task(float ts, float *th_e, float *th_r, float *vel,
-                           float *pos);
+void em_get_theta(float *theta);
 
 void em_set_pos_zero(void);
 void em_set_pos_limit(void);

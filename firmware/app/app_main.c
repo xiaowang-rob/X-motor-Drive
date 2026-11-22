@@ -14,12 +14,12 @@
 #include "slot_con.h"
 #include "status_feedback.h"
 
-#include "motor_ctrl.h"
+#include "mc_motor.h"
 
 tMotorOps mc_ops = {
     .gate_drv_enable = gd_enable,
     .gate_drv_out = gd_output,
-    .theta_process = em_theta_process_task,
+    .get_theta = em_get_theta,
     .get_current = gd_get_current,
     .sp_calibration = NULL, // 先不启用
     .get_motor_temp = NULL, // 先不用
@@ -34,8 +34,7 @@ void app_main_init(void) {
     dm_data_init();
     // 辅助通讯初始化
     comm_sup_init();
-    // 初始化slot槽服务
-    slot_con_init(F_PWM);
+
     // 栅极驱动模块初始化
     gd_init(&g_pwm, &g_sample);
     // 配置
@@ -43,8 +42,7 @@ void app_main_init(void) {
 }
 
 void app_main_config(void) {
-    // 关闭所有任务
-    slot_con_start(false);
+
     // 初始化保护服务
     pro_manager_init(&g_param);
     // 初始化主总线通讯
@@ -56,8 +54,6 @@ void app_main_config(void) {
 
     // 电机算法初始化
     motor_init(&g_param, &mc_ops);
-    // 启动solt槽任务
-    slot_con_start(true);
 }
 
 void app_main_start(void) {
@@ -75,13 +71,3 @@ void app_main_start(void) {
         status_fb_loop_task(g_motor.state);
     }
 }
-
-const tSlotTask high_schedule[FREQ_HIGH_LOOP] = {{0, motor_foc_tim_task}};
-const tSlotTask medium_schedule[FREQ_MEDIUM_LOOP] = {
-    {4, motor_traj_tim_task},
-    {5, motor_vl_pid_mit_tim_task},
-    {6, motor_field_weakening_tim_task},
-};
-const tSlotTask low_schedule[FREQ_LOW_LOOP] = {
-    {1, motor_pl_pid_tim_task},
-};

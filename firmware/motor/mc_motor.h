@@ -1,88 +1,82 @@
-#ifndef __MC_MOTOR_H
-#define __MC_MOTOR_H
+#ifndef MC_MOTOR_H
+#define MC_MOTOR_H
 
-#include <stdbool.h>
-
-#include "cmd_list.h"
-#include "data_list.h"
-#include "parameter_list.h"
-
-#include "mc_controller.h"
-#include "mc_foc.h"
-#include "mc_sensor.h"
+#include "core/mc_config.h"
+#include "command/mc_command.h"
+#include "control/mc_controller.h"
+#include "control/mc_foc.h"
+#include "control/mc_sensor.h"
 
 typedef struct {
-    eMotorState mode;
-
-    bool vo_ctrl;  // 开环速度控制
-    bool tau_ctrl; // 开启力矩控制
-    bool fw_ctrl;  // 弱磁控制
-    bool pvt_ctrl; // 开启pvt模式
-    float mit_kp;
-    float mit_kd;
-} tCmdCfg;
-
-typedef struct {
-    eMotorState mode;
-    union {
-        struct {
-            float value; // 角度或者速度
-            float duty;  // 占空比
-        } openloop;
-        struct {
-            float value; // 拖动电流/转矩 N/m
-        } current_ctrl;
-
-        struct {
-            float vel; // 速度 (rad/s)
-        } vel_pid_ctrl;
-
-        struct {
-            float pos; // 位置 (rad)
-        } pos_pid_ctrl;
-
-        struct {
-            float pos;    // 位置 (rad)
-            float vel;    // pvt vel
-            float tau_ff; // 转矩前馈
-        } mit_ctrl;
-    } payload;
-} tCmdValue;
-
-typedef struct {
-    void (*get_theta)(float *theta);                    // 获取角度
-    void (*get_current)(float is[3]);                   // 获取采集电流
-    float (*get_motor_temp)(void);                      // 获取电机温度
-    void (*gate_drv_enable)(bool en);                   // 栅极驱动 使能
-    void (*gate_drv_out)(float Du, float Dv, float Dw); // 栅极驱动 输出
-    void (*sp_calibration)(uint8_t sec);                // 校准采样点
+    void *user;
+    /* 采样须对应 applied；填入有效相掩码和 PWM 序号。额外硬件流水延迟
+     * 由适配层保存实际应用的元数据处理，不能把新 PWM 当作旧采样来源。 */
+    bool (*read_sample)(void *user, const tPwm *applied, tSample *sample);
+    void (*write_pwm)(void *user, const tPwm *pwm);
+    void (*set_enable)(void *user, bool enabled);
+    bool (*get_temp)(void *user, float *temperature);
+    /* 成对提供，token 保存/恢复原中断状态。回调不可重入 motor。
+     * 都为空时，所有 API（含故障接口）只能串行调用。 */
+    uintptr_t (*enter_critical)(void *user);
+    void (*exit_critical)(void *user, uintptr_t token);
 } tMotorOps;
 
-// 主要核心
+/* 固定大小、调用者所有。运行期间仅通过 API 访问，不直接写内部字段。 */
 typedef struct {
-    const tMotorOps *ops;
-    eMotorState state; // 状态
-
-    bool enc_on; // 有感
-    bool obs_on; // 无感
-
-    tParameter *param; // 参数
-
-    tMcSensor sen; // 角度感应
-    tMcFoc foc;    // foc
-    tCtrl ctrl;    // 控制器
-
-    struct {
-        float motor_temp; // 电机温度 C，由电机温度采样链路更新
-        float ims[3];     // 三相原始电流（未滤波） A
-
-        float theta_rotor; // 转子角度
-        float vel;         // 转速 rad/s
-        float pos;         // 位置 rad
-    } fb;
-
+    tParameter param;             /* 当前协议参数快照 */
+    tMotorTiming timing;
+    float cmd_dt;
+    tMotorOps port;
+    tMcRunState state;
+    uint32_t faults;
+    bool ready;
+    tCmd mailbox;
+    bool cmd_pending;
+    uint32_t cmd_seq;
+    tCmdState cmd;
+    tCtrl ctrl;
+    tMcFoc foc;
+    tMcSensor sensor;
+    tPwm pwm;                     /* 实际提交到硬件的 PWM */
+    uint16_t cmd_tick, vel_tick, pos_tick, slow_tick;
+    uint32_t traj_seq;             /* 前台规划提交时检测轨迹是否前进 */
+    float vbus, temp;
+    bool temp_valid;
 } tMotorCtrl;
 
-extern tMotorCtrl g_motor;
+typedef struct {
+    tMcRunState state;
+    tMcMode mode;
+    uint32_t faults;
+    tRotor rotor;
+    tRef ref;
+    tDq current, iref;
+    float is[3];
+    float voltage_utilization, vref;
+    tAb applied_voltage;
+    tPwm pwm;
+    float vbus, temp;
+    bool temp_valid;
+} tMotorFb;
+
+/* 所有 API 以有效指针、已完成初始化、有限输入和正确端口为调用前提。
+ * init 只调用一次或在 tick 完全停止、输出已关闭后调用。 */
+tMcResult motor_init(tMotorCtrl *motor, const tParameter *param,
+                        const tMotorTiming *timing, const tMotorOps *port);
+/* 只在 IDLE 应用，保留端口/周期，重建算法状态并重新等待有效采样。 */
+tMcResult motor_config(tMotorCtrl *motor, const tParameter *param);
+tMcResult motor_submit(tMotorCtrl *motor, const tCmd *cmd);
+tMcResult motor_start(tMotorCtrl *motor);
+/* 立即关断并进入 IDLE（有锁存故障时仍为 FAULT）；下次 start 复位控制器。 */
+void motor_stop(tMotorCtrl *motor);
+void motor_fault(tMotorCtrl *motor, uint32_t faults);
+tMcResult motor_clear_fault(tMotorCtrl *motor);
+tMcResult motor_zero(tMotorCtrl *motor);
+/* 每 dt 调用一次，单一周期入口，不得并发/重入。 */
+void motor_tick(tMotorCtrl *motor);
+/* 前台循环调用；S 型新目标需要本函数规划，tick 不执行迭代搜索。
+ * service 不可重入，可被 tick 中断；规划过期时返回 MC_BUSY，稍后重试。 */
+tMcResult motor_service(tMotorCtrl *motor);
+tMcResult motor_get_fb(tMotorCtrl *motor, tMotorFb *feedback);
 
 #endif

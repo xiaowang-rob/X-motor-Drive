@@ -64,21 +64,22 @@ typedef enum
     PARAM_MIT_KPMAX = 0x38, /* MIT 最大刚度 */
     PARAM_MIT_KDMAX = 0x39, /* MIT 最大阻尼 */
     PARAM_MIT_TMAX = 0x3A, /* MIT最大扭矩 */
-    PARAM_FWLKP = 0x3B, /* 弱磁Kp */
-    PARAM_FWLKI = 0x3C, /* 弱磁Ki */
-    PARAM_TRAJ_MODE = 0x3D, /* 轨迹规划器模式 */
-    PARAM_TRAJ_LIMIT_D1 = 0x3E, /* 轨迹一阶限幅 */
-    PARAM_TRAJ_LIMIT_D2 = 0x3F, /* 轨迹二阶限幅 */
-    PARAM_TRAJ_LIMIT_D3 = 0x40, /* 轨迹三阶限幅 */
-    PARAM_TRAJ_TOLERANCE = 0x41, /* 轨迹容差 */
-    PARAM_UNDERVOLTAGE_THRESHOLD = 0x42, /* 欠压阈值 */
-    PARAM_OVERVOLTAGE_THRESHOLD = 0x43, /* 过压阈值 */
-    PARAM_OVERTEMP_THRESHOLD = 0x44, /* 过温阈值 */
-    PARAM_PRO_TOLERANCE = 0x45, /* 保护超限容忍度 */
-    PARAM_PRO_TOLERANCE_TIME_MS = 0x46, /* 保护超限容忍时间 */
-    PARAM_CAN_RATE = 0x47, /* CAN速率 */
-    PARAM_CAN_ID = 0x48, /* CAN ID */
-    PARAM_CAN_MODE = 0x49, /* CAN模式 */
+    PARAM_FWGATE = 0x3B, /* 弱磁控制启动阈值 */
+    PARAM_FWLKP = 0x3C, /* 弱磁Kp */
+    PARAM_FWLKI = 0x3D, /* 弱磁Ki */
+    PARAM_TRAJ_MODE = 0x3E, /* 轨迹规划器模式 */
+    PARAM_TRAJ_LIMIT_D1 = 0x3F, /* 轨迹一阶限幅 */
+    PARAM_TRAJ_LIMIT_D2 = 0x40, /* 轨迹二阶限幅 */
+    PARAM_TRAJ_LIMIT_D3 = 0x41, /* 轨迹三阶限幅 */
+    PARAM_TRAJ_TOLERANCE = 0x42, /* 轨迹容差 */
+    PARAM_UNDERVOLTAGE_THRESHOLD = 0x43, /* 欠压阈值 */
+    PARAM_OVERVOLTAGE_THRESHOLD = 0x44, /* 过压阈值 */
+    PARAM_OVERTEMP_THRESHOLD = 0x45, /* 过温阈值 */
+    PARAM_PRO_TOLERANCE = 0x46, /* 保护超限容忍度 */
+    PARAM_PRO_TOLERANCE_TIME_MS = 0x47, /* 保护超限容忍时间 */
+    PARAM_CAN_RATE = 0x48, /* CAN速率 */
+    PARAM_CAN_ID = 0x49, /* CAN ID */
+    PARAM_CAN_MODE = 0x4A, /* CAN模式 */
     PARAM_ALL = 0xFF, /* 全部参数；写入时仅发送此 ID 表示应用全部已写入参数，重置时表示全部重置，不携带 value */
 } eParameter;
 
@@ -210,6 +211,7 @@ typedef struct
     float mit_kpmax;
     float mit_kdmax;
     float mit_tmax;
+    float fwgate;
     float fwlkp;
     float fwlki;
     uint8_t traj_mode;
@@ -227,7 +229,7 @@ typedef struct
     uint8_t can_mode;
 } tParameter;
 
-#define PARAM_NUM 0x4A
+#define PARAM_NUM 0x4B
 
 #define PARAM_FIELDS(X) \
     X(PARAM_MOTOR_TYPE, motor_type, FLD_U8, 0u) \
@@ -288,6 +290,7 @@ typedef struct
     X(PARAM_MIT_KPMAX, mit_kpmax, FLD_F32, 0.0f) \
     X(PARAM_MIT_KDMAX, mit_kdmax, FLD_F32, 0.0f) \
     X(PARAM_MIT_TMAX, mit_tmax, FLD_F32, 0.0f) \
+    X(PARAM_FWGATE, fwgate, FLD_F32, 0.9f) \
     X(PARAM_FWLKP, fwlkp, FLD_F32, 0.0f) \
     X(PARAM_FWLKI, fwlki, FLD_F32, 0.0f) \
     X(PARAM_TRAJ_MODE, traj_mode, FLD_U8, 0u) \

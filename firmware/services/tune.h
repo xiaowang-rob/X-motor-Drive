@@ -3,9 +3,8 @@
 
 #include "tune_alg.h"
 
-#include "control.h"
 #include "enc_manager.h"
-#include "motor_ctrl.h"
+#include "mc_motor.h"
 #include "obsdata.h"
 #include "parameter_list.h"
 

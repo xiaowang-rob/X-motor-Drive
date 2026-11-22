@@ -72,24 +72,25 @@ class Pidx:
     PARAM_MIT_KPMAX = 56  # MIT 最大刚度
     PARAM_MIT_KDMAX = 57  # MIT 最大阻尼
     PARAM_MIT_TMAX = 58  # MIT最大扭矩
-    PARAM_FWLKP = 59  # 弱磁Kp
-    PARAM_FWLKI = 60  # 弱磁Ki
-    PARAM_TRAJ_MODE = 61  # 轨迹规划器模式
-    PARAM_TRAJ_LIMIT_D1 = 62  # 轨迹一阶限幅
-    PARAM_TRAJ_LIMIT_D2 = 63  # 轨迹二阶限幅
-    PARAM_TRAJ_LIMIT_D3 = 64  # 轨迹三阶限幅
-    PARAM_TRAJ_TOLERANCE = 65  # 轨迹容差
-    PARAM_UNDERVOLTAGE_THRESHOLD = 66  # 欠压阈值
-    PARAM_OVERVOLTAGE_THRESHOLD = 67  # 过压阈值
-    PARAM_OVERTEMP_THRESHOLD = 68  # 过温阈值
-    PARAM_PRO_TOLERANCE = 69  # 保护超限容忍度
-    PARAM_PRO_TOLERANCE_TIME_MS = 70  # 保护超限容忍时间
-    PARAM_CAN_RATE = 71  # CAN速率
-    PARAM_CAN_ID = 72  # CAN ID
-    PARAM_CAN_MODE = 73  # CAN模式
+    PARAM_FWGATE = 59  # 弱磁控制启动阈值
+    PARAM_FWLKP = 60  # 弱磁Kp
+    PARAM_FWLKI = 61  # 弱磁Ki
+    PARAM_TRAJ_MODE = 62  # 轨迹规划器模式
+    PARAM_TRAJ_LIMIT_D1 = 63  # 轨迹一阶限幅
+    PARAM_TRAJ_LIMIT_D2 = 64  # 轨迹二阶限幅
+    PARAM_TRAJ_LIMIT_D3 = 65  # 轨迹三阶限幅
+    PARAM_TRAJ_TOLERANCE = 66  # 轨迹容差
+    PARAM_UNDERVOLTAGE_THRESHOLD = 67  # 欠压阈值
+    PARAM_OVERVOLTAGE_THRESHOLD = 68  # 过压阈值
+    PARAM_OVERTEMP_THRESHOLD = 69  # 过温阈值
+    PARAM_PRO_TOLERANCE = 70  # 保护超限容忍度
+    PARAM_PRO_TOLERANCE_TIME_MS = 71  # 保护超限容忍时间
+    PARAM_CAN_RATE = 72  # CAN速率
+    PARAM_CAN_ID = 73  # CAN ID
+    PARAM_CAN_MODE = 74  # CAN模式
     PARAM_ALL = 255  # 全部参数；写入时仅发送此 ID 表示应用全部已写入参数，重置时表示全部重置，不携带 value
-    NUM_OF_PARAM = 74  # PARAM总数
-PARAM_NUM = 74
+    NUM_OF_PARAM = 75  # PARAM总数
+PARAM_NUM = 75
 
 class Didx:
     DATA_CURRENT_U = 1  # U相电流
@@ -336,21 +337,22 @@ PARAMETERS = {
     56: ProtocolField(56, 'PARAM_MIT_KPMAX', 'mit_kpmax', 'MIT 最大刚度', 'N·m/rad', 'FLD_F32', 0.0, None),
     57: ProtocolField(57, 'PARAM_MIT_KDMAX', 'mit_kdmax', 'MIT 最大阻尼', 'N·m·s/rad', 'FLD_F32', 0.0, None),
     58: ProtocolField(58, 'PARAM_MIT_TMAX', 'mit_tmax', 'MIT最大扭矩', 'N·m', 'FLD_F32', 0.0, None),
-    59: ProtocolField(59, 'PARAM_FWLKP', 'fwlkp', '弱磁Kp', '', 'FLD_F32', 0.0, None),
-    60: ProtocolField(60, 'PARAM_FWLKI', 'fwlki', '弱磁Ki', '', 'FLD_F32', 0.0, None),
-    61: ProtocolField(61, 'PARAM_TRAJ_MODE', 'traj_mode', '轨迹规划器模式', '', 'FLD_U8', 0, [('禁用', 0), ('梯形轨迹(斜坡缓冲)', 1), ('曲线轨迹(双重缓冲)', 2)]),
-    62: ProtocolField(62, 'PARAM_TRAJ_LIMIT_D1', 'traj_limit_d1', '轨迹一阶限幅', 'unit/s', 'FLD_F32', 0.0, None),
-    63: ProtocolField(63, 'PARAM_TRAJ_LIMIT_D2', 'traj_limit_d2', '轨迹二阶限幅', 'unit/s²', 'FLD_F32', 0.0, None),
-    64: ProtocolField(64, 'PARAM_TRAJ_LIMIT_D3', 'traj_limit_d3', '轨迹三阶限幅', 'unit/s³', 'FLD_F32', 0.0, None),
-    65: ProtocolField(65, 'PARAM_TRAJ_TOLERANCE', 'traj_tolerance', '轨迹容差', '0~1', 'FLD_F32', 0.0, None),
-    66: ProtocolField(66, 'PARAM_UNDERVOLTAGE_THRESHOLD', 'undervoltage_threshold', '欠压阈值', 'V', 'FLD_F32', 20, None),
-    67: ProtocolField(67, 'PARAM_OVERVOLTAGE_THRESHOLD', 'overvoltage_threshold', '过压阈值', 'V', 'FLD_F32', 26, None),
-    68: ProtocolField(68, 'PARAM_OVERTEMP_THRESHOLD', 'overtemp_threshold', '过温阈值', '℃', 'FLD_F32', 80, None),
-    69: ProtocolField(69, 'PARAM_PRO_TOLERANCE', 'pro_tolerance', '保护超限容忍度', '0~1', 'FLD_F32', 0.1, None),
-    70: ProtocolField(70, 'PARAM_PRO_TOLERANCE_TIME_MS', 'pro_tolerance_time_ms', '保护超限容忍时间', 'ms', 'FLD_F32', 1, None),
-    71: ProtocolField(71, 'PARAM_CAN_RATE', 'can_rate', 'CAN速率', '', 'FLD_U8', 0, [('1Mbps', 0), ('500Kbps', 1)]),
-    72: ProtocolField(72, 'PARAM_CAN_ID', 'can_id', 'CAN ID', '', 'FLD_U32', 1, None),
-    73: ProtocolField(73, 'PARAM_CAN_MODE', 'can_mode', 'CAN模式', '', 'FLD_U8', 0, [('静默模式', 0), ('响应模式', 1)]),
+    59: ProtocolField(59, 'PARAM_FWGATE', 'fwgate', '弱磁控制启动阈值', '0-1', 'FLD_F32', 0.9, None),
+    60: ProtocolField(60, 'PARAM_FWLKP', 'fwlkp', '弱磁Kp', '', 'FLD_F32', 0.0, None),
+    61: ProtocolField(61, 'PARAM_FWLKI', 'fwlki', '弱磁Ki', '', 'FLD_F32', 0.0, None),
+    62: ProtocolField(62, 'PARAM_TRAJ_MODE', 'traj_mode', '轨迹规划器模式', '', 'FLD_U8', 0, [('禁用', 0), ('梯形轨迹(斜坡缓冲)', 1), ('曲线轨迹(双重缓冲)', 2)]),
+    63: ProtocolField(63, 'PARAM_TRAJ_LIMIT_D1', 'traj_limit_d1', '轨迹一阶限幅', 'unit/s', 'FLD_F32', 0.0, None),
+    64: ProtocolField(64, 'PARAM_TRAJ_LIMIT_D2', 'traj_limit_d2', '轨迹二阶限幅', 'unit/s²', 'FLD_F32', 0.0, None),
+    65: ProtocolField(65, 'PARAM_TRAJ_LIMIT_D3', 'traj_limit_d3', '轨迹三阶限幅', 'unit/s³', 'FLD_F32', 0.0, None),
+    66: ProtocolField(66, 'PARAM_TRAJ_TOLERANCE', 'traj_tolerance', '轨迹容差', '0~1', 'FLD_F32', 0.0, None),
+    67: ProtocolField(67, 'PARAM_UNDERVOLTAGE_THRESHOLD', 'undervoltage_threshold', '欠压阈值', 'V', 'FLD_F32', 20, None),
+    68: ProtocolField(68, 'PARAM_OVERVOLTAGE_THRESHOLD', 'overvoltage_threshold', '过压阈值', 'V', 'FLD_F32', 26, None),
+    69: ProtocolField(69, 'PARAM_OVERTEMP_THRESHOLD', 'overtemp_threshold', '过温阈值', '℃', 'FLD_F32', 80, None),
+    70: ProtocolField(70, 'PARAM_PRO_TOLERANCE', 'pro_tolerance', '保护超限容忍度', '0~1', 'FLD_F32', 0.1, None),
+    71: ProtocolField(71, 'PARAM_PRO_TOLERANCE_TIME_MS', 'pro_tolerance_time_ms', '保护超限容忍时间', 'ms', 'FLD_F32', 1, None),
+    72: ProtocolField(72, 'PARAM_CAN_RATE', 'can_rate', 'CAN速率', '', 'FLD_U8', 0, [('1Mbps', 0), ('500Kbps', 1)]),
+    73: ProtocolField(73, 'PARAM_CAN_ID', 'can_id', 'CAN ID', '', 'FLD_U32', 1, None),
+    74: ProtocolField(74, 'PARAM_CAN_MODE', 'can_mode', 'CAN模式', '', 'FLD_U8', 0, [('静默模式', 0), ('响应模式', 1)]),
 }
 PARAM_BY_NAME = {field.id_name: field for field in PARAMETERS.values()}
 
