@@ -1,29 +1,52 @@
-#ifndef MC_CONTROLLER_H
-#define MC_CONTROLLER_H
+#ifndef __MC_CONTROLLER_H
+#define __MC_CONTROLLER_H
 
-#include "common/pi.h"
-#include "common/pid.h"
-#include "common/mit.h"
-#include "core/mc_config.h"
+#include "filter.h"
+#include "xmath.h"
+
+#include "mit.h"
+#include "pid.h"
+#include "trajectory.h"
+
+#include "data_list.h"
+#include "parameter_list.h"
 
 typedef struct {
-    tPID pos;
-    tPI vel, id, iq, fw;
+    eMotorState mode;
+
+    tTraj traj; // 内置轨迹规划器
+    tPI PI_vel;
+    tPID PID_pos;
     tMIT mit;
-    float imax, inv_kt;
-    float vref, qref, u2;
-    tDq iref, u;
-    bool fw_enable;
+
+    volatile bool init_flag; // 初始化标志
+
+    volatile bool ov_enable;  // 开环速度使能
+    volatile bool tau_enable; // 力矩输入使能
+    volatile bool pvt_enable; // pvt模式使能
+
+    struct {
+        float vel;          // 速度 (rad/s)
+        float pos;          // 位置 (rad)
+        float id, iq;       // dq电流
+        float tau;          // 转矩 N/m
+        float tau_ff;       // 转矩前馈
+        float theta_elec;   // 电角度rad
+        float sin_e, cos_e; // 电角度 sin cos
+        float vel_elec;     // 电角速度 rad/s
+    } ref;
+
+    struct {
+        float theta_rotor; // 转子角度
+        float theta_elec;  // 电角度 rad
+        float vel;         // 转速 rad/s
+        float pos;         // 位置 rad
+    } fb;
+
 } tCtrl;
 
-void ctrl_init(tCtrl *c, const tParameter *p, const tMotorTiming *t);
-void ctrl_reset(tCtrl *c, const tParameter *p);
-/* 指令变化时执行：直接电流/力矩换算、MIT 增益、弱磁切换。 */
-void ctrl_cmd(tCtrl *c, const tRef *ref, tMcMode mode, bool fw);
-void ctrl_pos(tCtrl *c, const tParameter *p, const tRef *ref, const tRotor *fb);
-void ctrl_vel(tCtrl *c, float ref, float fb);
-void ctrl_mit(tCtrl *c, const tRef *ref, const tRotor *fb);
-/* 已限幅归一化 dq 电压，1 对应 Vbus/sqrt(3)。 */
-void ctrl_current(tCtrl *c, tDq fb);
-
+void ctrl_reset(tCtrl *con);
+void ctrl_cmd_process(tCtrl *con, tParameter *param, float ts);
+void ctrl_config(tCtrl *con, tParameter *param, float ts);
+void ctrl_update(tCtrl *con, tParameter *param, float ts);
 #endif

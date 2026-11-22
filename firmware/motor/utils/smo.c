@@ -128,16 +128,16 @@ void smo_main_loop(tSMO *smo, float v_alpha, float v_beta, float i_alpha,
         (v_beta - smo->rs * smo->i_beta_hat - smo->e_beta) * smo->inv_l_eff;
 
     float k_slm = smo->k_sl_curr * smo->inv_l_eff;
-    di_alpha += k_slm * XTANHF(i_err_alpha / smo->cfg.delta);
-    di_beta += k_slm * XTANHF(i_err_beta / smo->cfg.delta);
+    di_alpha += k_slm * tanhf(i_err_alpha / smo->cfg.delta);
+    di_beta += k_slm * tanhf(i_err_beta / smo->cfg.delta);
 
     smo->i_alpha_hat += di_alpha * ts;
     smo->i_beta_hat += di_beta * ts;
     smo->i_alpha_hat = XCLAMP(smo->i_alpha_hat, -MAX_CURRENT, MAX_CURRENT);
     smo->i_beta_hat = XCLAMP(smo->i_beta_hat, -MAX_CURRENT, MAX_CURRENT);
 
-    smo->e_alpha = k_slm * XTANHF(i_err_alpha / smo->cfg.delta);
-    smo->e_beta = k_slm * XTANHF(i_err_beta / smo->cfg.delta);
+    smo->e_alpha = k_slm * tanhf(i_err_alpha / smo->cfg.delta);
+    smo->e_beta = k_slm * tanhf(i_err_beta / smo->cfg.delta);
 #else
     // 测试模式：直接用反馈电流估算反电动势
     smo->e_alpha = v_alpha - smo->rs * i_alpha;
@@ -165,8 +165,7 @@ void smo_main_loop(tSMO *smo, float v_alpha, float v_beta, float i_alpha,
     if (emf_mag_sq > 0.01f) {
         // PLL: 角度速度联合估计，无附加LPF
         float theta_obs =
-            XATAN2(smo->e_beta_filt, smo->e_alpha_filt); // [-PI, PI] rad
-        (void)theta_obs; // TODO: 接入 PLL 后使用
+            atan2f(smo->e_beta_filt, smo->e_alpha_filt); // [-PI, PI] rad
         // pll_update(&smo->pll, theta_obs, ts);
         // smo->theta_elec = smo->pll.theta; // 直接 rad
         // smo->vel_elec = smo->pll.vel;
@@ -177,14 +176,14 @@ void smo_main_loop(tSMO *smo, float v_alpha, float v_beta, float i_alpha,
 #else
     // 原方案：atan2 + 50%融合平滑（用于对比）
     if (emf_mag_sq > 0.01f) {
-        float theta_new = XATAN2(smo->e_beta_filt, smo->e_alpha_filt);
-        float diff = XANGLE_PI(theta_new - smo->theta_elec);
+        float theta_new = atan2f(smo->e_beta_filt, smo->e_alpha_filt);
+        float diff = normalize_angle_pi(theta_new - smo->theta_elec);
         smo->theta_elec += 0.5f * diff;
     }
-    smo->theta_elec = XANGLE_2PI(smo->theta_elec);
+    smo->theta_elec = normalize_angle_360(smo->theta_elec);
 
-    float angle_diff = XANGLE_PI(smo->theta_elec - smo->theta_prev);
-    float speed_raw = angle_diff / ts;
+    float angle_diff = normalize_angle_pi(smo->theta_elec - smo->theta_prev);
+    float speed_raw = angle_diff / smo->dt;
     smo->vel_elec = filter_first_order_lag(&vel_lpf, speed_raw);
     smo->vel_elec =
         XCLAMP(smo->vel_elec, -smo->cfg.max_vel_elec, smo->cfg.max_vel_elec);

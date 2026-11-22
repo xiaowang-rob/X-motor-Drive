@@ -2,19 +2,9 @@
 // 基于αβ轴脉振方波注入 + PLL跟踪
 //          全程角度制 (degree)，纯电气角度
 #include "hfi.h"
-
-#include <string.h>
-
+#include "control.h"
 #include "filter.h"
 #include "xmath.h"
-
-// dq → αβ（本文件只需要反 Park 变换，避免依赖已删除的 control.h）
-static inline void inv_park_transform(float d, float q, float sin_angle,
-                                      float cos_angle, float *alpha,
-                                      float *beta) {
-    *alpha = d * cos_angle - q * sin_angle;
-    *beta = d * sin_angle + q * cos_angle;
-}
 
 // ---------- 速度 LPF（2nd Butterworth fc=120Hz fs=20kHz，由
 // tools/filter_coeffs.py 生成） ----------

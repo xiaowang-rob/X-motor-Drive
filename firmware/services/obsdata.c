@@ -1,23 +1,23 @@
 #include "obsdata.h"
 #include "gate_drv.h"
-#include "mc_motor.h"
+#include "motor_ctrl.h"
 #include "protection.h"
 
 const tObsData g_data = {
-    .current_u = &g_motor.foc.fb.is[0],
-    .current_v = &g_motor.foc.fb.is[1],
-    .current_w = &g_motor.foc.fb.is[2],
-    .current_d = &g_motor.foc.fb.id,
-    .current_q = &g_motor.foc.fb.iq,
-    .current_d_ref = &g_motor.foc.ref.id,
-    .current_q_ref = &g_motor.foc.ref.iq,
-    .duty = &g_motor.foc.out.duty,
-    .velocity = &g_motor.ctrl.fb.vel,
-    .velocity_ref = &g_motor.ctrl.ref.vel,
-    .theta_elec = &g_motor.foc.ref.theta_e,
-    .theta_mech = &g_motor.sen.theta_r,
-    .position = &g_motor.ctrl.fb.pos,
-    .position_ref = &g_motor.ctrl.ref.pos,
+    .current_u = &g_motor.fb.is[0],
+    .current_v = &g_motor.fb.is[1],
+    .current_w = &g_motor.fb.is[2],
+    .current_d = &g_motor.fb.id,
+    .current_q = &g_motor.fb.iq,
+    .current_d_ref = &g_motor.ref.id,
+    .current_q_ref = &g_motor.ref.iq,
+    .duty = &g_motor.ref.duty,
+    .velocity = &g_motor.fb.vel,
+    .velocity_ref = &g_motor.ref.vel,
+    .theta_elec = &g_motor.ref.theta_elec,
+    .theta_mech = &g_motor.fb.theta_rotor,
+    .position = &g_motor.fb.pos,
+    .position_ref = &g_motor.ref.pos,
     .motor_state = (uint8_t *)&g_motor.state,
     .fault = (uint8_t *)&pro_manager.fault,
     .vbus = &g_gate_drv.Vbus,

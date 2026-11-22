@@ -1,7 +1,7 @@
 #ifndef __PROTECTION_H
 #define __PROTECTION_H
 
-#include "mc_motor.h"
+#include "motor_ctrl.h"
 #include "parameter_list.h"
 
 typedef struct {

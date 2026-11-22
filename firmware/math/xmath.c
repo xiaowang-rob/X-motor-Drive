@@ -3,6 +3,7 @@
 #ifdef MATH_LIB_CORDIC
 
 #include "stm32g4xx_ll_bus.h"
+#include "stm32g4xx_ll_cordic.h"
 
 #define XMATH_Q31 2147483648.0f /* 2^31 */
 #define XMATH_Q31_INV (1.0f / XMATH_Q31)
@@ -37,7 +38,7 @@ float XSIN(float x) {
 
     CORDIC->WDATA = (uint32_t)q;
     if (!cordic_wait_rrdy())
-        return arm_sin_f32(th);
+        return arm_sin_f32(x);
     return (int32_t)CORDIC->RDATA * XMATH_Q31_INV;
 }
 
@@ -52,21 +53,57 @@ float XCOS(float x) {
 
     CORDIC->WDATA = (uint32_t)q;
     if (!cordic_wait_rrdy())
-        return arm_cos_f32(th);
+        return arm_cos_f32(x);
     return (int32_t)CORDIC->RDATA * XMATH_Q31_INV;
 }
 
-/* 两次硬件运算分别完成后读取，避免覆盖尚未读出的 CORDIC 结果。 */
-void XSIN_COS(float theta_rad, float *sine, float *cosine) {
-    *cosine = XCOS(theta_rad);
-    *sine = XSIN(theta_rad);
+/* ---------- SIN + COS（流水线，两次请求一次读完） ---------- */
+void XSIN_COS(float theta_rad, float *pSin, float *pCos) {
+    cordic_clock_on();
+    float th = XANGLE_PI(theta_rad);
+    int32_t q = (int32_t)(th * XMATH_Q31_OVER_PI);
+
+    /* 先发 Cosine，再发 Sine，硬件流水线可重叠 */
+    CORDIC->CSR = 0U | (XMATH_CORDIC_PREC << CORDIC_CSR_PRECISION_Pos);
+    CORDIC->WDATA = (uint32_t)q;
+    CORDIC->CSR = 1U | (XMATH_CORDIC_PREC << CORDIC_CSR_PRECISION_Pos);
+    CORDIC->WDATA = (uint32_t)q;
+
+    if (!cordic_wait_rrdy()) {
+        *pSin = arm_sin_f32(theta_rad);
+        *pCos = arm_cos_f32(theta_rad);
+        return;
+    }
+    *pCos = (int32_t)CORDIC->RDATA * XMATH_Q31_INV;
+
+    if (!cordic_wait_rrdy()) {
+        *pSin = arm_sin_f32(theta_rad);
+        return;
+    }
+    *pSin = (int32_t)CORDIC->RDATA * XMATH_Q31_INV;
 }
 
+/* ---------- ATAN2 ---------- */
+// static bool cordic_phase(float x, float y, float *angle) {
+//     // 独占 CORDIC：Phase=2，6轮(24次迭代)，两个Q1.31参数，一个结果。
+//     LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_CORDIC);
+//     CORDIC->CSR = 2U | (6U << CORDIC_CSR_PRECISION_Pos) | CORDIC_CSR_NARGS;
+//     float scale = fmaxf(fabsf(x), fabsf(y));
+//     CORDIC->WDATA = (uint32_t)(int32_t)((x / scale) * 1073741824.0f);
+//     CORDIC->WDATA = (uint32_t)(int32_t)((y / scale) * 1073741824.0f);
+//     uint32_t timeout = 10000U;
+//     while (!(CORDIC->CSR & CORDIC_CSR_RRDY))
+//         if (--timeout == 0U)
+//             return false;
+//     *angle = (int32_t)CORDIC->RDATA * (3.14159265359f / 2147483648.0f);
+//     return true;
+// }
+
 float XATAN2(float y, float x) {
-    if (x == 0.0f && y == 0.0f)
-        return atan2f(y, x);
     cordic_clock_on();
-    float scale = XMAXF(XFABSF(x), XFABSF(y));
+    float scale = fmaxf(fabsf(x), fabsf(y));
+    if (scale < 1e-20f)
+        return 0.0f;
 
     /* 用 2^30 而非 2^31：归一化后 |x|/scale 可达 1，乘 2^31 会溢出，
      * 乘 2^30 等价把输入限制在 Q31 的 ±0.5 区间，atan2 对比例不敏感 */
@@ -83,6 +120,20 @@ float XATAN2(float y, float x) {
     if (!cordic_wait_rrdy())
         return atan2f(y, x);
     return (int32_t)CORDIC->RDATA * XMATH_PI_OVER_Q31; /* [-π, π] */
+}
+
+/* ---------- SQRT：保持软件实现 ---------- */
+float XSQRTF(float x) {
+    float r;
+    arm_sqrt_f32(x, &r);
+    return r;
+}
+
+/* ---------- HYPOT：目前用软件，见下文说明 ---------- */
+float XHYPOT(float x, float y) {
+    float r;
+    arm_sqrt_f32(x * x + y * y, &r);
+    return r;
 }
 
 #endif

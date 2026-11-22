@@ -1,49 +1,53 @@
 #include "mc_sensor.h"
+
 #include "xmath.h"
-#include <string.h>
-
-void sensor_init(tMcSensor *s, const tParameter *p, float dt) {
-    memset(s, 0, sizeof(*s));
-    /* TODO(parameter): PLL 带宽缺失；暂用 300 rad/s。 */
-    float wn = XMINF(300.0f, 0.25f / dt);
-    s->dt = dt;
-    s->kp_dt = XMATH_SQRT2 * wn * dt;
-    s->ki_dt = wn * wn * dt;
-    s->dir = p->positive_dir ? 1.0f : -1.0f;
-    s->polepairs = p->motor_polepairs;
-    s->elec_scale = s->dir * s->polepairs;
-    s->offset = XANGLE_2PI(p->theta_offset) * s->elec_scale;
+// 位置累积
+static float pos_accumulate(tPosAcc *acc, float theta) {
+    float angle_delta = theta - acc->last_angle;
+    if (angle_delta < -XMATH_PI)
+        acc->num_turns++;
+    else if (angle_delta > XMATH_PI)
+        acc->num_turns--;
+    acc->last_angle = theta;
+    return (theta - acc->zero_angle) + acc->num_turns * XMATH_2PI;
 }
 
-bool sensor_update(tMcSensor *s, float raw, bool valid) {
-    s->rotor.valid = valid;
-    if (!valid)
-        return false;
-    /* 端口输入是单圈机械角 [0, 2pi)，不再重复归一化。 */
-    if (!s->seeded) {
-        s->angle = raw;
-        s->seeded = true;
-    } else {
-        float delta = raw - s->raw;
-        if (delta < -XMATH_PI)
-            ++s->turns;
-        else if (delta > XMATH_PI)
-            --s->turns;
-        float error = XANGLE_PI(raw - s->angle);
-        s->vel += s->ki_dt * error;
-        s->angle = XANGLE_2PI(s->angle + s->vel * s->dt + s->kp_dt * error);
-    }
-    s->raw = raw;
-    s->rotor.theta = XANGLE_2PI(s->dir * s->angle);
-    s->rotor.vel = s->dir * s->vel;
-    s->rotor.pos = s->dir * ((raw - s->zero) + s->turns * XMATH_2PI);
-    s->rotor.theta_e = XANGLE_2PI(s->angle * s->elec_scale - s->offset);
-    s->rotor.vel_e = s->rotor.vel * s->polepairs;
-    return true;
+#define ENCODER_PLL_WN 300.0f  // 自然频率 决定跟踪带宽
+#define ENCODER_PLL_ZETA 0.707 // 阻尼比 越大超调越小响应越慢
+#define ENCODER_PLL_KP (2.0f * ENCODER_PLL_ZETA * ENCODER_PLL_WN)
+#define ENCODER_PLL_KI (ENCODER_PLL_WN * ENCODER_PLL_WN)
+#define ENCODER_PLL_INTEG_LIMIT 0.1745f // 积分限值  ±10°
+#define ENCODER_VEL_PHYS_LIMIT 1046.0f  // rad/s 物理上限（≈10k rpm）
+
+void mc_sensor_init(tMcSensor *sen) {
+    pll_init(&sen->pll,
+             ENCODER_PLL_KP,
+             ENCODER_PLL_KI,
+             ENCODER_PLL_INTEG_LIMIT,
+             ENCODER_VEL_PHYS_LIMIT);
+    // TODO:初始化无感算法
 }
 
-void sensor_zero(tMcSensor *s) {
-    s->zero = s->raw;
-    s->turns = 0;
-    s->rotor.pos = 0.0f;
+void mc_sensor_theta_process(tMcSensor *sen, float ts, uint8_t polepairs) {
+    // TODO: 区分输入的是编码器 还是 观测器角度 编码器角度是电角度还是机械角度
+    pll_update(&sen->pll, sen->theta_r_raw, ts);
+
+    sen->theta_r = sen->pll.theta;
+    sen->pos = pos_accumulate(&sen->pacc, sen->theta_r);
+    sen->theta_e = sen->theta_r * polepairs;
+    sen->theta_e = XANGLE_2PI(sen->theta_e);
+    sen->vel = sen->pll.vel;
+}
+
+void mc_sensor_set_pos_zero(tMcSensor *sen) {
+    sen->pacc.zero_angle = sen->theta_r;
+    sen->pacc.num_turns = 0;
+    sen->pacc.last_angle = sen->theta_r;
+}
+
+void mc_sensor_set_pos_limit(tMcSensor *sen) {
+    if (sen->pos > 0)
+        sen->pacc.max_pos = sen->pos;
+    else
+        sen->pacc.min_pos = sen->pos;
 }

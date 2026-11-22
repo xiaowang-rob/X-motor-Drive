@@ -465,14 +465,6 @@ fields:
       default: 0.0,
     }
   - {
-      field: fwgate,
-      name: 弱磁控制启动阈值,
-      id_name: PARAM_FWGATE,
-      unit: "0-1",
-      val_type: FLD_F32,
-      default: 0.9,
-    }
-  - {
       field: fwlkp,
       name: 弱磁Kp,
       id_name: PARAM_FWLKP,

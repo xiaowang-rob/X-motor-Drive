@@ -81,11 +81,9 @@ bool em_init(tParameter *param) {
 void em_loop_task(void) {
     if (!g_encm.enc_active)
         return;
-    // TODO:这里处理不同编码器角度
+    // TODO:这里处理不同编码器角度 
     enc_task(&g_enc);
     g_encm.theta_r = g_enc.sample.angle_rad;
     g_encm.theta_r = (g_encm.theta_r - g_param.theta_offset) *
                      (g_param.positive_dir ? 1 : -1);
 }
-
-void em_get_theta(float *theta) { *theta = g_encm.theta_r; }
