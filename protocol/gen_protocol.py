@@ -13,8 +13,8 @@ from schema import load_yaml, normalize
 
 SRC_DIR = Path(__file__).resolve().parent
 ROOT = SRC_DIR.parent
-PY_OUT = ROOT / "software" / "protocol"
-C_OUT = ROOT / "firmware" / "protocol"
+PY_OUT = ROOT / "xdr-tool" / "protocol"
+C_OUT = ROOT / "xdr-s"/ "MOTOR_DRIVE" / "protocol"
 NOTE = "# 此文件由 protocol/gen_protocol.py 自动生成，请勿手动修改"
 
 

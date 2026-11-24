@@ -58,6 +58,22 @@ fields:
       default: 0.0,
     }
   - {
+      field: current_ref,
+      name: 设定电流,
+      id_name: DATA_CURRENT_REF,
+      unit: A,
+      val_type: FLD_F32,
+      default: 0.0,
+    }    
+  - {
+      field: current_fb,
+      name: 当前电流,
+      id_name: DATA_CURRENT,
+      unit: A,
+      val_type: FLD_F32,
+      default: 0.0,
+    }   
+  - {
       field: duty,
       name: 输出占空比,
       id_name: DATA_DUTY,
@@ -124,9 +140,9 @@ fields:
       comment: 电机状态
       items:
         - id_name: MOTOR_IDLE
-          comment: IDLE
-        - id_name: MOTOR_FAULT
-          comment: FAULT
+          comment: 释放
+        - id_name: MOTOR_STARTING
+          comment: 启动中
         - id_name: MOTOR_OPENLOOP
           comment: 开环模式
         - id_name: MOTOR_CURRENT_MODE
@@ -183,11 +199,4 @@ fields:
       val_type: FLD_F32,
       default: 0.0,
     }
-  - {
-      field: motor_temp,
-      name: 电机温度,
-      id_name: DATA_MOTOR_TEMP,
-      unit: °C,
-      val_type: FLD_F32,
-      default: 0.0,
-    }
+
