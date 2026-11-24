@@ -37,8 +37,9 @@ bool comm_init(tComm *comm) {
         .rx_payload_size = COMM_USB_PAYLOAD_SIZE,
     };
     if (!comm->usb.initialized &&
-        !usb_init(&comm->usb, Get_USB_VendorHandle(), &usb_buf) &&
-        !usb_start(&comm->usb))
+        !usb_init(&comm->usb, Get_USB_VendorHandle(), &usb_buf))
+        return false;
+    if (!usb_start(&comm->usb))
         return false;
 
     // uart 初始化+启动
@@ -48,8 +49,9 @@ bool comm_init(tComm *comm) {
         .frame_buf = comm->uart_frame,
         .tx_buf = comm->uart_tx,
     };
-    if (!uart_init(&comm->uart, Get_MCU_UsartHandle(), &buf) &&
-        !uart_start(&comm->uart))
+    if (!uart_init(&comm->uart, Get_MCU_UsartHandle(), &buf))
+        return false;
+    if (!uart_start(&comm->uart))
         return false;
     // 初始化总线通讯
     const tBusBuffer can_buf = {

@@ -94,6 +94,8 @@ bool usb_process_frame(tUsbDriver *usb, tUsb_Frame *frame) {
     frame->data_len = 0U;
     if (usb == NULL || !usb->initialized || !usb->started)
         return false;
+    if (usb->handle->ops->poll)
+        usb->handle->ops->poll(usb->handle->dev);
     unsigned read = atomic_load_explicit(&usb->rx_read, memory_order_relaxed);
     unsigned write = atomic_load_explicit(&usb->rx_write, memory_order_acquire);
     if (read == write)

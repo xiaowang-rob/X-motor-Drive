@@ -23,6 +23,8 @@ typedef struct {
     /* 驱动保证切换回调与中断互斥；RX 指针仅在回调期间有效。 */
     void (*set_rx_cb)(void *handle, usb_rx_frame_cb cb, void *ctx);
     bool (*is_ready)(void *handle);
+    /* 可选，由主循环在检查 RX 队列前驱动设备事件。 */
+    void (*poll)(void *handle);
 } tUsbOps;
 
 // BSP 导出的类型化句柄：操作表 + 驱动实例。
